@@ -68,6 +68,57 @@ function compute_antiderivative(phi_j_fn, V_F, U_F, dS)
 end
 
 """
+    assemble_dispersion_tensors(M, p, c_bdy) → (Phi, Mmat, B, N_dof, c_bdy)
+
+**The dispersion subset only** — `Φ`, `Mmat` and `B`, which is everything
+[`dispersion_error`](@ref) / [`applicable_kd`](@ref) / [`model_celerity`](@ref) read.
+Nothing here can be used to build a residual.
+
+Why it exists: the full [`assemble_vertical_tensors`](@ref) also assembles
+`Acal/Kcal/Pcal`, three `N×N×N×8` tensors, i.e. **`3·8·N⁴` Gridap integrals** —
+1500 of them at `N=5` — none of which affect dispersion at all. A σ-mesh optimiser
+evaluates its objective thousands of times, so paying that per evaluation turns a
+minutes-long optimisation into an hours-long one. This path costs `N² + 2N`
+integrals plus the `N` antiderivative solves.
+
+⚠ The returned object is deliberately NOT a drop-in for the full bundle: it is a
+NamedTuple with four fields, so passing it where a residual is built fails loudly
+on a missing field rather than silently assembling a model with zeroed tensors.
+"""
+function assemble_dispersion_tensors(M::Int, p::Int, c_bdy::Vector{Float64})
+    @assert length(c_bdy) == M + 1
+    @assert c_bdy[1] ≈ 0.0 && c_bdy[end] ≈ 1.0
+    sigma_model = build_vertical_model(M, c_bdy)
+    sigma_trian = Triangulation(sigma_model)
+    V_phi = FESpace(sigma_model, ReferenceFE(lagrangian, Float64, p); conformity=:H1)
+    U_phi = TrialFESpace(V_phi)
+    V_int = FESpace(sigma_model, ReferenceFE(lagrangian, Float64, p+1);
+                    conformity=:H1, dirichlet_tags=["tag_1"])
+    U_int = TrialFESpace(V_int, 0.0)
+    N_dof = num_free_dofs(U_phi)
+    dS    = Measure(sigma_trian, 3*p + 4)
+
+    phi_fns     = Vector{Any}(undef, N_dof)
+    phi_int_fns = Vector{Any}(undef, N_dof)
+    for j in 1:N_dof
+        e_j = zeros(Float64, N_dof); e_j[j] = 1.0
+        phi_fns[j] = FEFunction(U_phi, e_j)
+    end
+    for j in 1:N_dof
+        phi_int_fns[j] = compute_antiderivative(phi_fns[j], V_int, U_int, dS)
+    end
+
+    Phi  = Float64[ sum(∫(phi_fns[j]) * dS) for j in 1:N_dof ]
+    Mmat = zeros(Float64, N_dof, N_dof)
+    B    = zeros(Float64, N_dof, N_dof)
+    for i in 1:N_dof, j in 1:N_dof
+        Mmat[i,j] =  sum(∫(phi_fns[i] * phi_fns[j]) * dS)
+        B[i,j]    = -sum(∫(phi_int_fns[i] * phi_int_fns[j]) * dS)
+    end
+    return (Phi=Phi, Mmat=Mmat, B=B, N_dof=N_dof, c_bdy=c_bdy)
+end
+
+"""
     assemble_vertical_tensors(M, p, c_bdy) → NamedTuple
 
 Full BALFE-M vertical static tensor set. Fields:
@@ -85,6 +136,11 @@ Full BALFE-M vertical static tensor set. Fields:
   Pcal  (N×N×N×8)  nonlinear LEADING pressure ∫Θₖⱼφᵢ_int    (𝓟-part of R_P)
   B     (N×N)      dispersion matrix −∫φᵢ_int φⱼ_int ≤ 0
   + σ-mesh/FE objects (sigma_model, phi_fns, phi_int_fns, dphi_fns, …)
+
+⚠ For DISPERSION ONLY (`Φ`, `Mmat`, `B`) call [`assemble_dispersion_tensors`](@ref)
+instead: this function assembles `3·8·N⁴` extra integrals for the nonlinear pressure
+package, none of which affect dispersion, and a σ-mesh optimiser calls its objective
+thousands of times.
 """
 function assemble_vertical_tensors(M::Int, p::Int, c_bdy::Vector{Float64})
     @assert length(c_bdy) == M + 1

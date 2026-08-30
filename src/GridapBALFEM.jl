@@ -84,7 +84,7 @@ include("mms_driver.jl")     # MMS solve + spatial/temporal refinement studies
 
 # Vertical stage
 export build_vertical_model
-export assemble_vertical_tensors
+export assemble_vertical_tensors, assemble_dispersion_tensors
 
 # Tensor/algebra helpers
 export alg_to_vec, alg_to_tensor2, alg_to_tensor3
@@ -136,7 +136,8 @@ export diag_csv_row, close_diagnostics
 
 # Utilities
 export find_wavenumber
-export dispersion_ratio, applicable_kd
+export dispersion_ratio, applicable_kd, dispersion_error, applicable_kd_first
+export model_R, airy_R, wave_properties, property_errors, applicable_range
 export make_sponge, make_wavemaker_line, make_wavemaker_point
 export DEFAULT_CBDY, resolve_cbdy
 export setup_and_run

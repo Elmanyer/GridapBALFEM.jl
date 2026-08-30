@@ -68,6 +68,277 @@ function applicable_kd(vert, g::Float64, d::Float64;
     return isnothing(idx) ? NaN : Float64(kd_vals[idx])
 end
 
+# ===========================================================================
+#  LINEAR WAVE PROPERTIES — C, C_g, γ, for the model and for Airy
+#
+#  StokesWaveFourierAnalysis.tex §subsec: stokes numbers. These are what the
+#  APPLICABLE RANGE is actually defined on, and the σ-mesh design problem is
+#  posed over all three:
+#
+#      R(μ)  = Φᵀ(M + μ|B|)⁻¹Φ ,           μ = (kd)² ,  |B| = −B_stored
+#      C     = √(g d R)
+#      C_g   = C (1 + μ R'/R)              [eq: LFEM group velocity]
+#      γ     = ∂lnA/∂ln d |_ω = −½ ∂ln C_g/∂ln d |_ω   [eq: shoaling gradient]
+#
+#  ⚠ **OPTIMISING C ALONE IS A TRAP, AND THE DERIVATION SAYS SO.** Driving the
+#  interface towards the free surface raises kd_app^(C) monotonically while
+#  kd_app^(Cg) COLLAPSES — for the two-element mesh, C rises to 15.5 at c₁=0.81
+#  while C_g falls off a cliff from 10.5 to 3.3 between c₁=0.81 and 0.82. A design
+#  excellent in celerity can be useless for energy propagation.
+#
+#  ⚠ **γ CHANGES SIGN near kd ≈ 1.2** (where C_g peaks), so a RELATIVE error
+#  measure on it is singular and must not be used. The tolerance on γ is ABSOLUTE
+#  (0.02); on C and C_g it is relative (2 %). This is a genuine methodological
+#  subtlety and a known source of discrepancy between published tables.
+# ===========================================================================
+
+"""
+    model_R(vert, mu) → (R, dR, d2R)
+
+The dispersion functional `R(μ) = Φᵀ(M+μ|B|)⁻¹Φ` and its first two μ-derivatives,
+`R' = −ΦᵀS|B|SΦ` and `R'' = 2ΦᵀS|B|S|B|SΦ` with `S = (M+μ|B|)⁻¹`. One factorisation
+serves all three.
+"""
+function model_R(vert, mu::Float64)
+    absB = -vert.B                       # B_stored = −B̃ ⇒ |B| = −B_stored
+    S    = (vert.Mmat .+ mu .* absB) \ Matrix{Float64}(I, size(absB)...)
+    SPhi = S * vert.Phi
+    BS   = absB * SPhi
+    R    = dot(vert.Phi, SPhi)
+    dR   = -dot(SPhi, BS)
+    d2R  = 2.0 * dot(BS, S * BS)
+    return (R, dR, d2R)
+end
+
+#  Airy: R_e(μ) = tanh(x)/x with x = √μ. Its (1 + μR'/R) reduces EXACTLY to
+#  ½(1 + 2x/sinh 2x), i.e. the textbook group-velocity factor — asserted in
+#  test_dispersion_curve rather than assumed here.
+function airy_R(mu::Float64)
+    x = sqrt(mu)
+    t = tanh(x); c2 = sech(x)^2
+    R  = t/x
+    dR = c2/(2x^2) - t/(2x^3)
+    return (R, dR)
+end
+
+"""
+    wave_properties(vert, kd; g=g, d=1.0) → (C, Cg, gamma, Ce, Cge, gamma_e)
+
+The three linear wave properties for the model and for Airy at one `kd`.
+
+`γ` is formed by a CENTRED DIFFERENCE in `ln d` at fixed `ω`, using the SAME
+routine for both model and exact — so the finite-difference truncation is common
+to the two and cancels in the difference `|γ_m − γ_e|` that the tolerance is
+applied to. Doing it analytically would need `R''` chained through an implicit
+`x(d)`; that derivation is exactly the kind that goes wrong silently, and the
+quantity is validated against a published table either way.
+
+`γ` depends only on `kd` (the `d`-dependence cancels), so `d` is a scale here.
+"""
+function wave_properties(vert, kd::Float64; g::Float64=g, d::Float64=1.0)
+    #  ω² = g x² R(x²)/d, so at fixed ω a change in d moves x. Invert F(x)=x²R(x²)
+    #  by NEWTON, using the derivative we already have:
+    #      F'(x) = 2x(R + x²R') = 2xR·G,      G = 1 + μR'/R
+    #  The only call site perturbs d by exp(±1e-4), so the guess x = kd is within
+    #  1e-4 of the root and Newton lands in one or two steps. (Bisection to full
+    #  precision costs ~200 evaluations here, and this function sits inside a
+    #  minimax optimiser's innermost loop — the difference is hours.)
+    #  F is increasing where the model is usable and SATURATES beyond its
+    #  bandwidth (F → Φᵀ|B|⁻¹Φ), so a non-positive derivative means "no root in
+    #  this direction" and the iteration stops rather than diverging.
+    FdF_m(x) = (R = model_R(vert, x^2); (x^2*R[1], 2x*(R[1] + x^2*R[2])))
+    FdF_e(x) = (R = airy_R(x^2);        (x^2*R[1], 2x*(R[1] + x^2*R[2])))
+    function x_at(FdF, target, xguess)
+        local x, F, dF, r, xn
+        x = xguess
+        for _ in 1:60
+            F, dF = FdF(x)
+            r = F - target
+            (abs(r) <= 1e-14*max(abs(target), 1.0) || dF <= 0) && break
+            xn = x - r/dF
+            xn <= 0 && (xn = 0.5x)
+            abs(xn - x) <= 1e-13*x && (x = xn; break)
+            x = xn
+        end
+        return x
+    end
+    #  ⚠ `local` IS LOAD-BEARING — the third instance of this hazard in this
+    #  codebase. In Julia a nested function assigning a name that is already local
+    #  to the ENCLOSING function assigns the ENCLOSING variable. Both closures
+    #  below naturally want to call their phase speed `C`, and `C` is also the
+    #  value `wave_properties` returns. Without `local`, the last γ evaluation —
+    #  `cg_airy`, at the perturbed depth — silently overwrote the returned `C`
+    #  with the AIRY celerity, so `|C/Ce − 1|` collapsed to ~1e-12 for every mesh
+    #  at every kd and the applicable range came out as the search cap instead of
+    #  10.84. The failure was invisible in C_g and γ, which reproduced their
+    #  published values exactly throughout.
+    cg_model(dd, ω) = begin
+        local x, R, dR, Cl
+        x = x_at(FdF_m, ω^2*dd/g, kd)
+        R, dR, _ = model_R(vert, x^2)
+        Cl = sqrt(g*dd*R)
+        (Cl, Cl*(1 + x^2*dR/R))
+    end
+    cg_airy(dd, ω) = begin
+        local x, R, dR, Cl
+        x = x_at(FdF_e, ω^2*dd/g, kd)
+        R, dR = airy_R(x^2)
+        Cl = sqrt(g*dd*R)
+        (Cl, Cl*(1 + x^2*dR/R))
+    end
+    #  C and C_g at the REQUESTED kd are direct evaluations — evaluate them
+    #  directly. Routing them through `x_at` (as this did) makes them depend on a
+    #  root solve that DEGENERATES exactly where the model does: F(x) = x²R(x²)
+    #  SATURATES at Φᵀ|B|⁻¹Φ for large kd, so bisecting F(x)=target on a flat
+    #  function returns an arbitrary point of the flat region. The symptom was
+    #  precise and misleading — |C/Ce − 1| decayed to 1e-16 as kd grew, i.e. the
+    #  model looked PERFECT exactly where it is worst, and the applicable range
+    #  came out as the search cap instead of 10.84.
+    #  `x_at` is still needed for the γ difference, where d is perturbed at fixed ω
+    #  and x genuinely moves — but there it stays in the neighbourhood of kd.
+    Rm, dRm, _ = model_R(vert, kd^2)
+    Re, dRe    = airy_R(kd^2)
+    C   = sqrt(g*d*Rm);  Cg  = C  * (1 + kd^2*dRm/Rm)
+    Ce  = sqrt(g*d*Re);  Cge = Ce * (1 + kd^2*dRe/Re)
+    ωm = kd * C  / d          # ω = k C, k = kd/d
+    ωe = kd * Ce / d
+    h = 1e-4
+    γm = -0.5*(log(cg_model(d*exp(h), ωm)[2]) - log(cg_model(d*exp(-h), ωm)[2]))/(2h)
+    γe = -0.5*(log(cg_airy( d*exp(h), ωe)[2]) - log(cg_airy( d*exp(-h), ωe)[2]))/(2h)
+    return (C=C, Cg=Cg, gamma=γm, Ce=Ce, Cge=Cge, gamma_e=γe)
+end
+
+"""
+    property_errors(vert, kd; g=g) → (eC, eCg, egamma)
+
+The three error measures the applicable range is defined on, **each already in the
+units of its own tolerance**: relative for `C` and `C_g`, **ABSOLUTE for `γ`**
+(which changes sign near `kd ≈ 1.2`, where a relative measure is singular).
+
+Returns `(Inf, Inf, Inf)` on a degenerate mesh, so an optimiser is repelled rather
+than crashed.
+"""
+function property_errors(vert, kd::Float64; g::Float64=g)
+    w = try
+        wave_properties(vert, kd; g=g)
+    catch
+        return (Inf, Inf, Inf)
+    end
+    (isfinite(w.C) && isfinite(w.Cg) && w.C > 0 && w.Cg != 0) || return (Inf, Inf, Inf)
+    return (abs(w.C/w.Ce - 1.0), abs(w.Cg/w.Cge - 1.0), abs(w.gamma - w.gamma_e))
+end
+
+"""
+    applicable_range(vert; prop=:C, tol=0.02, kd_max=400.0, n=4000, refine=1e-4)
+
+`kd_app^(X) = max{K : |error_X(kd)| ≤ tol ∀ kd ≤ K}` — the definition of
+`StokesWaveFourierAnalysis.tex` eq: applicable range definition.
+
+> ⚠ **NOTE THE QUANTIFIER: the tolerance must hold THROUGHOUT `[0,K]`, not merely
+> AT `K`.** The error curves are NOT monotone — for surface-clustered meshes `|e|`
+> descends to an interior extremum, recovers, and descends again — so a `findlast`
+> over a grid (which is what [`applicable_kd`](@ref) does) can step straight over a
+> breach and report a range two to three times too large. That is not hypothetical:
+> the two-element mesh `c₁ = 0.8696` has an interior dip that just breaches 2 % near
+> `kd ≈ 8`, and its true range is 7.7 while a `findlast` reports > 20.
+>
+> **A coarse scan reproduces the same error**, because the dip can be narrower than
+> the grid step. `n` here is deliberately large and the crossing is bisected.
+
+`prop ∈ (:C, :Cg, :gamma)`; the `γ` tolerance is absolute.
+"""
+function applicable_range(vert; prop::Symbol=:C, tol::Float64=0.02, g::Float64=g,
+                          kd_max::Float64=400.0, n::Int=4000, refine::Float64=1e-4)
+    idx = prop === :C ? 1 : prop === :Cg ? 2 : prop === :gamma ? 3 :
+          error("applicable_range: prop must be :C, :Cg or :gamma (got :$prop)")
+    e(kd) = property_errors(vert, kd; g=g)[idx]
+    kd0 = 1e-3
+    e(kd0) > tol && return 0.0
+    #  Geometric grid: the interesting structure is at small kd for gamma and at
+    #  large kd for C, and a uniform grid resolves neither well at fixed cost.
+    grid = exp.(range(log(kd0), log(kd_max); length=n))
+    lo = kd0
+    for kd in grid
+        if e(kd) > tol
+            hi = kd
+            while hi - lo > refine
+                mid = 0.5*(lo+hi)
+                e(mid) > tol ? (hi = mid) : (lo = mid)
+            end
+            return lo
+        end
+        lo = kd
+    end
+    return kd_max
+end
+
+"""
+    dispersion_error(vert, g, d, kd) → |Cm/Ce − 1|
+
+The dispersion error at ONE `kd`, as a scalar and CONTINUOUS in the vertical mesh —
+the objective a σ-mesh optimiser needs. `applicable_kd` below returns a grid index
+and is therefore piecewise constant in `c_bdy`; this is not.
+
+Returns `Inf` where `Cm²` is non-positive or the solve fails, so an optimiser
+minimising it is repelled from degenerate meshes rather than crashing on them.
+"""
+function dispersion_error(vert, g::Float64, d::Float64, kd::Float64)
+    k  = kd / d
+    Ce = sqrt(g * tanh(kd) / k)
+    M_eff = vert.Mmat .- vert.B .* kd^2
+    Cm_sq = try
+        g * d * dot(vert.Phi, M_eff \ vert.Phi)
+    catch
+        return Inf
+    end
+    (isfinite(Cm_sq) && Cm_sq > 0) || return Inf
+    return abs(sqrt(Cm_sq) / Ce - 1.0)
+end
+
+"""
+    applicable_kd_first(vert, g, d; err=0.02, kd_max=200.0, n=400, tol=1e-4) → Float64
+
+The **FIRST-CROSSING** applicable `kd`: the smallest `kd` at which `|Cm/Ce − 1|`
+exceeds `err`, located by a coarse scan and refined by bisection.
+
+⚠ **This is NOT the same quantity as [`applicable_kd`](@ref)**, and the difference
+matters whenever a mesh's dispersion error leaves the ±err band and re-enters.
+`applicable_kd` takes `findlast(|ratio−1| ≤ err)` over its grid — the LAST grid
+point inside the band, which happily jumps *past* an excursion — and, being a grid
+index, it is piecewise constant in `c_bdy`.
+
+Use this one to OPTIMISE a σ-mesh (continuous objective, and it is the honest
+statement of the range over which the model is valid); use `applicable_kd` to
+reproduce the published tables, which is how they were defined. Quote both when
+they disagree — the disagreement IS the finding, namely that the mesh has an
+excursion.
+
+Returns `kd_max` if the error never exceeds `err` on `(0, kd_max]`, and `NaN` if it
+is already exceeded at the smallest sampled `kd`.
+"""
+function applicable_kd_first(vert, g::Float64, d::Float64;
+                             err::Float64=0.02, kd_max::Float64=200.0,
+                             n::Int=400, tol::Float64=1e-4)
+    kd0 = 0.01
+    dispersion_error(vert, g, d, kd0) > err && return NaN   # bad already at the bottom
+    grid = LinRange(kd0, kd_max, n)
+    lo   = kd0
+    for kd in grid
+        e = dispersion_error(vert, g, d, Float64(kd))
+        if e > err
+            #  bracketed: [lo, kd] straddles the crossing. Bisect.
+            hi = Float64(kd)
+            while hi - lo > tol
+                mid = 0.5*(lo + hi)
+                dispersion_error(vert, g, d, mid) > err ? (hi = mid) : (lo = mid)
+            end
+            return lo
+        end
+        lo = Float64(kd)
+    end
+    return kd_max        # never left the band on this range
+end
+
 """
     make_sponge(domain, wL, wR, wB, wT, mu_max)
 

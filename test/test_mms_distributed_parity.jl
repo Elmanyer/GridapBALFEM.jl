@@ -62,13 +62,37 @@ const DEPTH  = 2.5          # d ≠ 1: multiplication by h is then not the ident
 const A_BED  = 0.2
 const P_U, P_ETA = 3, 2     # Q3/Q2, the pairing used everywhere else
 
-#  Tolerances. The two paths differ ONLY in the linear solve — direct LU against
-#  GMRES(Jacobi) at rtol 1e-13 — so their L² errors must agree far more closely
-#  than any two DIFFERENT models could. PARITY_RTOL is the agreement required;
-#  SEPARATION_RTOL is the difference G0 demands between models. Four orders apart,
-#  so neither gate can be satisfied by accident.
-const PARITY_RTOL     = 1e-6
-const SEPARATION_RTOL = 1e-2
+#  Tolerances, and a MEASURED WARNING ABOUT THIS TEST'S SENSITIVITY.
+#
+#  The two paths differ ONLY in the linear solve — direct LU against GMRES(Jacobi)
+#  at rtol 1e-13 — so their L² errors agree to near round-off. But the SEPARATION
+#  between models is far smaller than intuition suggests, and it was measured
+#  before this gate was trusted (2026-08-21, nx=12 Q3/Q2, d=2.5, a_b=0.2):
+#
+#      Model 1 (lin/flat/:none)      e_eta=1.9844455e-04   e_u=9.859119e-06
+#      Model 2 (lin/varbed/:none)    e_eta=1.9844463e-04   e_u=9.857747e-06
+#      Model 5 (nl/flat/:native)     e_eta=1.9844477e-04   e_u=9.862121e-06
+#                                    Δ ≈ 4e-07 rel        Δ ≈ 1.4e-04 / 3.1e-04 rel
+#
+#  ⚠ THE MMS L² ERROR IS A WEAK DISCRIMINATOR BETWEEN MODEL TIERS, and the reason
+#  is structural: the MMS FORCES the same manufactured field for every model, so
+#  the exact solution is identical and the models differ only through the
+#  discretisation error of their different operators — a small perturbation on a
+#  resolved mesh. **e_eta separates by only ~4e-7 and must NOT be used for G0.**
+#  e_u separates by ~1e-4 and is the usable channel.
+#
+#  Hence: PARITY_RTOL sits well below the measured separation, and G0 does not
+#  merely assert "the models differ" — it asserts the SEPARATION EXCEEDS THE
+#  PARITY TOLERANCE BY A STATED MARGIN, i.e. that this test can actually resolve
+#  the defect it exists to catch. A gate that cannot resolve its target is decor.
+const PARITY_RTOL   = 1e-7    # LU vs GMRES(1e-13) on the SAME problem
+const MIN_MARGIN    = 30.0    # required separation / PARITY_RTOL
+
+#  If a future change makes the separation shrink below the margin, the honest fix
+#  is a MORE DISCRIMINATING CASE, not a looser gate. The strongest one available is
+#  `nl_pressure=:full`, whose e_u sits on a frozen-projection floor ~600x above the
+#  :none value — but its LU-vs-CG projection difference then needs a parity
+#  tolerance nearer 5e-3 (see test_nlpressure_distributed.jl).
 
 is_rank0 = get(ENV, "OMPI_COMM_WORLD_RANK", get(ENV, "PMI_RANK", "0")) == "0"
 n_pass = 0; n_fail = 0
@@ -123,18 +147,22 @@ end
 # ---------------------------------------------------------------------------
 #  G0 — SEPARATION. Read this one first: if it fails, G1/G2 mean nothing.
 # ---------------------------------------------------------------------------
-is_rank0 && println("\n--- G0: the models under test are DISTINGUISHABLE from Model 1 ---")
+is_rank0 && println("\n--- G0: separation — can this test RESOLVE a silent fallback to Model 1? ---")
 for k in (:model2, :model5)
     de = abs(seq[k].e_eta - seq.m1.e_eta) / seq.m1.e_eta
     du = abs(seq[k].e_u   - seq.m1.e_u)   / seq.m1.e_u
-    check("G0 $k differs from Model 1 by > $(100*SEPARATION_RTOL)%",
-          de > SEPARATION_RTOL || du > SEPARATION_RTOL,
-          @sprintf("(Δe_eta=%.2f%%  Δe_u=%.2f%%)", 100de, 100du))
+    sep = max(de, du)                      # e_u is the usable channel; see the note
+    check("G0 $k separation exceeds $(MIN_MARGIN)x the parity tolerance",
+          sep > MIN_MARGIN * PARITY_RTOL,
+          @sprintf("(sep=%.3e = %.0fx parity; e_eta %.2e / e_u %.2e)",
+                   sep, sep/PARITY_RTOL, de, du))
 end
 if n_fail > 0 && is_rank0
-    println("  ⇒ STOP. The parity gates below cannot detect the hard-coded-Model-1")
-    println("    defect on a configuration whose answer coincides with Model 1's.")
-    println("    Change the case (mesh, depth, bed amplitude) until G0 separates.")
+    println("  ⇒ STOP. The parity gates below cannot resolve the hard-coded-Model-1")
+    println("    defect on this case: a distributed run silently computing Model 1")
+    println("    would land INSIDE the parity tolerance and be reported as a PASS.")
+    println("    Fix by making the case MORE DISCRIMINATING (coarser mesh, larger")
+    println("    a_b, or nl_pressure=:full) — never by loosening PARITY_RTOL.")
     flush(stdout)
 end
 

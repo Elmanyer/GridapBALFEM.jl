@@ -2,7 +2,7 @@
 
 > ## ⇨ START HERE
 >
-> This file is the map and the standing rules. The detail lives in seven focused documents in
+> This file is the map and the standing rules. The detail lives in ten focused documents in
 > `building_files/` (**gitignored — not under version control**):
 >
 > | document | what it answers |
@@ -16,21 +16,25 @@
 > | [`RUNNING.md`](building_files/RUNNING.md) | how to launch: local, cluster, sysimage, env vars |
 > | [`OPEN_ITEMS.md`](building_files/OPEN_ITEMS.md) | open work, each with its decisive next step |
 > | [`PENDING_TASKS.md`](building_files/PENDING_TASKS.md) | studies designed but not begun, with their blocking prerequisites |
+> | [`MMS_VBASIS_CAMPAIGN.md`](building_files/MMS_VBASIS_CAMPAIGN.md) | the vertical-basis campaign: the σ-mesh design problem (minimax, multi-property) and the `(M,p)` × 8-model convergence matrix |
 >
-> **One-line status (2026-08-21).** The solver is feature-complete in serial and distributed. The
+> **One-line status (2026-08-30).** The solver is feature-complete in serial and distributed. The
 > analytic MMS verifies **six of the eight models** — all four `:none` and both `:native` — at
-> theoretical order. The remaining two, the **`:full` pair, are permanently outside MMS's reach by
-> construction** (frozen L² projections vs an exact forcing); their error floor is quantified
-> instead. Suite: sequential 20/20 files, distributed 13/13, Jacobian-vs-AD 17/17 over 8 models,
-> nonlinear MMS 8/8, `test/local/` 50/50 — one failure in the whole campaign, and it is a
-> gate-window specification defect, not a solver defect.
+> theoretical order, now **on five vertical bases rather than one**. The remaining two, the
+> **`:full` pair, are outside MMS's reach through this driver** and their error floor is quantified
+> instead. ⚠ **The reason is NOT the one long recorded here.** `run_mms_case` never builds an `nlp`
+> context, so the frozen `{1,2,4,5}` blocks are **absent, not lagged** — what the floor measures is
+> omission (`OPEN_ITEMS.md` §2). Suite: sequential 20/20 files, distributed 13/13, Jacobian-vs-AD
+> 17/17 over 8 models, nonlinear MMS 8/8, `test/local/` 50/50 — one failure, a gate-window
+> specification defect, not a solver defect.
 >
-> **All of that is measured at ONE vertical basis, P1LFE-2.** As of 2026-08-21 the MMS drivers and
-> every MMS test/example take `(M, p_vert)` as parameters, so the eight model configurations can be
-> swept over the vertical basis — the direct evidence for the basis-agnosticism the model is named
-> for. The sweep itself has not been run yet: `examples/local_mms/run_vertical_basis_study.jl`,
-> designed in `PENDING_TASKS.md` §1, still blocked only on prerequisite B (optimised σ-meshes for
-> `p ≥ 2` — which affects the error CONSTANT, not the order, so tier 1 can proceed without it).
+> **✅ THE VERTICAL-BASIS CAMPAIGN IS COMPLETE (2026-08-30).** 83 studies over five vertical bases
+> (P1LFE-2/3/4, P2LFE-1/2; `Nσ` = 3, 4, 5) × the eight model configurations, plus optimised σ-meshes
+> derived by multi-property minimax. **Headline: `η` reaches 2.999-3.000 and `u` reaches 4.000 on
+> EVERY basis and EVERY model in the spatial matrix (30/30) — the order of accuracy is independent
+> of the vertical basis, which is the direct evidence for the basis-agnosticism the model is named
+> for.** Full results, method and every correction: `building_files/MMS_VBASIS_CAMPAIGN.md`; single
+> data file `output/local/mms_campaign/campaign_results.csv`.
 
 ---
 
@@ -71,8 +75,8 @@ Tables comparing our numbers against theirs must not label both sides the same w
 |---|---|
 | `Project.toml` / `Manifest.toml` | the Julia package manifest — `name = "GridapBALFEM"`, `uuid = 43e94d05-4d7d-4679-96a4-d46e2615da34`. Loaded with **`using GridapBALFEM`, never `include()`** (§5). This directory is **both the package and the working environment**, so `Test`, `BlockArrays`, `MPIPreferences`, `Preferences` are in `[deps]`, not `[extras]`. `[compat]` admits two Gridap minors **on measured evidence** — see `CONFIGURATION.md` §1 |
 | `src/` | the solver package — 16 files, mapped in `ARCHITECTURE.md` §2 |
-| `test/` | 28 test files + `runtests.jl` + `test/cluster/` + `test/local/` — inventory and scores in `TEST_SUITE.md` |
-| `examples/` | 7 sequential + `distributed/` (7 cluster scripts + `_dist_common.jl`), `distributed_small/` (5 parametric), `validation/` (7), `local_1d/`, `local_2d/`, `local_mms/` (4, incl. the vertical-basis sweep), `inspect_run.jl` — `RUNNING.md` §2 |
+| `test/` | 28 test files + `runtests.jl` + `test/cluster/` + `test/local/` — inventory and scores in `TEST_SUITE.md`. `test_mms_distributed_parity.jl` (4 ranks) gates the distributed MMS path against the sequential one |
+| `examples/` | 7 sequential + `distributed/` (7 cluster scripts + `_dist_common.jl`), `distributed_small/` (5 parametric), `validation/` (7), `local_1d/`, `local_2d/`, `local_mms/` (**7** — the parametric MMS studies plus the vertical-basis campaign: `run_vbasis_campaign.jl` (Phase 1 + Phase 2), `run_vbasis_shard.jl` (the sharded, supervised runner actually used), `report_vbasis_campaign.jl` (merge + summary)), `inspect_run.jl` — `RUNNING.md` §2 |
 | `run/` | 9 production SLURM launchers + `run/dist_small/` (20 small-domain 2-D cases + 7 superseded 1-D, see §5) + `run/local/` (28 case launchers + helper + benchmark + sweep), all through `run/balfem_env.sh` — `RUNNING.md` §3–4 |
 | `compile/` | the cluster sysimage build chain — `RUNNING.md` §5 |
 | `postprocessing/` | `GridapBALFEMPost` — self-contained, own environment, **no dependency on the solver** |
@@ -148,7 +152,16 @@ solution of the discrete equations at the boundary and radiates cleanly.
 **Verification.** The analytic MMS (`src/mms.jl`), whose independence from `problem.jl` is enforced
 by a grep gate; `test_jacobians_ad.jl`, comparing the hand Jacobians against AD of the same residual
 matrix-by-matrix and gating the nonlinear branch on *amplitude scaling*; the linear
-one-Newton-iteration gate on a sloping bed.
+one-Newton-iteration gate on a sloping bed; and the **vertical-basis campaign** (§5), which
+reproduces the whole verified scope on five vertical bases rather than one.
+
+**Linear wave properties and σ-mesh design** (added 2026-08-29, `src/utilities.jl`). `model_R`
+(`R, R′, R″` from one factorisation), `airy_R`, `wave_properties` (`C`, `C_g`, `γ` for model and
+Airy), `property_errors` (each already in the units of its own tolerance) and `applicable_range`.
+`C_g` and `γ` did not previously exist in code — only `C`, via `dispersion_ratio`/`applicable_kd`.
+Calibrated against `StokesWaveFourierAnalysis.tex` Table 4.1: **all nine published applicable ranges
+reproduced to <1 %**. `assemble_dispersion_tensors` (`src/vertical.jl`) is the cheap `(Φ, Mmat, B)`
+path these use — the full assembly adds `3·8·N⁴` integrals that dispersion never touches.
 
 **Postprocessing.** VTK/CSV → analysis and plots, from-modes `w(σ)`/`p_nh(σ)` reconstruction, and a
 sea-state module (Welch PSD, JONSWAP overlay, Hs, Rayleigh exceedance), validated against solver
@@ -181,7 +194,10 @@ carries a mesh-independent velocity-error floor (`VERIFICATION.md` §4).
 hand Jacobians, the full nonlinear physics, the SDIRK/θ integrators, all boundary treatments, and
 Dirichlet boundary wave generation with WaveSpec coupling.
 
-**Verified scope — six of eight models** (`Q3/Q2`, 1-D static unless noted):
+**Verified scope — six of eight models** (`Q3/Q2`, 1-D static unless noted). ⚠ **The table below is
+the ORIGINAL single-basis (P1LFE-2) campaign.** Every one of these rows has since been reproduced on
+four further vertical bases — see `MMS_VBASIS_CAMPAIGN.md` — so "verified" now means verified across
+`Nσ` = 3, 4 and 5, not at one basis:
 
 | model | `regime` / `flat_bed` / `nl_pressure` | `p_η` (opt 3) | `p_u` (opt 4) | |
 |---|---|---|---|---|
@@ -197,6 +213,42 @@ Model 2 additionally confirmed transient (2.999/3.998) and 2-D (3.000/3.963).
 
 > **Say "the `:none` and `:native` models are verified."** Never bare *"the residual is verified"*
 > (which would wrongly include `:full`), and never *"the `𝓝` tiers are verified"* (same error).
+
+**Vertical-basis campaign — COMPLETE 2026-08-30** (`MMS_VBASIS_CAMPAIGN.md`; data in
+`output/local/mms_campaign/campaign_results.csv`). 83 studies over five bases × the eight models.
+
+*Phase 1 — optimised σ-meshes*, by the multi-property minimax of `StokesWaveFourierAnalysis.tex`
+§sec: vertical grid optimisation (inner Chebyshev problem + outer bisection, over `C`, `C_g`, `γ`).
+Calibrated on two independent standards: Table 4.1's nine ranges (<1 %) and the published
+band-dependent optima `c₁ = 0.702/0.802/0.860` at `K = 5/10/20` (to 2e-4).
+
+| basis | `Nσ` | optimised `c_bdy` | `kd_app` (multi-property; **γ binds throughout**) |
+|---|---|---|---|
+| P1LFE-2 | 3 | `[0, 0.8064, 1]` | 8.60 |
+| P2LFE-1 | 3 | `[0, 1]` (no free parameter) | 3.01 |
+| P1LFE-3 | 4 | `[0, 0.7597, 0.9339, 1]` | 24.95 |
+| P1LFE-4 | 5 | `[0, 0.7809, 0.9335, 0.9820, 1]` | 92.22 |
+| P2LFE-2 | 5 | `[0, 0.8794, 1]` | 21.84 |
+
+*Phase 2 — the convergence matrix.* **SPATIAL: 30/30, `η` → 2.999-3.000 and `u` → 4.000 on EVERY
+basis and EVERY model.** The order of accuracy is **independent of the vertical basis** — the direct
+quantitative evidence for the property the model family is named for, previously resting on P1LFE-2
+alone. TEMPORAL: clean second order at `Nσ` = 3 and 4; `Nσ = 5` nonlinear is a scope limit (below).
+Tier 3 (`:full` floor) 10/10.
+
+**Three results worth quoting, and one scope limit:**
+1. **At fixed `Nσ`, grading beats raising the order** — 8.60 vs 3.01 at `Nσ=3`, 92.22 vs 21.84 at
+   `Nσ=5` (2.9× and 4.2×). Independently confirms `main.tex`'s statement, with the margin *widening*.
+2. **P1LFE-4's apparent `u`-shortfall is PRE-ASYMPTOTIC**, not suboptimal: `pw_u` runs
+   3.33 → 3.45 → 3.78 → **3.94** to `nx=128` on three models. Answers `OPEN_ITEMS.md` §6 for this case.
+3. **The `:full` floor GROWS with `Nσ`** (1.2 → 2.0 → 2.9e-03 in the `p=1` family) **and depends on
+   basis shape at high `Nσ`** (1.6× gap at `Nσ=5`). ⚠ It is an **omission** floor, not a
+   frozen-projection one — see the `:full` open item.
+4. ⛔ **`Nσ = 5` nonlinear TEMPORAL is not measurable on this machine.** The degradation is monotone
+   in model complexity: linear ✅ → nonlinear/flat ⚠ (rate falls to a floor) → nonlinear/∇h ⛔
+   (saturates or never converges) → `:native` ⛔ (NaN). **That ordering is the evidence it is a
+   nonlinear-SOLVE limit, not an operator defect** — the linear models on the identical basis and
+   mesh stay textbook.
 
 **Suite** (all measured 2026-08-18/19, not carried over): sequential **20/20 files**, distributed
 **13/13 gates** on 4 ranks, `test_jacobians_ad` **17/17** over 8 models, `test_mms_convergence_nonlinear`
@@ -240,11 +292,30 @@ designed but not begun: `PENDING_TASKS.md`.
   **separation negative control first**, because a bare parity check would pass with the defect
   present. This unblocks the vertical-basis convergence study (`PENDING_TASKS.md` §1 prerequisite A);
   the study driver is `examples/local_mms/run_vertical_basis_study.jl`.
+* 🔴 **the MMS path never assembles the `:full` frozen projections** (found 2026-08-21, reported not
+  patched). `run_mms_case` never passes an `nlp` context, so `problem.jl:396`'s `st !== nothing` gate
+  means the `nl_pressure_full` branch adds **nothing on a flat bed**. The `:full` studies stay valid
+  (the *forcing* still computes `{1,2,4,5}` exactly) but the floor measures **omission, not lag** —
+  which unseats `VERIFICATION.md` §4's "the lag is negligible, now measured rather than argued".
+  `OPEN_ITEMS.md` §2 has the decisive next step.
 * 🔴 cluster memory attribution (4 GB/core is required; *why* is open — H4 leads)
 * 🔴 `test_mms_convergence` G7 — a gate-window specification decision, not a fix
+* 🟠 **the `:sdirk` LINEAR-model temporal deficit is unexplained.** Across the completed matrix
+  `:sdirk` reaches `pw_u ≈ 1.99` on the nonlinear models but only ≈1.69 on the LINEAR ones at
+  `dt0=0.15`, while `:theta` gives ≈1.99 for both. **It is not spatial-floor contamination** (the
+  temporal errors sit four orders above the floor at `nx=36`), and it is **not a dissipation penalty
+  in general** — a matched pair at `dt=0.05` has `:sdirk` and `:theta` agreeing to 0.002. The one
+  genuinely open question the vertical-basis campaign leaves behind.
+* 🟠 **a per-basis `dt` ladder is required for temporal studies, and is not yet in the test suite.**
+  A single ladder diverges outright on the richest basis; `run_vbasis_shard.jl` scales `dt0` with
+  `Nσ`, but `run_conv_study` and the gates still use one fixed ladder.
 * 🟠 no MPI tier in `runtests.jl` (cost three stale reference constants)
 * 🟠 preconditioner replacement — the single biggest performance item
 * 🟠 four run-output gaps
+* ✅ *closed by the vertical-basis campaign:* the `(M,p)` convergence study itself
+  (`PENDING_TASKS.md` §1), tier 3's `:full`-floor-vs-`Nσ` question, and `OPEN_ITEMS.md` §6's
+  velocity-shortfall question for the vertical-basis case (pre-asymptotic — the horizontal `Q2/Q1`
+  and `Q4/Q3` pairings are still untested on an extended ladder, and the recipe is now cheap)
 * naming follow-through outside this checkout: GitHub repo (still `GridapLFEM.jl`; the remote URL
   is stale but redirects), cluster checkout, sysimage rebuild
 
@@ -280,7 +351,12 @@ supporting measurement is in the linked document.
    to non-dispersive shallow water.
 2. **`fe_order ≥ 2`.** `Q1` elements zero `R_P` and disable all non-hydrostatic physics.
 3. **`B_stored = −B̃ ≤ 0`**, and the explicit `(−1)` factors in the `R_P` and slope-pressure terms
-   are load-bearing.
+   are load-bearing. ⚠ **The invariant is NEGATIVE DEFINITENESS, not the elementwise sign.**
+   `B̃ = ∫φᵢ_int φⱼ_int` is a Gram matrix, so `B_stored = −B̃ ≺ 0` for every `(M,p)` — but the
+   *elementwise* `B ≤ 0` holds only because `φ_int ≥ 0` for `p = 1`. At **`p = 2` some entries are
+   positive** (measured: P2LFE-2 and P2LFE-3), and that is correct, not a defect. No code depends on
+   the elementwise sign — `dispersion_ratio`, `applicable_kd` and `model_celerity` all form
+   `M − kd²·B_stored`, which is sign-correct for any `p`. Do not "fix" a p≥2 basis by taking `abs.(B)`.
 4. **THE ASSEMBLY INVARIANT: every classification row must have exactly ONE consumer, guarded by the
    CONJUNCTION of its three activation conditions.** A guard testing only the bed condition or only
    the amplitude condition is a defect whenever the physics has a second representation in the other
@@ -298,6 +374,12 @@ supporting measurement is in the linked document.
    local to an enclosing function **assigns the enclosing variable**. This codebase is full of long
    functions with nested helpers, so the hazard is **structural**. One instance cost two days.
    **Re-run the mechanical audit after adding any nested helper.** (`VERIFICATION.md` §7)
+   *Third instance, 2026-08-21, `wave_properties`:* two closures each called their phase speed `C`,
+   which was also the enclosing function's return value, so the last γ evaluation — the **Airy** one
+   — overwrote it. **Note the shape of the symptom: `|C/Ce − 1|` collapsed to ~1e-12 for every mesh
+   at every `kd`, i.e. the model looked PERFECT exactly where it is worst, and `C_g` and `γ`
+   reproduced their published values throughout.** A capture bug can be invisible in every channel
+   but one, and the channel it corrupts can fail in the flattering direction.
 
 ### Boundaries and stability
 
@@ -344,6 +426,32 @@ supporting measurement is in the linked document.
 27. **Revise does not hot-swap signature changes** — restart before trusting a number after any
     signature or struct change.
 
+### Long campaigns (earned 2026-08-21…30, the vertical-basis campaign)
+
+41. **A LONG-LIVED Julia+Gridap PROCESS DEGRADES TO USELESSNESS.** Measured: workers grew
+    1.5 → 2.5 → 3.9 GB over ~14 h and, left for days, fell to **7-14 % CPU** — GC-bound, not
+    compute-bound. One spent **6.2 days on an `nx=8` level that takes seconds when fresh**, which is
+    why a campaign sat at 25/36 for a week while "still running". **Bound worker lifetime and RSS and
+    have a supervisor restart them** (`run_vbasis_shard.jl` + `supervise.sh`); resume logic makes a
+    restart cost one JIT. ⚠ The cap is checked BETWEEN studies, so a single long study can still get
+    there. This also **unseats the "flat memory ⇒ H3 not supported" argument** in `OPEN_ITEMS.md` §1,
+    which was measured over 400 steps on one tiny case.
+42. **`Distributed`/`pmap` was NOT usable for this workload; independent processes were.** Three
+    `pmap` launches each completed ONE study in >4 h while the identical `run_mms_case` calls ran at
+    full speed in a plain process. Sharded ordinary processes writing their own CSVs fixed it — and
+    fixed observability too: under `pmap` the workers' prints are relayed through the master, whose
+    stdout buffer is never flushed, so there is **no way to tell slow from hung**.
+43. **CONTIGUOUS slicing of a COST-SORTED queue is the worst partition for makespan** (measured 12×
+    imbalance: 1.7 h vs 20.8 h). Use LPT to minimise makespan for a fixed set, **SJF when the
+    deliverable is coverage** — and beware that LPT schedules the cheap high-value studies LAST.
+44. **In-flight work is invisible unless you make it visible.** A case is only "done" when it writes
+    rows, so restarting slots re-run what others are mid-way through. Use **PID-keyed claim files in
+    a SHARED directory** — per-output-dir claims let batches collide (one study ran on three slots).
+    A claim honoured only while its PID is alive self-heals; a plain lock file would not.
+45. **`RETRY_ERRORS` must be switched OFF once a failure is established.** A deterministic failure
+    re-queued forever burns slots on work already understood — and these reproduce **bit-identically**
+    (`‖r‖ = 0.27484014031572` twice), so a retry is not a new sample.
+
 ### Testing and measurement
 
 28. **"The suite passes" is not "the model is verified."** Most of the suite is
@@ -362,7 +470,12 @@ supporting measurement is in the linked document.
     directions before interpreting any slope.** A saturated slope and a wrong coefficient produce the
     *same* observable. **Guards come in pairs.**
 33. **Read the pairwise rate SEQUENCE, not the fitted slope**, and check error *magnitude* before
-    trusting a fine-level high-order rate.
+    trusting a fine-level high-order rate. **Three independent instances in one campaign** where the
+    fit would have given the wrong conclusion and the sequence gave the right one (fit 3.515/3.729/
+    3.603 against a true 3.94/3.88). The diagnostic that generalises: **a rising sequence with the
+    error still dropping is PRE-ASYMPTOTIC; a flat sequence with a stalled error is not.** And a
+    *fitted* slope through points that were never on an asymptotic curve (P2LFE-2 M4: `e_u` starts
+    LARGER than the solution amplitude) is **meaningless, not low** — never report it as a rate.
 34. **THE RESOLUTION PRINCIPLE: a test validates a term only if it can RESOLVE that term's
     contribution.** Always ask: *if this term were wrong, would this test have noticed?*
 35. **A batch runner must take its verdict from GATE OUTPUT, never from exit codes.** A clean exit
