@@ -16,21 +16,32 @@
 > | [`RUNNING.md`](building_files/RUNNING.md) | how to launch: local, cluster, sysimage, env vars |
 > | [`OPEN_ITEMS.md`](building_files/OPEN_ITEMS.md) | open work, each with its decisive next step |
 > | [`PENDING_TASKS.md`](building_files/PENDING_TASKS.md) | studies designed but not begun, with their blocking prerequisites |
-> | [`MMS_VBASIS_CAMPAIGN.md`](building_files/MMS_VBASIS_CAMPAIGN.md) | the vertical-basis campaign: the σ-mesh design problem (minimax, multi-property) and the `(M,p)` × 8-model convergence matrix |
+> | [`MMS_VBASIS_CAMPAIGN.md`](building_files/MMS_VBASIS_CAMPAIGN.md) | the vertical-basis campaign: the `(M,p)` × 8-model convergence matrix (its Phase-1 minimax σ-meshes are superseded by `src/vopt.jl`) |
 >
-> **One-line status (2026-08-30).** The solver is feature-complete in serial and distributed. The
+> **One-line status (2026-09-02).** The solver is feature-complete in serial and distributed. The
 > analytic MMS verifies **six of the eight models** — all four `:none` and both `:native` — at
-> theoretical order, now **on five vertical bases rather than one**. The remaining two, the
-> **`:full` pair, are outside MMS's reach through this driver** and their error floor is quantified
-> instead. ⚠ **The reason is NOT the one long recorded here.** `run_mms_case` never builds an `nlp`
-> context, so the frozen `{1,2,4,5}` blocks are **absent, not lagged** — what the floor measures is
-> omission (`OPEN_ITEMS.md` §2). Suite: sequential 20/20 files, distributed 13/13, Jacobian-vs-AD
-> 17/17 over 8 models, nonlinear MMS 8/8, `test/local/` 50/50 — one failure, a gate-window
-> specification defect, not a solver defect.
+> theoretical order, on **five vertical bases**. Suite: sequential 20/20 files, distributed 13/13,
+> Jacobian-vs-AD 17/17 over 8 models, nonlinear MMS 8/8, `test/local/` 50/50 — one failure, a
+> gate-window specification defect, not a solver defect.
+>
+> **✅ THE `:full` MMS DEFECT IS FIXED (2026-09-01).** `run_mms_case` never built an `nlp` context,
+> so the frozen `{1,2,4,5}` blocks were **absent, not lagged**, and on a flat bed `:full`
+> degenerated silently to `:native`. Both MMS drivers now build the context, and both time loops
+> **prime it from the initial condition** (`update_nlp_state!` runs only *after* a step, so step 1
+> assembled as if from rest — exact for a rest start, wrong for the MMS `u0 = u*(t0)`). Measured on
+> P1LFE-2 Model 7: `e_u` fell **1.19e-03 → 1.37e-06 (~870×)** and `p_u` went from a flat −0.00 to
+> **1.948**. So the recorded floor measured **omission**, and `:full` is *not* "MMS-unverifiable by
+> construction" — it converges, at the projection error. ⚠ Consequence: with the blocks now in the
+> residual but still absent from `jacobian_u`, the quasi-Newton gap has a **cliff in amplitude** —
+> Newton stalls at 9.2e-04 at the campaign's `a_eta=0.8` and only falls to ~2e-09 at `a_eta ≤ 0.4`.
+> Tier-3 studies must drop the manufactured amplitude, and their floors are **not** comparable with
+> the previously recorded ones.
 >
 > **✅ THE VERTICAL-BASIS CAMPAIGN IS COMPLETE (2026-08-30).** 83 studies over five vertical bases
-> (P1LFE-2/3/4, P2LFE-1/2; `Nσ` = 3, 4, 5) × the eight model configurations, plus optimised σ-meshes
-> derived by multi-property minimax. **Headline: `η` reaches 2.999-3.000 and `u` reaches 4.000 on
+> (P1LFE-2/3/4, P2LFE-1/2; `Nσ` = 3, 4, 5) × the eight model configurations. ⚠ Its Phase-1 σ-meshes
+> were derived by multi-property **minimax and are SUPERSEDED** — `src/vopt.jl` now implements the
+> Yang & Liu total-relative-error functional instead (§3), a different objective, so the `p ≥ 2`
+> node sets have moved (P2LFE-2: `c₁` 0.8794 → 0.8298). **Headline: `η` reaches 2.999-3.000 and `u` reaches 4.000 on
 > EVERY basis and EVERY model in the spatial matrix (30/30) — the order of accuracy is independent
 > of the vertical basis, which is the direct evidence for the basis-agnosticism the model is named
 > for.** Full results, method and every correction: `building_files/MMS_VBASIS_CAMPAIGN.md`; single
@@ -74,10 +85,10 @@ Tables comparing our numbers against theirs must not label both sides the same w
 | path | what it is |
 |---|---|
 | `Project.toml` / `Manifest.toml` | the Julia package manifest — `name = "GridapBALFEM"`, `uuid = 43e94d05-4d7d-4679-96a4-d46e2615da34`. Loaded with **`using GridapBALFEM`, never `include()`** (§5). This directory is **both the package and the working environment**, so `Test`, `BlockArrays`, `MPIPreferences`, `Preferences` are in `[deps]`, not `[extras]`. `[compat]` admits two Gridap minors **on measured evidence** — see `CONFIGURATION.md` §1 |
-| `src/` | the solver package — 16 files, mapped in `ARCHITECTURE.md` §2 |
+| `src/` | the solver package — **17 files** (`vopt.jl` added 2026-09-01), mapped in `ARCHITECTURE.md` §2 |
 | `test/` | 28 test files + `runtests.jl` + `test/cluster/` + `test/local/` — inventory and scores in `TEST_SUITE.md`. `test_mms_distributed_parity.jl` (4 ranks) gates the distributed MMS path against the sequential one |
-| `examples/` | 7 sequential + `distributed/` (7 cluster scripts + `_dist_common.jl`), `distributed_small/` (5 parametric), `validation/` (7), `local_1d/`, `local_2d/`, `local_mms/` (**7** — the parametric MMS studies plus the vertical-basis campaign: `run_vbasis_campaign.jl` (Phase 1 + Phase 2), `run_vbasis_shard.jl` (the sharded, supervised runner actually used), `report_vbasis_campaign.jl` (merge + summary)), `inspect_run.jl` — `RUNNING.md` §2 |
-| `run/` | 9 production SLURM launchers + `run/dist_small/` (20 small-domain 2-D cases + 7 superseded 1-D, see §5) + `run/local/` (28 case launchers + helper + benchmark + sweep), all through `run/balfem_env.sh` — `RUNNING.md` §3–4 |
+| `examples/` | 7 sequential + `distributed/` (7 cluster scripts + `_dist_common.jl`), `distributed_small/` (5 parametric), `validation/` (7), `local_1d/`, `local_2d/`, `local_mms/` (**11** — the parametric MMS studies, the vertical-basis campaign (`run_vbasis_campaign.jl`, `run_vbasis_shard.jl`, `report_vbasis_campaign.jl`), and the Phase-B batch: `run_phaseB_shard.jl` + `supervise_phaseB2.sh`, a resume-capable runner with a memory-aware supervisor), `inspect_run.jl` — `RUNNING.md` §2 |
+| `run/` | 10 production SLURM launchers + `run/dist_small/` (**30** small-domain 2-D cases — the 7 superseded 1-D twins were deleted 2026-09-02) + `run/local/` (30 scripts incl. **6** 1-D cases + `run_all_1d.sh`), all through `run/balfem_env.sh` (cluster) or `balfem_local.sh` (workstation) — `RUNNING.md` §3–4. ⚠ Every launcher is sized to **≤48 cores/node and ≤224 GB/node**: a rome node advertises 256 GB but SLURM allocates only ~224, so `64 × 4 GB` is refused at submit time |
 | `compile/` | the cluster sysimage build chain — `RUNNING.md` §5 |
 | `postprocessing/` | `GridapBALFEMPost` — self-contained, own environment, **no dependency on the solver** |
 | `WaveSpec.jl/` | vendored stochastic sea-state synthesis (CMOE-TUDelft). Tracks the **GitHub repository version, not a tagged release** — the release's `change_seed!` is broken |
@@ -155,7 +166,26 @@ matrix-by-matrix and gating the nonlinear branch on *amplitude scaling*; the lin
 one-Newton-iteration gate on a sloping bed; and the **vertical-basis campaign** (§5), which
 reproduces the whole verified scope on five vertical bases rather than one.
 
-**Linear wave properties and σ-mesh design** (added 2026-08-29, `src/utilities.jl`). `model_R`
+**Vertical grid optimisation** (`src/vopt.jl`, added 2026-09-01) — the Yang & Liu **total
+relative-error functional**, replacing the earlier minimax objective:
+`E_total = Ē_c + Ē_cg + Ē_shoal + Ē_u + Ē_w`, each term integrated over `kd` against
+`W = exp[(2^−kd − 2^−π) log 5]` and normalised by its **median over the sampled design population**
+(the medians are the trade-off weights, so the argmin depends on them).
+* `SigmaBasis` is a **self-contained analytic** piecewise-Lagrange σ-basis. Required because `E_u`
+  and `E_w` put an absolute value *inside* the σ-integral, so no Gram tensor can absorb them and
+  `φ_j(σ)` must be evaluated pointwise in the optimiser's inner loop — and building it here keeps
+  Gridap's DOF numbering off the load path. Validated against `assemble_dispersion_tensors` through
+  the permutation-**invariant** `R(μ)`: agreement **2e-15** across `p=1,2`, `M=1..4`.
+* **The design band is a calibrated fixed point, not a knob.** `W` saturates at 0.834 rather than
+  decaying, so the `kd`-integral does not converge and `Ω` is a real design band; a single `Ω`
+  reproduces `M=2` but misses `M=3,4` by 0.20/0.33. What is invariant is
+  `κ = Ω·Δσ_top/p = 2.06, 2.24, 2.20` → **`VOPT_KAPPA = 2.17`**, solved by bisection (`vopt_Omega`).
+* **Validation — reproduces Yang & Liu Table 1 to ≤0.014** (`M=2,3,4`); fitting `Ω` directly gives
+  **0.002**, which bounds the band closure's share of the error. `DEFAULT_CBDY` (`p=1`) is therefore
+  **kept at the published values**; `DEFAULT_CBDY_P` holds the new `p ≥ 2` optima (P2LFE-2 =
+  `[0, 0.8298, 1]`), and `resolve_cbdy(M, c_bdy, p=1)` is `p`-aware via a trailing positional.
+
+**Linear wave properties** (added 2026-08-29, `src/utilities.jl`). `model_R`
 (`R, R′, R″` from one factorisation), `airy_R`, `wave_properties` (`C`, `C_g`, `γ` for model and
 Airy), `property_errors` (each already in the units of its own tolerance) and `applicable_range`.
 `C_g` and `γ` did not previously exist in code — only `C`, via `dispersion_ratio`/`applicable_kd`.
@@ -281,6 +311,22 @@ Their physics is preserved case-for-case in `run/local/`; git history holds thei
 performance, and follow-through. Full list with decisive next steps: `OPEN_ITEMS.md`; studies
 designed but not begun: `PENDING_TASKS.md`.
 
+**🔄 PHASE-B MMS BATCH IN FLIGHT** (`output/local/mms_phaseB/`, 25/40 at 2026-09-02). Four tasks:
+T7 P1LFE-4 on an extended ladder, T8 the `:full` pair at `a_eta=0.4` with the projections now
+assembled, T9 tier 2 (the horizontal pairings), T10 the `p ≥ 2` bases on the new σ-meshes.
+**Provisional, and three results already matter:**
+* **`Q2/Q1` has a genuine one-order velocity shortfall** — `p_u = 2.001` against an optimal 3,
+  reproduced on two models over a five-level ladder to `nx=128`, with `e_u ≈ 8e-06`, five orders
+  above round-off. `p_η` is optimal on the same runs. `Q3/Q2` is optimal (3.000/3.998).
+* ⚠ **`Q4/Q3` in 1-D is UNMEASURABLE, not defective.** Its `p_u = 2.505` sits on `e_u = 1.4e-10`,
+  the double-precision floor. A saturated error and a genuine low rate give the same slope — it
+  needs a *shorter* ladder (`nx = 8…32`). Do not quote that rate.
+* **Nonlinear `p_η` degrades to ≈2.17–2.27 on fine meshes** where linear models on the same basis
+  and ladder give 2.9998. It appears both on `p=2` bases at four levels and on `p=1` at five, so it
+  is a **fine-mesh** effect, not a property of the vertical order — a second-order component takes
+  over once the third-order part has decayed. It is **not** caused by the new σ-meshes: P2LFE-1 has
+  no free interface at all and degrades identically.
+
 * ✅ **the two `src/mms_driver.jl` defects are FIXED** (found 2026-08-19, fixed 2026-08-21).
   **A1** — `run_conv_study` hard-coded `assemble_vertical_tensors(M, 1, [0,0.728,1])`, so `p_vert`
   was not a parameter and any `M≠2` threw. It now takes `p_vert` and `c_bdy`, resolving through the
@@ -296,13 +342,21 @@ designed but not begun: `PENDING_TASKS.md`.
   **separation negative control first**, because a bare parity check would pass with the defect
   present. This unblocks the vertical-basis convergence study (`PENDING_TASKS.md` §1 prerequisite A);
   the study driver is `examples/local_mms/run_vertical_basis_study.jl`.
-* 🔴 **the MMS path never assembles the `:full` frozen projections** (found 2026-08-21, reported not
-  patched). `run_mms_case` never passes an `nlp` context, so `problem.jl:396`'s `st !== nothing` gate
-  means the `nl_pressure_full` branch adds **nothing on a flat bed**. The `:full` studies stay valid
-  (the *forcing* still computes `{1,2,4,5}` exactly) but the floor measures **omission, not lag** —
-  which unseats `VERIFICATION.md` §4's "the lag is negligible, now measured rather than argued".
-  `OPEN_ITEMS.md` §2 has the decisive next step.
-* 🔴 cluster memory attribution (4 GB/core is required; *why* is open — H4 leads)
+* ✅ **the MMS `:full` omission is FIXED** (found 2026-08-21, fixed 2026-09-01). Both MMS drivers now
+  build the `nlp` context, and both time loops **prime it from the IC** — `update_nlp_state!` runs
+  only *after* an accepted step, so step 1 assembled as if from rest (exact for a rest start, wrong
+  for `u0 = u*(t0)`). `e_u` fell **1.19e-03 → 1.37e-06** and `p_u` went **−0.00 → 1.948**, so the
+  old floor measured **omission**, not the frozen-projection lag `VERIFICATION.md` §4 describes.
+  ⚠ **A second, deeper limit is now exposed**: with the blocks in the residual but absent from
+  `jacobian_u`, the quasi-Newton gap has a **cliff in amplitude** — Newton stalls at 9.2e-04 at the
+  campaign's `a_eta = 0.8` and reaches ~2e-09 only at `a_eta ≤ 0.4`. `run_conv_study` gained an
+  `a_eta` kwarg; **tier-3 floors are not comparable across amplitudes.**
+* ✅ **cluster memory attribution — H3 (per-step leak) is REFUTED at production scale.** The
+  2026-08/09 small-domain runs show RSS rising over the first ~100 steps and then **plateauing**
+  (plane 1894→~3230 MB, directional 1546→~2800 MB), with a peak of **3633 MB/rank**. That is H4:
+  the baseline footprint simply exceeds 2 GB/core, so **4 GB/core is required and permanent**, and
+  3 GB would OOM. ⚠ Distinct from the *long-lived-process* drift of rule 41, which is real and
+  unbounded — these are per-run measurements, not multi-hour worker lifetimes.
 * 🔴 `test_mms_convergence` G7 — a gate-window specification decision, not a fix
 * 🟠 **the `:sdirk` LINEAR-model temporal deficit is unexplained.** Across the completed matrix
   `:sdirk` reaches `pw_u ≈ 1.99` on the nonlinear models but only ≈1.69 on the LINEAR ones at
@@ -434,6 +488,21 @@ supporting measurement is in the linked document.
     caught three separate measurements.
 
 ### Solver and execution
+
+14b. **THE INTERIOR SOURCE DOES NOT DELIVER `A_wave`, AND THE FACTOR IS GEOMETRY-DEPENDENT.**
+    Measured `η/A`: **3.32 on the 50 m small domain, 2.13 on the 60 m 1-D flume**; Dirichlet
+    generation delivers ~1.0–1.05. The ratio is a *linear* property of the source calibration —
+    identical to three digits between a `linear/:none` run at `A=0.1` and a `nonlinear/:full` run at
+    `A=0.001` — so it is not a nonlinear artefact and cannot be tuned away. **Every `:inner_res`
+    result must be rescaled before it is read**, and "3.3×" must not be quoted as a constant.
+
+14c. **A CRASH IS NOT EVIDENCE UNTIL ITS CONTROL RUNS.** The small-domain suite is a factorial for
+    a reason: a `nonlinear/:full` run diverging at `A=0.1` looks amplitude-driven, but the **linear**
+    run at the same *delivered* 0.332 m — 76 % of the Miche limit — completes. Amplitude alone is
+    survivable; it takes amplitude *and* nonlinearity. Conversely the directional case died at
+    **5.7 %** of Miche, lower than three cases that completed, so it is a different failure
+    (generation-region, velocity-led) wearing the same symptom. Pair every failure with the run
+    that differs in exactly one axis.
 
 15. **The default integrator (`SDIRK_2_2`) is L-stable, i.e. DISSIPATIVE BY CONSTRUCTION.** Any test
     measuring a non-dissipative property must pin `solver_type=:theta`. **Do not remove those pins,
