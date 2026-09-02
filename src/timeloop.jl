@@ -94,6 +94,41 @@ vectors in wave-generation (transient Dirichlet) runs.
 """
 space_at(U, t::Real) = Gridap.Arrays.evaluate(U, t)
 
+
+"""
+    write_pvd_index(path, entries)
+
+Write a ParaView `.pvd` collection from `entries :: Vector{Tuple{Float64,String}}`
+(time, snapshot filename), overwriting `path`.
+
+WHY THIS EXISTS AND WHY IT IS NOT `savepvd`. `createpvd(...) do pvd ... end`
+serialises the collection only in its `finally`, so a run that is still going --
+or one that is killed, diverges, or hits the wall clock -- leaves every snapshot
+on disk with no index and ParaView cannot open the series at all. The obvious fix,
+calling `savepvd(pvd)` after each snapshot, DOES NOT WORK: `vtk_save` on a
+`CollectionFile` ends with `close_xml(pvd)`, freeing the XML document, so the next
+`pvd[t] = ...` throws `LightXML.XMLNoRootError`. It is a one-shot close, not an
+idempotent flush. Writing the few KB of text ourselves sidesteps WriteVTK's
+lifecycle entirely and costs nothing beside megabytes of VTK per snapshot.
+
+The `finally` still runs at the end and overwrites this with WriteVTK's own file,
+so a completed run's artefact is byte-for-byte what it always was.
+"""
+function write_pvd_index(path::AbstractString, entries::Vector{Tuple{Float64,String}})
+    open(path, "w") do io
+        println(io, """<?xml version="1.0" encoding="utf-8"?>""")
+        println(io, """<VTKFile type="Collection" version="1.0" byte_order="LittleEndian" """ *
+                    """compressor="vtkZLibDataCompressor">""")
+        println(io, "  <Collection>")
+        for (t, f) in entries
+            @printf(io, "    <DataSet timestep=\"%.10g\" part=\"0\" file=\"%s\"/>\n", t, f)
+        end
+        println(io, "  </Collection>")
+        println(io, "</VTKFile>")
+    end
+    return nothing
+end
+
 """
     run_time_loop(op, solver, u0, t0, T_final; output_dir, save_every,
                       trian, Nσ, print_every, print_dt, gauges, recon,
@@ -157,6 +192,7 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
     prev_vals = nothing
     need_prev = recon !== nothing || (checker !== nothing && check_every > 0)
 
+    pvd_entries  = Tuple{Float64,String}[]   # mirrors pvd, for the live index
     diags        = NamedTuple{(:t,:eta_max,:gauge_vals,:nl_iters,:res_nl,:t_solve),
                               Tuple{Float64,Float64,Vector{Float64},Int,Float64,Float64}}[]
     t_last_print = t0
@@ -239,6 +275,8 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                         append!(fields, extra_field_cellfields(u_n, u_prev, dt, recon, trian))
                     end
                     pvd[t_n] = createvtk(trian, fname; cellfields=fields, append=false)
+                    push!(pvd_entries, (t_n, "sol_t_$(tn_str).vtu"))
+                    write_pvd_index(joinpath(output_dir, "solution.pvd"), pvd_entries)
                 end
                 n_vtk += 1
                 @printf("  [vtk] snapshot %d written at t=%.4f (%.2f s)\n", n_vtk, t_n, t_vtk)

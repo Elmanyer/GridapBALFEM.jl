@@ -228,6 +228,7 @@ function run_time_loop_dist(ranks, op, solver, u0,
 
     prev_vals    = nothing     # previous-step DOFs (PVector) → u̇ backward FD
     need_prev    = recon !== nothing || (checker !== nothing && check_every > 0)
+    pvd_entries  = Tuple{Float64,String}[]   # mirrors pvd, for the live index
     diags        = NamedTuple{(:t,:eta_max,:nl_iters,:res_nl,:t_solve),
                               Tuple{Float64,Float64,Int,Float64,Float64}}[]
     t_last_print = t0
@@ -308,6 +309,11 @@ function run_time_loop_dist(ranks, op, solver, u0,
                         append!(fields, extra_field_cellfields(u_n, u_prev, dt, recon, trian))
                     end
                     pvd[t_n] = createvtk(trian, fname; cellfields=fields, append=false)
+                    push!(pvd_entries, (t_n, "sol_t_$(tn_str).pvtu"))
+                    #  main rank only: savepvd(::DistributedPvd) is map_main-guarded
+                    #  for the same reason -- one writer, no race on a single file.
+                    i_am_main(ranks) &&
+                        write_pvd_index(joinpath(output_dir, "solution.pvd"), pvd_entries)
                 end
                 n_vtk += 1
                 if i_am_main(ranks)
