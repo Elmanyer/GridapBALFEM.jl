@@ -89,9 +89,30 @@ Two constraints the scripts enforce and will error on rather than let you discov
 
 `run/balfem_env.sh` (the cluster helper) loads modules and resolves the prebuilt system image;
 none of that exists locally, so `balfem_local.sh` deliberately shares no code with it. The cluster
-counterparts of these cases are `run/dist_small/run_1d_*.sh` (the same 1-D script at 32 ranks and
-200 m) and the pre-existing 20-case suite in `run/dist_small/`; each 2-D launcher names its
+counterpart of the 2-D cases is the suite in `run/dist_small/`; each 2-D launcher names its
 cluster sibling in its header.
+
+**1-D geometry default: `ny=1`, `y_wall_bc=:wall`, `Ly=dx`.** Gridap's 3-element minimum applies
+to a *periodic* direction only; `:wall` and `:open` take `ny=1`. For a normal-incidence wave
+`𝖴y ≡ 0` exactly, so a solid wall is consistent with the solution rather than an approximation to
+it, while `:periodic` admits y-periodic modes a 1-D model does not have. Measured on the 240-cell
+flume: **7215 free DOFs against 20202** for `ny=3`/`:periodic`.
+
+**1-D cases are ALWAYS normal-incidence.** A 1-D domain has one propagation direction, so oblique
+or short-crested content — transverse wavenumber `k_y = k sin θ` — cannot exist in it. Such a
+request would be silently aliased onto a normal-incidence wave rather than rejected by the
+mathematics, so `run_flume_1d.jl` refuses it explicitly: setting `BALFEM_WAVE_DIR` (non-zero),
+`BALFEM_NTHETA`, `BALFEM_SPREAD_STD`, `BALFEM_THETA_MAX` or `BALFEM_DIRECTIONAL` is an error, not a
+no-op. Directional seas belong in the 2-D driver. This is also *why* `:wall` is exact here rather
+than an approximation: with normal incidence `𝖴y ≡ 0`, which is what the wall imposes.
+
+**The 1-D cases have NO cluster counterpart, deliberately.** Cluster twins existed until
+2026-09-02 and were deleted. A quasi-1D flume is a narrow y-periodic strip pinned at Gridap's
+periodic minimum `ny=3`; direct-LU cost scales with the front width that cross-section fixes, so
+the DOF count cancels from the serial-vs-distributed ratio and MPI buys nothing. Measured on this
+workstation: 1 -> 2 ranks went 1.36 -> 10.18 s/step, i.e. NEGATIVE parallel efficiency. Run 1-D
+here, sequentially; `run_all_1d.sh` runs the whole set side by side (`JOBS` processes at once),
+which is the right kind of parallelism for cases this size.
 
 **After editing `src/*.jl`, rebuild the cluster system image** (`compile/compile_snellius.sh`)
 before submitting anything — the image bakes a compiled copy of the solver, and a stale one runs

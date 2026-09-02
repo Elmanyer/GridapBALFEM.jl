@@ -271,7 +271,11 @@ that cross-section fixes, so **the DOF count cancels from the serial-vs-distribu
 domain length or `dx` puts a genuine 1-D case on the distributed side. Refining `ny` would move it
 there, but the solution is exactly y-invariant, so that buys parallel efficiency with work that
 produces no physics. Consequence: `run/local/run_1d_*.sh` (sequential, with point gauges) are the
-supported path; the seven `run/dist_small/run_1d_*.sh` are superseded and should not be launched.
+supported path. The seven cluster twins that used to sit in `run/dist_small/` were **deleted
+2026-09-02**: they carried no warning in their own headers, so the only record that they were dead
+was this paragraph — a file that looks launchable, in the launcher directory, next to 30 live ones.
+Their physics is preserved case-for-case in `run/local/`; git history holds their cluster sizing
+(200 m / `nx=800` / 60 periods at 32 ranks) if it is ever wanted.
 
 **Open work** — nothing is half-built in the solver; the open items are verification gaps,
 performance, and follow-through. Full list with decisive next steps: `OPEN_ITEMS.md`; studies
@@ -391,7 +395,39 @@ supporting measurement is in the linked document.
     just velocity. No value of `mu_max` absorbs it otherwise. (`WAVE_GENERATION.md` §3)
 11. **Sponge strength saturates past `μ_max ≈ 5ω` — WIDTH is the lever.** And the width must cover
     the **longest** component (`kd_min` ⇒ `λ_max`), not the peak.
-12. **`ny ≥ 3` is mandatory for a y-periodic mesh** (Gridap `CartesianGrids.jl:39`).
+12. **`ny ≥ 3` is mandatory for a y-PERIODIC mesh** (Gridap `CartesianGrids.jl:39`) — and for a
+    periodic mesh only. **`:wall` and `:open` accept `ny = 1`.**
+
+    **THE DEFAULT FOR ANY 1-D HORIZONTAL CASE IS `ny = 1` WITH `y_wall_bc=:wall`**, not three cells
+    with periodicity. The solver is structurally 2-D, so a 1-D problem is a narrow flume; one cell
+    across with solid walls is both the cheapest and the more correct way to pose it:
+    * for a normal-incidence wave the exact solution has `𝖴y ≡ 0`, and the wall condition `𝖴y = 0`
+      is **exactly consistent** with it — it approximates nothing. `:periodic` merely *permits*
+      `𝖴y ≡ 0` while admitting a family of y-periodic modes a true 1-D model does not have, whose
+      shortest member has wavelength `Ly` and can therefore sit inside the physical band;
+    * measured on the 240-cell flume: **7215 free DOFs at `ny=1`/`:wall` against 20202 at
+      `ny=3`/`:periodic`** — 2.8×, and a direct LU costs more than linearly in DOFs. The wall pins
+      the bottom and top `𝖴y` node layers (2886 constrained = 2 levels × 481 x-nodes × `Nσ`);
+    * set `Ly = dx` so the single cell stays isotropic.
+
+    Use `:periodic` only where the case genuinely carries oblique or short-crested content, which a
+    solid wall would reflect. `examples/local_1d/run_flume_1d.jl` defaults to `ny=1`, `Ly=0.25`,
+    `BALFEM_YBC=wall`, and all six `run/local/run_1d_*.sh` use it.
+
+    ⚠ **AND A 1-D CASE IS ALWAYS NORMAL-INCIDENCE — never oblique, never short-crested.** A 1-D
+    domain carries one propagation direction; oblique content has a transverse wavenumber
+    `k_y = k sin θ`, and a flume one cell across cannot represent it. The request is not refused by
+    the mathematics — it is **silently aliased** onto a normal-incidence wave at the wrong
+    wavenumber, with the transverse component dropped, producing a wrong answer that runs to
+    completion and looks plausible. This is why `build_airy_state` is called **without**
+    `directional=true` in the 1-D driver, and why that driver now **errors** if any of
+    `BALFEM_WAVE_DIR` (non-zero), `BALFEM_NTHETA`, `BALFEM_SPREAD_STD`, `BALFEM_THETA_MAX` or
+    `BALFEM_DIRECTIONAL` is set — those variables were previously *ignored*, which is the worse
+    failure. Directional content belongs in the 2-D driver
+    (`run_directional_sea_small.jl`: `y_wall_bc=:open` plus lateral sponges).
+
+    **Corollary: the `:wall` default above is not a compromise.** It is exact precisely *because*
+    1-D cases are normal-incidence — the two rules support each other.
 13. **`A_wave ≤ 0.001 m`** for stable long fully-nonlinear integrations.
 14. **The `c_g` transit trap.** At `kd = 5.5`, `c_g = 1.25 m/s` — filling a 45 m flume takes 22.5
     periods. Budget `t_settle ≈ (x_sponge − x_source)/c_g + 3T` before reading any steady state. It

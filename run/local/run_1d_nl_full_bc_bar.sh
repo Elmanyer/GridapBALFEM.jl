@@ -23,8 +23,28 @@ export BALFEM_RELAX=1
 export BALFEM_MPI=0           # direct LU: measured 2-3x faster than any MPI split here
 export BALFEM_LX=60.0
 export BALFEM_NX=240
-# no BALFEM_PERIODS here: boundary generation needs ~26 periods to fill the
-# flume (45 m / c_g 1.25 m/s = 36 s); the script's transit-aware default covers it.
+# 1-D HORIZONTAL DEFAULT: ny=1 with SOLID WALLS, not 3 cells with periodicity.
+# For a normal-incidence wave the exact solution has Uy == 0, and the wall
+# condition Uy = 0 is EXACTLY consistent with it -- it approximates nothing.
+# :periodic merely PERMITS Uy == 0 while also admitting a family of y-periodic
+# modes a true 1-D model does not have. ny=1 + :wall is also 2.8x cheaper:
+# 7215 free DOFs against 20202 for ny=3 periodic on this same 240-cell mesh,
+# and a direct LU costs more than linearly in DOFs. Ly=0.25 keeps the single
+# cell isotropic (dx=dy=0.25). Use :periodic only for genuinely oblique or
+# short-crested content, where a solid wall would reflect.
+export BALFEM_NY=1
+export BALFEM_YBC=wall
+export BALFEM_LY=0.25
+# DURATION. The driver's transit-aware default for boundary generation is 26 T,
+# which counts the 22.5 T fill (45 m to the right sponge at c_g = 1.25 m/s) plus
+# ~3.5 T. It does NOT separately count the 2 T Hann ramp, so by this project's
+# own convention (transit + 3 T settle, after the ramp) the earliest readable
+# steady state is 27.5 T -- and 26 T leaves only ~1.5 T of it. Pinned to 30 T
+# Pinned to 50 T (80 s), which leaves ~40 s = 25 T of steady state after the
+# 36 s fill and the 2 T ramp -- enough to fit an envelope growth rate, which the
+# ~5 T that 30 T would leave is not. Pinned rather than defaulted so all six
+# 1-D cases share one duration and stay comparable.
+export BALFEM_PERIODS=50
 export BALFEM_SAVE_EVERY=10
 export BALFEM_DIAG_EVERY=5
 

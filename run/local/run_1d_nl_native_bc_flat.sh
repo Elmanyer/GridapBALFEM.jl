@@ -1,6 +1,6 @@
 #!/bin/bash
-# LOCAL quasi-1D flume - nl_full_bc_irregular
-#   The Hs sea-state case that failed on the cluster, at 1-D cost
+# LOCAL quasi-1D flume - nl_native_bc_flat
+#   The native {3,6,7,8} nonlinear-pressure tier
 # SEQUENTIAL, and that is a MEASURED choice, not an oversight. Strong scaling on
 # this exact 240x3 mesh (20.2k DOFs, 40 steps):
 #     ranks    1(LU)     2       4       6      12
@@ -13,15 +13,21 @@
 # 12-way-decomposing one case. Sequential also KEEPS the point gauges.
 source "$(dirname "${BASH_SOURCE[0]}")/balfem_local.sh"
 
-export BALFEM_WAVE_GEN=sea
+export BALFEM_WAVE_GEN=bc
 export BALFEM_REGIME=nonlinear
-export BALFEM_NL_PRESSURE=full
+export BALFEM_NL_PRESSURE=native
 export BALFEM_FLAT_BED=1
-export BALFEM_RELAX=1
-export BALFEM_HS=0.02
-export BALFEM_TP=1.6
+export BALFEM_RELAX=1        # bc inflow: sponge_wL=0, so the relaxation zone is what absorbs the back-radiation
 
-# 12-rank sizing: 60 x 3 m, dx=0.25 (16 cells/lambda at kd=5.5), 16 periods
+# sizing: 60 x 3 m, dx=0.25 (16 cells/lambda at kd=5.5)
+# DURATION IS TRANSIT-BASED. Boundary generation injects at x=0, not at the
+# interior source's x=18 m, so the wave has 45 m to cross before it reaches the
+# right sponge instead of 27 m. At kd=5.5 the group speed is only c_g=1.25 m/s
+# (CLAUDE.md rule 14, "the c_g transit trap"), so filling takes 36 s = 22.5 T,
+# and +2 T ramp +3 T settle puts the earliest readable steady state at 27.5 T.
+# 30 periods is that plus a small margin. The 16 periods these cases used with
+# the INTERIOR source were correct for it (18.5 T needed) and would leave a
+# boundary-generated run reading a still-filling flume.
 export BALFEM_MPI=0           # direct LU: measured 2-3x faster than any MPI split here
 export BALFEM_LX=60.0
 export BALFEM_NX=240
@@ -37,15 +43,6 @@ export BALFEM_NX=240
 export BALFEM_NY=1
 export BALFEM_YBC=wall
 export BALFEM_LY=0.25
-# DURATION. The driver's transit-aware default for boundary generation is 26 T,
-# which counts the 22.5 T fill (45 m to the right sponge at c_g = 1.25 m/s) plus
-# ~3.5 T. It does NOT separately count the 2 T Hann ramp, so by this project's
-# own convention (transit + 3 T settle, after the ramp) the earliest readable
-# steady state is 27.5 T -- and 26 T leaves only ~1.5 T of it. Pinned to 30 T
-# Pinned to 50 T (80 s), which leaves ~40 s = 25 T of steady state after the
-# 36 s fill and the 2 T ramp -- enough to fit an envelope growth rate, which the
-# ~5 T that 30 T would leave is not. Pinned rather than defaulted so all six
-# 1-D cases share one duration and stay comparable.
 export BALFEM_PERIODS=50
 export BALFEM_SAVE_EVERY=10
 export BALFEM_DIAG_EVERY=5

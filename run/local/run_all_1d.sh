@@ -5,11 +5,12 @@
 #  Each case runs SEQUENTIALLY (direct LU — measured 2-3x faster than any MPI
 #  split of this mesh, see any run_1d_*.sh header) and the cases run SIDE BY
 #  SIDE, so the machine's cores are used by case-level parallelism rather than
-#  by decomposing one small case 12 ways. JOBS defaults to 7 = the case count.
+#  by decomposing one small case 12 ways. JOBS defaults to 6 = the case count
+#  (was 7 until the linear interior-source case was folded into its bc twin).
 # ==============================================================
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-JOBS="${JOBS:-7}"
+JOBS="${JOBS:-6}"
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1
 mkdir -p output/local/logs; rm -f output/local/logs/batch1d_summary.txt
 for f in run/local/run_1d_*.sh; do

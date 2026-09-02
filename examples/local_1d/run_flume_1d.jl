@@ -78,8 +78,8 @@ M       = genv_i("BALFEM_M", 2)
 #  reproduces the piecewise-linear models of Yang & Liu.
 p_vert  = genv_i("BALFEM_P_VERT", 1)
 model_name = "P$(p_vert)LFE-$(M)"
-Lx, Ly  = genv_f("BALFEM_LX", 60.0), genv_f("BALFEM_LY", 3.0)
-nx, ny  = genv_i("BALFEM_NX", 240), genv_i("BALFEM_NY", 3)
+Lx, Ly  = genv_f("BALFEM_LX", 60.0), genv_f("BALFEM_LY", 0.25)
+nx, ny  = genv_i("BALFEM_NX", 240), genv_i("BALFEM_NY", 1)
 feord   = genv_i("BALFEM_FE_ORDER", 2)
 #  p_eta = 0 keeps the historical EQUAL-ORDER spaces (unchanged default).
 #  Set BALFEM_P_ETA = BALFEM_FE_ORDER-1 for the Taylor-Hood-like pairing, which is
@@ -106,7 +106,76 @@ Tfinal  = haskey(ENV, "BALFEM_TFINAL") ? genv_f("BALFEM_TFINAL", 0.0) : periods*
 save_ev = genv_i("BALFEM_SAVE_EVERY", 10)
 mumax   = genv_f("BALFEM_MUMAX", 40.0)
 
-ny >= 3 || error("BALFEM_NY must be ≥ 3 (Gridap's periodic-direction minimum)")
+#  ny ≥ 3 is required ONLY for a PERIODIC y-direction — Gridap asserts "a minimum
+#  of 3 elements is required in any periodic direction" (CartesianGrids.jl:39).
+#  With :wall or :open there is no such constraint and ny=1 is legal, which is
+#  the DEFAULT for a genuinely 1-D horizontal case: see the note below.
+ybc_sym = Symbol(genv("BALFEM_YBC", "wall"))
+ybc_sym in (:wall, :open, :periodic) ||
+    error("BALFEM_YBC must be wall, open or periodic (got $ybc_sym)")
+(ybc_sym !== :periodic || ny >= 3) && (ny >= 1) ||
+    error("BALFEM_NY=$ny is invalid: :periodic needs ny ≥ 3 (Gridap's " *
+          "periodic-direction minimum); :wall and :open accept ny ≥ 1.")
+
+#  ---- 1-D CASES ARE NORMAL-INCIDENCE, BY PHYSICS AND BY CONSTRUCTION --------
+#
+#  A 1-D horizontal domain has ONE propagation direction. An obliquely incident
+#  wave has a transverse wavenumber k_y = k sin(theta), i.e. structure ACROSS the
+#  flume — and a flume one cell wide cannot represent it. What such a request
+#  actually produces is not an oblique wave but an aliased normal-incidence one
+#  at the wrong wavenumber, with the transverse component silently dropped: a
+#  wrong answer that still runs to completion and looks plausible.
+#
+#  The same holds for a SHORT-CRESTED sea. `build_airy_state(d)` is called here
+#  WITHOUT `directional=true` on purpose; a spread spectrum would put energy at
+#  k_y != 0 that this geometry cannot carry.
+#
+#  This driver exposes no direction knob at all, so oblique content cannot be
+#  requested through the intended interface. The guard below exists because a
+#  user CAN still export the directional variables the 2-D scripts read, and
+#  today they would be SILENTLY IGNORED — which is the worse failure. Refuse
+#  rather than warn: a warning is not read until the run has been paid for.
+#
+for v in ("BALFEM_WAVE_DIR", "BALFEM_NTHETA", "BALFEM_SPREAD_STD",
+          "BALFEM_THETA_MAX", "BALFEM_DIRECTIONAL")
+    haskey(ENV, v) || continue
+    #  WAVE_DIR = 0 is normal incidence and therefore harmless.
+    v == "BALFEM_WAVE_DIR" && abs(genv_f(v, 0.0)) < 1e-12 && continue
+    error("""
+    $v=$(ENV[v]) is set, but this is a 1-D horizontal flume.
+
+    A 1-D domain carries ONE propagation direction. Oblique or short-crested
+    content has a transverse wavenumber k_y = k*sin(theta), which a flume one
+    cell across cannot represent — the request would be silently aliased onto a
+    normal-incidence wave rather than refused, which is why this errors.
+
+    For directional content use the 2-D directional-sea driver instead:
+    examples/distributed_small/run_directional_sea_small.jl (y_wall_bc=:open
+    with lateral sponges). Unset $v to run this flume.""")
+end
+
+#  ---- THE DEFAULT FOR A 1-D HORIZONTAL CASE: ny = 1 with y_wall_bc = :wall ----
+#
+#  The solver is structurally 2-D, so a 1-D problem is posed as a narrow flume.
+#  The cheapest CORRECT way to do that is ONE cell across with SOLID WALLS, not
+#  three cells with periodicity:
+#
+#    * for a normal-incidence wave the exact solution has 𝖴y ≡ 0, and the wall
+#      condition 𝖴y = 0 is EXACTLY consistent with it. It approximates nothing.
+#      :periodic merely PERMITS 𝖴y ≡ 0 while also admitting a family of
+#      y-periodic modes a true 1-D model does not have — an extra mode family
+#      sitting in the same wavenumber band as the physics (at the old Ly=3.0 the
+#      shortest such mode was 3.0 m against a 4.0 m carrier);
+#    * ny=1 + :wall is 2.8x cheaper: 7215 free DOFs against 20202 for ny=3
+#      periodic on the same 240-cell streamwise mesh. The wall pins the bottom
+#      and top 𝖴y node layers (2886 constrained DOFs = 2 levels x 481 x-nodes
+#      x Nσ), leaving only the middle layer free;
+#    * a direct LU costs more than linearly in DOFs, so the wall-clock saving is
+#      larger than 2.8x.
+#
+#  Use :periodic only when the case genuinely has oblique or short-crested
+#  content, where a solid wall would reflect. All the run/local/run_1d_*.sh
+#  cases are normal-incidence and therefore use the ny=1 + :wall default.
 
 #  SIZING FOR A 12-RANK PARTITION (2026-08-06). The flume was 50 m at dx=0.5
 #  (8 cells/λ) on 1 core; it is now 60 m at dx=0.25 (16 cells/λ) decomposed
@@ -199,7 +268,7 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_horizontal=feord, p_e
           T_final=Tfinal, dt=dt,
           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
           flat_bed=flat_bed_flag(1),
-          y_wall_bc=Symbol(genv("BALFEM_YBC", "periodic")), x_wall_bc=false,
+          y_wall_bc=ybc_sym, x_wall_bc=false,
           wave_bc=wave_bc, bc_side=bc_side_sym(), bc_profile=bc_profile_sym(),
           relax_bc=use_relax, relax_width=relax_w_val(),
           output_dir=outdir, save_every=save_ev,
