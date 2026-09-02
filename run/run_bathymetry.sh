@@ -4,14 +4,16 @@
 #SBATCH --partition=rome
 #SBATCH --time=72:00:00
 #SBATCH --nodes=2
-#SBATCH --ntasks=100
-#SBATCH --ntasks-per-node=50
+#SBATCH --ntasks=96
+#SBATCH --ntasks-per-node=48
 #SBATCH --cpus-per-task=1
 # Memory: the rome node default (2 GB/core) was TESTED (2026-08) and the job was
 # still OOM-killed. This request is therefore NOT provisional headroom for a
 # compile spike -- it is required until the consumption is attributed; see
 # building_files/OPEN_ITEMS.md section 1. Sized so it FITS a rome
-# node (256 GB / 128 cores): 100 ranks x 4 GB over 2 node(s) = 200 GB/node.
+# node. This cluster does not admit more than 48 cores per node together with
+# the raised 4 GB/core, so 100 ranks over 2 nodes (50/node) is REFUSED; 96 ranks
+# over 2 nodes = 48/node x 4 GB = 192 GB/node is the largest that submits.
 # Do NOT drop this on the argument that the sysimage removes the per-rank
 # compile: that argument was tested and refuted.
 #SBATCH --mem-per-cpu=4G
@@ -21,8 +23,8 @@
 source $HOME/GridapBALFEM.jl/run/balfem_env.sh
 
 # --- MPI process grid (PX*PY MUST equal the rank count given to balfem_run) ---
-export BALFEM_PX=20
-export BALFEM_PY=5             # 20*5 = 100 ranks; mesh 1500x100 -> 75x20 cells/rank
+export BALFEM_PX=24
+export BALFEM_PY=4             # 24*4 = 96 ranks; mesh 1500x100 -> 62 x 25 cells/rank
 
 # --- Case-specific knobs (plane wave shoaling over a tanh submerged bar) -----
 # export BALFEM_LX=300; export BALFEM_LY=20   # domain size [m]
@@ -45,4 +47,4 @@ export BALFEM_PY=5             # 20*5 = 100 ranks; mesh 1500x100 -> 75x20 cells/
 # export BALFEM_LS_MAXITER=4000
 # export BALFEM_NL_TOL=1e-6
 
-balfem_run 100 examples/distributed/run_bathymetry_dist.jl
+balfem_run 96 examples/distributed/run_bathymetry_dist.jl
