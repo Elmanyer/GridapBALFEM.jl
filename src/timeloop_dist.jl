@@ -216,6 +216,16 @@ function run_time_loop_dist(ranks, op, solver, u0,
 
     odesol = solve(solver, op, t0, T_final, u0)
 
+    #  nl_pressure=:full — PRIME the frozen projections from the INITIAL CONDITION.
+    #  `update_nlp_state!` below runs only AFTER an accepted step, so without this
+    #  the first step assembles the {1,2,4,5} blocks with `nlp_state == nothing`,
+    #  i.e. as if starting from rest. That is exact for a rest start (u=0, η=0 ⇒
+    #  𝖲=𝖻=0 ⇒ zero projections, so this call is a no-op) but WRONG for any
+    #  non-trivial IC — which is exactly what the MMS driver uses (u0 = u*(t0)).
+    if nlp !== nothing
+        update_nlp_state!(nlp[1], nlp[2], u0)
+    end
+
     prev_vals    = nothing     # previous-step DOFs (PVector) → u̇ backward FD
     need_prev    = recon !== nothing || (checker !== nothing && check_every > 0)
     diags        = NamedTuple{(:t,:eta_max,:nl_iters,:res_nl,:t_solve),

@@ -56,7 +56,7 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         use_ad::Bool = false,   # AD Jacobians (3-arg TransientFEOperator)
                         output_dir::String = mktempdir())
     vert = vert_override === nothing ?
-           assemble_vertical_tensors(M, p_vert, resolve_cbdy(M, c_bdy)) : vert_override
+           assemble_vertical_tensors(M, p_vert, resolve_cbdy(M, c_bdy, p_vert)) : vert_override
     f    = field === nothing ?
            MMSField(vert.N_dof; Lx=Lx, Ly=Ly) : field
 
@@ -90,6 +90,16 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
     solver = build_ode_solver(dt; solver_type=solver_type, tableau=tableau,
                               theta=theta, nl_iter=nl_iter, nl_tol=nl_tol)
 
+    #  nl_pressure=:full needs the frozen-projection context, built here exactly as
+    #  the production driver builds it (utilities.jl, setup_and_run). WITHOUT IT the
+    #  `st !== nothing` gate in problem.jl never fires, the {1,2,4,5} blocks are
+    #  ABSENT rather than lagged, and on a FLAT BED the whole `nl_pressure_full`
+    #  branch adds nothing at all — `:full` silently degenerates to `:native` while
+    #  `mms_forcing` still forces all eight components. The three switches must
+    #  select the SOLVER WORKFLOW and the forcing together, never just the forcing.
+    nlp = nl_pressure == :full ?
+          (prob, build_nlp_ctx(model, p_horizontal, vert.N_dof, trian, dΩh)) : nothing
+
     # --- IC = u*(t0), which satisfies the wall Dirichlet data exactly ------
     u0 = interpolate_everywhere([mms_exact_eta(f, t0),
                                  mms_exact_ux(f, t0),
@@ -102,6 +112,7 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                           # print_every must be > 0: run_time_loop does `step % print_every`,
                           # so 0 raises DivideError. typemax never matches ⇒ silent run.
                           print_every=typemax(Int), dt=dt, final_uh=final,
+                          nlp=nlp,                 # :full ⇒ frozen projections live
                           diag_every=-1, check_every=0)
     final[] === nothing && error("run_mms_case: the time loop produced no solution")
 
@@ -219,7 +230,7 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
                                     krylov_m::Int = 200, verbose::Bool = true,
                                     output_dir::String = mktempdir())
     vert = vert_override === nothing ?
-           assemble_vertical_tensors(M, p_vert, resolve_cbdy(M, c_bdy)) : vert_override
+           assemble_vertical_tensors(M, p_vert, resolve_cbdy(M, c_bdy, p_vert)) : vert_override
     f    = field === nothing ? MMSField(vert.N_dof; Lx=Lx, Ly=Ly) : field
     pe   = p_eta == 0 ? p_horizontal : p_eta
     #  ONE bathymetry object and ONE set of switches for the forcing and the solver,
@@ -245,6 +256,18 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
         solver = build_ode_solver_distributed(dt; solver_type=solver_type, tableau=tableau,
                         nl_iter=nl_iter, nl_tol=nl_tol, ls_rtol=ls_rtol,
                         ls_maxiter=ls_maxiter, krylov_m=krylov_m)
+
+        #  nl_pressure=:full needs the frozen-projection context, built here exactly as
+        #  the production driver builds it (utilities.jl, setup_and_run). WITHOUT IT the
+        #  `st !== nothing` gate in problem.jl never fires, the {1,2,4,5} blocks are
+        #  ABSENT rather than lagged, and on a FLAT BED the whole `nl_pressure_full`
+        #  branch adds nothing at all — `:full` silently degenerates to `:native` while
+        #  `mms_forcing` still forces all eight components. The three switches must
+        #  select the SOLVER WORKFLOW and the forcing together, never just the forcing.
+        nlp = nl_pressure == :full ?
+              (prob, build_nlp_ctx(model, p_horizontal, vert.N_dof, trian, dΩh;
+                                   distributed=true)) : nothing
+
         u0 = interpolate_everywhere([mms_exact_eta(f, t0),
                                      mms_exact_ux(f, t0),
                                      mms_exact_uy(f, t0)], U)
@@ -252,6 +275,7 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
         diags = run_time_loop_dist(ranks, op, solver, u0, t0, T_final;
                                    output_dir=output_dir, save_every=0, trian=trian,
                                    Nσ=vert.N_dof, print_every=typemax(Int), dt=dt,
+                                   nlp=nlp,        # :full ⇒ frozen projections live
                                    final_uh=final, diag_every=-1, check_every=0)
         uh  = final[]
         tF  = isempty(diags) ? t0 : diags[end].t
@@ -318,6 +342,11 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
                           nl_iter::Int = 50,
                           distributed::Bool = false,
                           flat_bed::Bool = true, a_b::Float64 = 0.0,
+                          #  Manufactured surface amplitude. DEFAULT 0.8 on d=1.0 is
+                          #  violently nonlinear (H_min = 0.2) and the quasi-Newton
+                          #  Jacobian cannot solve nl_pressure=:full there once its
+                          #  blocks are actually assembled. Drop it for :full studies.
+                          a_eta::Float64 = 0.8,
                           regime::Symbol = :linear, nl_pressure::Symbol = :none,
                           kbx::Float64 = 1.3, kby::Float64 = 0.0,
                           cpu_grid::Tuple{Int,Int} = (2,2),
@@ -332,7 +361,7 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
     #  The vertical basis is a PARAMETER (see the docstring): (M, p_vert, c_bdy),
     #  resolved once here so every refinement level shares one tensor set and the
     #  rate cannot be contaminated by a changing vertical discretisation.
-    cb    = resolve_cbdy(M, c_bdy)
+    cb    = resolve_cbdy(M, c_bdy, p_vert)
     vert  = assemble_vertical_tensors(M, p_vert, cb)
     #  ONE bathymetry object for both branches — the sequential path used to build
     #  this inline and the distributed path had none at all (it hard-coded a flat bed).
@@ -342,7 +371,7 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
     for l in 0:levels-1
         nx = nx0*2^l
         ny = domain == :d1 ? ny_1d : ny0*2^l
-        f  = MMSField(vert.N_dof; Lx=Lx, Ly=Ly, omega=ω,
+        f  = MMSField(vert.N_dof; a_eta=a_eta, Lx=Lx, Ly=Ly, omega=ω,
                       ky = domain == :d1 ? 0.0 : nothing)
         #  The two branches take the SAME vertical basis, the SAME bathymetry and the
         #  SAME three model switches. Every one of them was previously either absent
@@ -420,7 +449,7 @@ function run_model_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                           nl_tol::Float64 = 1e-12, nl_iter::Int = 50,
                           t0::Float64 = 0.0, verbose::Bool = true,
                           output_dir::String = mktempdir())
-    vert = assemble_vertical_tensors(M, p_vert, resolve_cbdy(M, c_bdy))
+    vert = assemble_vertical_tensors(M, p_vert, resolve_cbdy(M, c_bdy, p_vert))
     cbs, ω, û, k = standing_mode(vert, d, g; n=n_mode, Lx=Lx, eta_hat=eta_hat)
 
     domain       = ((0.0, Lx), (0.0, Ly))
