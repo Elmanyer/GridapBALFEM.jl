@@ -55,6 +55,25 @@ for pu in (2,3,4), m in (1,3)
     push!(jobs, Job("T9_tier2_1d","P1LFE-2",2,1,m,pu,:d1,5,8,0.8, 30))
     push!(jobs, Job("T9_tier2_2d","P1LFE-2",2,1,m,pu,:d2,4,8,0.8, 90))
 end
+#  TASK 9b — Q4/Q3 in 1-D RE-SPECIFIED. The original T9 ran it to nx=128, where
+#  Q4/Q3's fifth-order convergence puts e_eta and e_u at 9e-11 and 1.4e-10 -- the
+#  DOUBLE-PRECISION FLOOR. A saturated error and a genuine low rate produce the
+#  same slope, so the measured p_u (1.08 and 2.51) is UNMEASURABLE, not a defect.
+#  The fix is a SHORTER ladder, not a longer one: stopping at nx=32 leaves
+#  e_u ~ 8e-08, about 800x the floor, which is readable. Three levels give only
+#  two pairwise rates -- that is the most Q4/Q3 supports in double precision at
+#  this domain size, and it is why the campaign's advice is to check error
+#  MAGNITUDE before trusting any fine-level high-order rate.
+for m in (1,3)
+    #  cost 95 = the HIGHEST in the queue, deliberately, even though these are the
+    #  CHEAPEST jobs here (3 levels to nx=32). SJF would sort them first, but the
+    #  queue is cost-sorted and shards are dealt round-robin over that order, so
+    #  inserting anywhere but the END renumbers every later job and moves it to a
+    #  different shard -- while workers launched under the old numbering are still
+    #  mid-study on jobs that would then be claimed by a second shard. Appending
+    #  keeps every existing index, and therefore every ownership, unchanged.
+    push!(jobs, Job("T9b_tier2_1d_short","P1LFE-2",2,1,m,4,:d1,3,8,0.8, 95))
+end
 #  TASK 10 — high-order vertical bases on the NEW optimised nodes
 for (nm,M,p) in (("P2LFE-1",1,2),("P2LFE-2",2,2)), m in 1:6
     push!(jobs, Job("T10_highorder_newnodes",nm,M,p,m,3,:d1,4,8,0.8, 35))
@@ -86,7 +105,14 @@ todo = [j for j in mine if !(jobkey(j) in done)]
 #  long-lived Julia+Gridap workers. Bounding lifetime is the fix; resume makes it cheap.
 const MAX_STUDIES = parse(Int, get(ENV, "PHASEB_MAX_STUDIES", "2"))
 mine = todo[1:min(end, MAX_STUDIES)]
-isempty(mine) && (println("[shard $SHARD] nothing to do"); exit(0))
+#  Leave a marker so the supervisor stops relaunching an exhausted shard. Work
+#  only ever shrinks, so an exhausted id stays exhausted. Without this the
+#  supervisor -- which picks the LOWEST free id -- relaunched one finished shard
+#  217 times and never reached the ids that still had jobs.
+if isempty(mine)
+    touch(joinpath(OUT, @sprintf("exhausted_%02d", SHARD)))
+    println("[shard $SHARD] nothing to do"); exit(0)
+end
 
 newfile = !isfile(CSV)
 open(CSV, "a") do io

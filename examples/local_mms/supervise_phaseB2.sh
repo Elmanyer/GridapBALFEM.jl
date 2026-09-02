@@ -48,6 +48,10 @@ while :; do
     busy=" $(ids | tr '\n' ' ')"
     for s in $(seq 0 $((NSHARD-1))); do
       case "$busy" in *" $s "*) continue;; esac
+      #  skip shards whose queue is empty -- see run_phaseB_shard.jl. Picking the
+      #  lowest free id without this spins on an exhausted shard forever and
+      #  starves the ids that still have work.
+      [ -f "$OUT/$(printf 'exhausted_%02d' $s)" ] && continue
       nohup julia --project=. examples/local_mms/run_phaseB_shard.jl $s $NSHARD \
         >> $OUT/shard_$(printf %02d $s).log 2>&1 &
       echo "[sup] launched shard $s"
