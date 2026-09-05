@@ -41,9 +41,9 @@ trap 'kill $WD 2>/dev/null' EXIT
 
 while :; do
   r=$(rows)
-  if [ "$r" -ge 40 ]; then echo "[sup] COMPLETE rows=$r/40"; break; fi
+  if [ "$r" -ge 42 ]; then echo "[sup] COMPLETE rows=$r/42"; break; fi
   cur=$(ids | wc -l)
-  echo "[sup] $(date +%H:%M:%S) rows=$r/40 workers=$cur free=$(freemb)MB swap=$(swapmb)MB"
+  echo "[sup] $(date +%H:%M:%S) rows=$r/42 workers=$cur free=$(freemb)MB swap=$(swapmb)MB"
   if [ "$cur" -lt "$NW" ] && [ "$(freemb)" -gt "$MIN_FREE_MB" ]; then
     busy=" $(ids | tr '\n' ' ')"
     for s in $(seq 0 $((NSHARD-1))); do

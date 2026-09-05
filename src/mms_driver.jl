@@ -329,7 +329,16 @@ The returned `tag` carries the vertical configuration (`P{p_vert}LFE-{M}`) as we
 and the model, so a sweep over `(M, p)` cannot produce two studies under the same label.
 """
 function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static,
-                          levels::Int = 4, nx0::Int = 8, ny0::Int = 8, ny_1d::Int = 3,
+                          levels::Int = 4, nx0::Int = 8, ny0::Int = 8,
+                          #  ny_1d = 1, NOT 3. The :d1 manufactured field has ky=0, so
+                          #  u*_y == 0 identically and the solution is y-invariant --
+                          #  mms.jl: "refine nx only; refining ny changes nothing".
+                          #  Measured: ny=1 vs ny=3 agree to 14 (e_eta) and 12 (e_u)
+                          #  significant figures at 2.94x fewer DOFs, and far more than
+                          #  that in wall time (a 3-cell-wide Q3 mesh widens the LU
+                          #  front). ny>=3 is a PERIODIC-direction requirement only, and
+                          #  run_mms_case builds y_wall_bc=:wall, so ny=1 is legal here.
+                          ny_1d::Int = 1,
                           Lx::Float64 = 1.7, Ly::Float64 = 1.1, d::Float64 = 1.0,
                           M::Int = 2, p_vert::Int = 1, c_bdy = nothing,
                           dt::Float64 = 1e-4, nsteps::Int = 100,
