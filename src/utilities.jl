@@ -561,6 +561,11 @@ function setup_and_run(;
     domain                  = ((0.0, 60.0), (0.0, 10.0)),  # ((x0,x1),(y0,y1)) extent [m]
     partition    :: Tuple   = (120, 20),  # (nx,ny) number of horizontal cells
     p_horizontal :: Int     = 2,          # horizontal FE order (must be ≥2: Q1 zeroes the dispersion)
+    quad_extra   :: Int     = 0,          # EXTRA quadrature degree on top of the default
+                                          #   2·max(p_h,p_η)+2. The default integrates the LINEAR
+                                          #   terms exactly but is one degree SHORT of the nonlinear
+                                          #   advection integrand φᵢ·u_k·∇u_j·H (degree 3p+1 at
+                                          #   equal order). Raise it to test aliasing hypotheses.
     p_eta        :: Int     = 0,          # surface FE order. 0 ⇒ EQUAL ORDER (= p_horizontal),
                                           #   which is the historical default and is UNCHANGED.
                                           #   Set p_eta = p_horizontal−1 for the Taylor-Hood-like
@@ -677,7 +682,7 @@ function setup_and_run(;
     # `y_periodic` glues the top/bottom edges when y_wall_bc == :periodic.
     model, trian = build_horizontal_model(domain, partition; y_periodic=y_periodic)
     # quadrature degree = 2·p_horizontal+2 integrates the nonlinear (product) terms exactly enough.
-    dΩh = Measure(trian, 2*max(p_horizontal, p_eta == 0 ? p_horizontal : p_eta) + 2)
+    dΩh = Measure(trian, 2*max(p_horizontal, p_eta == 0 ? p_horizontal : p_eta) + 2 + quad_extra)
 
     # Forcing frequency and the matching wavenumber from the Airy relation
     # ω² = g k tanh(kd) (used to size the wavemaker and report kd).

@@ -261,7 +261,7 @@ if is_rank0()
     flush(stdout)
 end
 
-common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_horizontal=feord, p_eta=p_eta,
+common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_horizontal=feord, p_eta=p_eta, quad_extra=genv_i("BALFEM_QUAD_EXTRA", 0),
           h_val=d, h_bathy=h_bathy, T_wave=Twave, A_wave=Awave,
           x_wm=x_wm, y_wm=nothing,
           sponge_wL=spL, sponge_wR=spR, sponge_wB=0.0, sponge_wT=0.0, mu_max=mumax,
