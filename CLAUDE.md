@@ -17,6 +17,22 @@
 > | [`OPEN_ITEMS.md`](building_files/OPEN_ITEMS.md) | open work, each with its decisive next step |
 > | [`PENDING_TASKS.md`](building_files/PENDING_TASKS.md) | studies designed but not begun, with their blocking prerequisites |
 > | [`MMS_VBASIS_CAMPAIGN.md`](building_files/MMS_VBASIS_CAMPAIGN.md) | the vertical-basis campaign: the `(M,p)` × 8-model convergence matrix (its Phase-1 minimax σ-meshes are superseded by `src/vopt.jl`) |
+> | [`NONLINEAR_INSTABILITY.md`](building_files/NONLINEAR_INSTABILITY.md) | the growing mode in fully nonlinear runs: the phenomenon, 8 refuted hypotheses, the aliasing test, the cure space |
+> | [`CAMPAIGN_COST.md`](building_files/CAMPAIGN_COST.md) | measured run costs, memory bands, queue limits and campaign-scheduling lessons |
+>
+> **⚠ OPEN: A GRID-SCALE INSTABILITY IN THE FULLY NONLINEAR MODEL (2026-09-05).** Nonlinear runs
+> develop an unbounded free-surface mode; the *same case* linear is flat for 80 s at **4× the
+> amplitude**. **Refining `dx` makes it worse** (blow-up t≈24 s at `dx=0.25`, t≈10 s at `dx=0.125`),
+> which excludes under-resolution and identifies a spatial-discretisation instability. Eight
+> **nine** hypotheses are refuted on evidence — Jacobian (exact AD agrees to 4 dp), sponge
+> reflection, boundary generation, domain length, CFL, Benjamin–Feir, and **quadrature
+> under-integration** (degrees 6/10/14 agree to 4 dp against an exact control, so aliasing is *not*
+> the driver). **✅ DIAGNOSED: the growth spectrum peaks at `λ ≈ 2–3·dx` on both meshes** — grid-scale
+> content gains 10³–10⁴× while the carrier gains 6× — so the Galerkin advection operator's **missing
+> energy sink** is measured, not merely inferred. Next step is a cure (skew-symmetric reformulation
+> first); every remaining option changes the residual and costs MMS re-verification. ⚠ **No existing test can detect this** — every nonlinear test is far shorter than the
+> 50–80 s over which the low-amplitude growth emerges, which is how it reached production runs.
+> Full account: [`NONLINEAR_INSTABILITY.md`](building_files/NONLINEAR_INSTABILITY.md).
 >
 > **One-line status (2026-09-02).** The solver is feature-complete in serial and distributed. The
 > analytic MMS verifies **six of the eight models** — all four `:none` and both `:native` — at
@@ -88,16 +104,17 @@ Tables comparing our numbers against theirs must not label both sides the same w
 | `src/` | the solver package — **17 files** (`vopt.jl` added 2026-09-01), mapped in `ARCHITECTURE.md` §2 |
 | `test/` | 28 test files + `runtests.jl` + `test/cluster/` + `test/local/` — inventory and scores in `TEST_SUITE.md`. `test_mms_distributed_parity.jl` (4 ranks) gates the distributed MMS path against the sequential one |
 | `examples/` | 7 sequential + `distributed/` (7 cluster scripts + `_dist_common.jl`), `distributed_small/` (5 parametric), `validation/` (7), `local_1d/`, `local_2d/`, `local_mms/` (**11** — the parametric MMS studies, the vertical-basis campaign (`run_vbasis_campaign.jl`, `run_vbasis_shard.jl`, `report_vbasis_campaign.jl`), and the Phase-B batch: `run_phaseB_shard.jl` + `supervise_phaseB2.sh`, a resume-capable runner with a memory-aware supervisor), `inspect_run.jl` — `RUNNING.md` §2 |
-| `run/` | 10 production SLURM launchers + `run/dist_small/` (**30** small-domain 2-D cases — the 7 superseded 1-D twins were deleted 2026-09-02) + `run/local/` (30 scripts incl. **6** 1-D cases + `run_all_1d.sh`), all through `run/balfem_env.sh` (cluster) or `balfem_local.sh` (workstation) — `RUNNING.md` §3–4. ⚠ Every launcher is sized to **≤48 cores/node and ≤224 GB/node**: a rome node advertises 256 GB but SLURM allocates only ~224, so `64 × 4 GB` is refused at submit time |
+| `run/` | 10 production SLURM launchers + `run/dist_small/` (**30** small-domain 2-D cases — the 7 superseded 1-D twins were deleted 2026-09-02) + `run/local/` (**47** scripts: the original 30 incl. **6** 1-D cases + `run_all_1d.sh`, plus the **16** `run_1dnl_*.sh` nonlinear-instability ladder — 4 physics tiers × A∈{0.05,0.10,0.15,0.20} — + `run_all_1dnl.sh`), all through `run/balfem_env.sh` (cluster) or `balfem_local.sh` (workstation) — `RUNNING.md` §3–4. ⚠ Every launcher is sized to **≤48 cores/node and ≤224 GB/node**: a rome node advertises 256 GB but SLURM allocates only ~224, so `64 × 4 GB` is refused at submit time |
 | `compile/` | the cluster sysimage build chain — `RUNNING.md` §5 |
 | `postprocessing/` | `GridapBALFEMPost` — self-contained, own environment, **no dependency on the solver** |
 | `WaveSpec.jl/` | vendored stochastic sea-state synthesis (CMOE-TUDelft). Tracks the **GitHub repository version, not a tagged release** — the release's `change_seed!` is broken |
 | `Gridap.jl/` | the vendored **fork** (`Elmanyer/Gridap.jl` @ `fix-transient-multifield-ad`, one commit on `v0.20.8`) making transient-multifield AD work — `CONFIGURATION.md` §2 |
-| `BALFEM_models/` + `.zip` | **THE CURRENT LaTeX project** — the authoritative derivation (§2) |
-| `LFEM_discretisation/` + `.zip` | **SUPERSEDED** pre-rename LaTeX, kept for provenance. Do not edit |
-| `CFC2027_LFEMultilayer_abstract/` | conference abstract (CFC 2027); its class needs the `newtx` fonts |
-| `building_files/` | the seven documents above. **Gitignored** |
-| `algebraic_balfem2D.jl`, `test_algebraic_balfem2D.jl`, `test_2HDmodel.ipynb` | the single-file prototype and an early notebook, kept for reference; `src/` is the maintained form |
+| `building_files/BALFEM_models/` | **THE CURRENT LaTeX project** — the authoritative derivation (§2). ⚠ the `.zip` no longer exists in the checkout; re-export from Overleaf before assuming a round-trip |
+| `building_files/LFEM_discretisation.zip` | **SUPERSEDED** pre-rename LaTeX, kept for provenance as a zip only. Do not edit |
+| `building_files/CFC2027_abstract/` | conference abstract (CFC 2027); its class needs the `newtx` fonts. **Renamed from `CFC2027_LFEMultilayer_abstract/`** |
+| `building_files/doc_figures/` | `generate_doc_plots.ipynb` — one cell per figure, activating the repo project by walking up to `Project.toml`. Reproduces Yang & Liu figs 2 and 3 from `assemble_dispersion_tensors` + `model_R`; recovers their published `kd_app` (10.84 / 39.23 / 127.91) |
+| `building_files/` | the **twelve** documents above, plus the LaTeX projects, `doc_figures/` and the abstract. **Gitignored** |
+| `GridapSWE.jl/` | vendored reference implementation, **untracked** — not a dependency of this package |
 | `../LFE-M_2D_solver/` | a genuinely external per-layer implementation of the same weak form. Legacy, deliberately not renamed |
 
 ---
@@ -176,13 +193,17 @@ relative-error functional**, replacing the earlier minimax objective:
   `φ_j(σ)` must be evaluated pointwise in the optimiser's inner loop — and building it here keeps
   Gridap's DOF numbering off the load path. Validated against `assemble_dispersion_tensors` through
   the permutation-**invariant** `R(μ)`: agreement **2e-15** across `p=1,2`, `M=1..4`.
-* **The design band is a calibrated fixed point, not a knob.** `W` saturates at 0.834 rather than
-  decaying, so the `kd`-integral does not converge and `Ω` is a real design band; a single `Ω`
-  reproduces `M=2` but misses `M=3,4` by 0.20/0.33. What is invariant is
-  `κ = Ω·Δσ_top/p = 2.06, 2.24, 2.20` → **`VOPT_KAPPA = 2.17`**, solved by bisection (`vopt_Omega`).
-* **Validation — reproduces Yang & Liu Table 1 to ≤0.014** (`M=2,3,4`); fitting `Ω` directly gives
-  **0.002**, which bounds the band closure's share of the error. `DEFAULT_CBDY` (`p=1`) is therefore
-  **kept at the published values**; `DEFAULT_CBDY_P` holds the new `p ≥ 2` optima (P2LFE-2 =
+* **The design band is REAL, and for `p=1` it is PUBLISHED — the κ closure is only needed for
+  `p ≥ 2`.** `W` saturates at 0.834 rather than decaying, so the `kd`-integral does not converge and
+  `Ω` is a genuine design band. ⚠ **Yang & Liu give it in their Table 1: `Ω_kd` = 8, 24, 80 for
+  `M` = 2, 3, 4** — so it never had to be inferred at `p=1`. `κ = Ω·Δσ_top/p` remains the closure for
+  `p ≥ 2`, where no published band exists, solved by bisection (`vopt_Omega`).
+* **Validation at the published bands: Table 1 reproduced to 0.0085 / 0.0236 / 0.0277** (`M=2,3,4`).
+  The gap is **structural, not numerical** — refining the kd-integral 32 → 256 points moves the
+  optimum by <0.001, and the median sample size likewise. ⚠ **`VOPT_KAPPA = 2.17` is stale**: at the
+  published bands this code's optima give `κ` = 2.108 / 2.117 / 2.112, spread **±0.21 %**, against
+  ±12 % for Table 1's own node values. The change to 2.112 is **held** — see §5. `DEFAULT_CBDY`
+  (`p=1`) is **kept at the published values**; `DEFAULT_CBDY_P` holds the new `p ≥ 2` optima (P2LFE-2 =
   `[0, 0.8298, 1]`), and `resolve_cbdy(M, c_bdy, p=1)` is `p`-aware via a trailing positional.
 
 **Linear wave properties** (added 2026-08-29, `src/utilities.jl`). `model_R`
@@ -311,7 +332,7 @@ Their physics is preserved case-for-case in `run/local/`; git history holds thei
 performance, and follow-through. Full list with decisive next steps: `OPEN_ITEMS.md`; studies
 designed but not begun: `PENDING_TASKS.md`.
 
-**🔄 PHASE-B MMS BATCH IN FLIGHT** (`output/local/mms_phaseB/`, 25/40 at 2026-09-02). Four tasks:
+**⏸ PHASE-B MMS BATCH PAUSED at 28/40** (`output/local/mms_phaseB/`, 12 shard CSVs, 5 task families, no worker running as of 2026-09-05 — **deliberately stopped** to free the machine for the nonlinear-instability diagnosis; resume with `run_phaseB_shard.jl`, whose claim-file logic makes a restart cost one JIT). Four tasks:
 T7 P1LFE-4 on an extended ladder, T8 the `:full` pair at `a_eta=0.4` with the projections now
 assembled, T9 tier 2 (the horizontal pairings), T10 the `p ≥ 2` bases on the new σ-meshes.
 **Provisional, and three results already matter:**
@@ -327,6 +348,26 @@ assembled, T9 tier 2 (the horizontal pairings), T10 the `p ≥ 2` bases on the n
   over once the third-order part has decayed. It is **not** caused by the new σ-meshes: P2LFE-1 has
   no free interface at all and degrades identically.
 
+* 🔴 **THE NONLINEAR GRID-SCALE INSTABILITY — DIAGNOSED 2026-09-05, UNFIXED.** The single most
+  consequential open item, because it affects *results*, not verification. Growth spectrum peaks at
+  **`λ ≈ 2–3·dx`** (gain 13 302× at `dx=0.125`, 4 291× at `dx=0.25`, against ~6× for the carrier), so
+  the Galerkin advection operator's **missing energy sink** is measured, not inferred. Nine
+  hypotheses refuted, quadrature among them. Cure requires a residual change ⇒ MMS re-verification.
+  Full account: `building_files/NONLINEAR_INSTABILITY.md`; `OPEN_ITEMS.md` §0.
+* 🟠 **`VOPT_KAPPA` should probably move 2.17 → 2.112, but the change is HELD.** Yang & Liu's Table 1
+  gives the design bands directly — **`Ω_kd` = 8, 24, 80** for `M` = 2, 3, 4 — so for `p = 1` the κ
+  fixed point is not needed at all. At those published bands `optimise_cbdy` reproduces Table 1 to
+  **0.0085 / 0.0236 / 0.0277**, and the residual gap is **structural, not numerical**: refining the
+  kd-integral 32 → 256 points moves the optimum by <0.001. Two facts worth keeping: the optima this
+  code finds satisfy `κ = Ω·Δσ_top/p` = **2.108 / 2.117 / 2.112 (spread ±0.21 %)** while Table 1's own
+  values give 2.176 / 1.800 / 1.840 (**±12 %**); and `M=3,4` are best fitted by exactly **1.25×** the
+  published band (30, 100 → 0.0041, 0.0009), a coincidence not adopted because it is unexplained.
+  **Held because κ sets `DEFAULT_CBDY_P` for `p ≥ 2`, so changing it moves the P2LFE-2 σ-mesh the
+  paused Phase-B campaign is running on.**
+* 🟢 **`quad_extra` added** (`setup_and_run` kwarg, `BALFEM_QUAD_EXTRA` in the 1-D driver). The default
+  degree `2·max(p_h,p_η)+2` is **one short** of the degree-7 nonlinear advection integrand at `Q2/Q2`.
+  Real but **dynamically irrelevant** — raising it does not affect the instability. Default left at 0;
+  raising it changes no MMS rate, since it alters only how exactly the residual is integrated.
 * ✅ **the two `src/mms_driver.jl` defects are FIXED** (found 2026-08-19, fixed 2026-08-21).
   **A1** — `run_conv_study` hard-coded `assemble_vertical_tensors(M, 1, [0,0.728,1])`, so `p_vert`
   was not a parameter and any `M≠2` threw. It now takes `p_vert` and `c_bdy`, resolving through the
@@ -483,6 +524,24 @@ supporting measurement is in the linked document.
     **Corollary: the `:wall` default above is not a compromise.** It is exact precisely *because*
     1-D cases are normal-incidence — the two rules support each other.
 13. **`A_wave ≤ 0.001 m`** for stable long fully-nonlinear integrations.
+
+12b. **THE FULLY NONLINEAR MODEL HAS A GRID-SCALE GROWING MODE, AND REFINING `dx` MAKES IT WORSE.**
+    Measured on the 1-D flume at `kd=5.5`: blow-up at t≈24 s for `dx=0.25`, t≈10 s for `dx=0.125`,
+    and barely at all for `dx=0.50` — at an identical delivered amplitude. The linear model at **4×
+    the amplitude** is flat for 80 s, so it is the nonlinear terms alone. **There is no true amplitude
+    threshold** — only a growth rate `σ ≈ 0.012 / 0.055 / 0.214 s⁻¹` at `A = 0.05 / 0.075 / 0.10`;
+    what looked like a threshold was a run that ended before the mode emerged. **The mode is measured:
+    `λ ≈ 2–3·dx`, gaining 10³–10⁴× while the carrier gains 6×** — the nonlinear cascade reaches the
+    grid scale and the energy-conserving Galerkin operator has no sink to remove it. It is **not** a
+    Jacobian, boundary, sponge, domain-length, CFL or Benjamin–Feir effect — all refuted on evidence.
+    Full investigation: [`NONLINEAR_INSTABILITY.md`](building_files/NONLINEAR_INSTABILITY.md).
+
+12c. **"STABLE" IS MEANINGLESS WITHOUT `dx`, `dt` AND DURATION.** `SDIRK_2_2` is L-stable, so its
+    numerical dissipation grows with `dt` and can *mask* the mode above: at `dx=0.25`, `dt=0.08`
+    saturates at 0.21 where `dt=0.04` reaches 2.81. Conversely at `dx=0.125` a 4× `dt` change is
+    invisible — the growth is too fast for any admissible `dt` to damp. **A run that completes may
+    simply be one whose numerical dissipation exceeded the growth rate.** This is rule 15's trap in a
+    new guise, and it means apparent stability is not evidence of a stable discretisation.
 14. **The `c_g` transit trap.** At `kd = 5.5`, `c_g = 1.25 m/s` — filling a 45 m flume takes 22.5
     periods. Budget `t_settle ≈ (x_sponge − x_source)/c_g + 3T` before reading any steady state. It
     caught three separate measurements.
@@ -514,6 +573,14 @@ supporting measurement is in the linked document.
 17. **`krylov_m` (basis size, memory) and `ls_maxiter` (iteration budget, time) are different
     bounds**, and `restart=true` is load-bearing. Symptom of getting this wrong: **`gmres=` pinned at
     exactly the same number every step.** (`ARCHITECTURE.md` §5)
+17b. **A CONVERGED NEWTON STEP IS A PROPERTY OF THE RESIDUAL, NOT THE JACOBIAN.** The Jacobian sets
+    the *path* to the root and the *cost*; the root is defined by `r(u)=0`. So an incomplete but
+    convergent Jacobian **cannot change the answer** — only the iteration count, or whether it
+    converges at all. Measured: exact-AD and quasi-Newton hand Jacobians agree to **four decimal
+    places** through an entire divergence (0.8100 vs 0.8102), while costing 6 vs 49 iterations.
+    **Corollary: never diagnose a wrong ANSWER by replacing the Jacobian** — and do not read Newton
+    stalling as the primary fault when the solution underneath is already diverging.
+
 18. **`norm(PVector, Inf)` is broken** (PartitionedArrays 0.3.5) — reduce over `own_values`.
 19. **Distributed ICs use `interpolate_everywhere`**, never `FEFunction(U, zeros(…))`.
 20. **Keep `ConsecutiveMultiFieldStyle`** — `BlockMultiFieldStyle` breaks Jacobi's `diag`.
@@ -592,6 +659,33 @@ supporting measurement is in the linked document.
     matches.
 38. **When an error message names a library type, that is where the bug SURFACED, not where it
     lives.** Print the type of *every* input to the failing expression before searching that library.
+38b. **REFINEMENT THAT MAKES THINGS WORSE IS A DISCRETISATION-STABILITY PROBLEM, NEVER
+    UNDER-RESOLUTION.** Under-resolution improves with `h`; a grid-scale mode does not. This single
+    check separated the two whole classes of explanation faster than anything else in the
+    investigation, and it is the first thing to measure whenever a nonlinear run diverges.
+
+38c. **COPY THE REFERENCE ENVIRONMENT VERBATIM AND VARY ONE VARIABLE EXPLICITLY.** `env -i` plus a
+    partial list of variables silently changed wave generation from `:bc` to the interior source,
+    which delivers **2.8×** the requested amplitude — so the treatment ran at triple the intended
+    forcing and produced a confident result pointing the wrong way. **And put the null-treatment
+    control in the SAME batch**: without it, a difference from a remembered baseline cannot be
+    attributed to the treatment.
+
+38d. **VERIFY A NEW KNOB ACTUALLY DOES SOMETHING BEFORE SPENDING THE RUN ON IT.** A dead parameter
+    yields identical curves — a clean, confident, entirely wrong negative result. A seconds-long
+    unit check (here, integrating `x⁸` at each quadrature degree) buys the whole experiment.
+
+38f. **IDENTIFY AN INSTABILITY BY WHAT GROWS, NEVER BY WHAT IS LARGEST.** Ranking a spectrum by
+    *amplitude* found the carrier's own harmonics at `λ≈1.7 m` — a wavelength independent of `dx`,
+    which reads as evidence *against* a grid mode. Ranking the same data by *gain* found the real
+    mode at `λ≈2–3·dx`. An unstable mode is small for most of its life; that is why it goes unnoticed
+    until it dominates. **Corollary: when a reported extremum sits at the edge of the search window,
+    the window is the finding** — a `0.95·k_Nyq` cut put one case's "peak" exactly on the boundary.
+
+38e. **A REVERSAL TOO LARGE TO BE THE EFFECT UNDER TEST IS A BUG SIGNAL, NOT A FINDING.** Extra
+    quadrature turning a 0.11 plateau into 1.60 is not a plausible quadrature effect; that
+    implausibility is what prompted the check that found the real cause.
+
 39. **Test a diagnosis against a case it cannot explain, rather than looking harder where it points.**
 40. **Diagnostics interpretation:** never read `growth` without `x_at_max`; `dmp/int` means "≫1 is
     trouble", never "<1 is fine"; mass drift is an invariant **only** in a closed, unforced basin.
