@@ -90,6 +90,8 @@ function setup_and_run_distributed(;
     # ---- Physics flags (all supported in parallel) ---------------------------
     regime       :: Symbol  = :nonlinear,  # :linear (linearised, no advection) | :nonlinear
     nl_pressure  :: Symbol  = :none,       # nonlinear pressure: :none | :native | :full (CG+Jacobi)
+    skew_advection :: Bool  = false,       # energy-consistent (skew-symmetric) advection correction
+                                           #   (building_files/SKEW_SYMMETRIC_ADVECTION_PLAN.md)
     flat_bed     :: Bool    = false,       # sea-bed geometry: false = variable bathymetry (∇h≠0),
                                            #   true = flat bed (∇h≡0; ∇h-terms dropped, ∇η-terms kept)
     nlp_cg_rtol  :: Float64 = 1e-10,       # CG tolerance for the frozen-projection solve
@@ -290,6 +292,7 @@ function setup_and_run_distributed(;
                             h_bathy=dfn,                # bathymetry function (x → d(x))
                             regime=regime,              # linear/nonlinear physics
                             nl_pressure=nl_pressure,    # nonlinear pressure treatment
+                            skew_advection=skew_advection,  # energy-consistent advection correction
                             flat_bed=flat_bed,          # whether to drop ∇h terms (flat bed)
                             mu_sponge=sponge,           # sponge damping profile μ(x,y)
                             wm_src=wm,                  # internal wavemaker source S(x,t)

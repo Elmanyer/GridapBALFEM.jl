@@ -41,6 +41,12 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         flat_bed::Bool = true,     # selects BOTH the solver model and the forcing
                         regime::Symbol = :linear,      # ) these three select BOTH sides too —
                         nl_pressure::Symbol = :none,   # ) see ValidationTests.tex §subsec: mms model1–4
+                        #  Discretisation switch, NOT a physics switch, so it selects the
+                        #  SOLVER only: the correction is the continuity strong residual,
+                        #  which is identically zero for the manufactured solution, so the
+                        #  FORCING is unchanged by construction. That is the reason 𝒞
+                        #  includes the MMS term (SKEW_SYMMETRIC_ADVECTION_PLAN.md §2.4).
+                        skew_advection::Bool = false,
                         vert_override = nothing,   # substitute vertical tensors. Used to ISOLATE a
                                                    #   term: e.g. `merge(NamedTuple(pairs(v)),
                                                    #   (B=zeros(size(v.B)),))` drops R_P from the
@@ -81,6 +87,7 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                          regime      = regime,       # SAME variables as the forcing above —
                          nl_pressure = nl_pressure,  # never two literals, or the two can drift
                          flat_bed    = flat_bed,
+                         skew_advection = skew_advection,
                          mu_sponge   = (x -> 0.0),    # sponge OFF
                          wm_src      = ((x, t) -> 0.0),  # wavemaker OFF
                          mms_src     = src)
@@ -223,6 +230,7 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
                                     flat_bed::Bool = true,     # ) the same three symbols select BOTH
                                     regime::Symbol = :linear,  # ) the forcing and the solver, exactly
                                     nl_pressure::Symbol = :none, # ) as in run_mms_case above
+                                    skew_advection::Bool = false,  # solver only — see run_mms_case
                                     vert_override = nothing,   # substitute vertical tensors (see run_mms_case)
                                     solver_type::Symbol = :sdirk, tableau::Symbol = :SDIRK_2_2,
                                     nl_tol::Float64 = 1e-13, nl_iter::Int = 50,
@@ -250,6 +258,7 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
                              regime      = regime,       # SAME variables as `src` above —
                              nl_pressure = nl_pressure,  # never two literals, or the two can drift
                              flat_bed    = flat_bed,
+                             skew_advection = skew_advection,
                              mu_sponge=(x -> 0.0), wm_src=((x,t) -> 0.0),
                              mms_src=src)
         op     = build_ode_operator(prob, U, V, trian, dΩh)
@@ -357,6 +366,12 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
                           #  blocks are actually assembled. Drop it for :full studies.
                           a_eta::Float64 = 0.8,
                           regime::Symbol = :linear, nl_pressure::Symbol = :none,
+                          #  Energy-consistent advection. A DISCRETISATION choice, so it
+                          #  reaches the solver only and leaves the forcing untouched —
+                          #  but it CHANGES THE RESIDUAL, so rates measured with it on are
+                          #  not comparable with any recorded before this branch. The tag
+                          #  carries it, so a mixed CSV cannot hide the difference.
+                          skew_advection::Bool = false,
                           kbx::Float64 = 1.3, kby::Float64 = 0.0,
                           cpu_grid::Tuple{Int,Int} = (2,2),
                           ls_rtol::Float64 = 1e-13, ls_maxiter::Int = 5000,
@@ -390,6 +405,7 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
                     M=M, p_vert=p_vert, c_bdy=cb, vert_override=vert,
                     p_horizontal=p_u, p_eta=p_e, field=f,
                     regime=regime, nl_pressure=nl_pressure, flat_bed=flat_bed,
+                    skew_advection=skew_advection,
                     hfun=hfun, nl_tol=nl_tol, nl_iter=nl_iter, verbose=false)
         r = distributed ?
             run_mms_case_distributed(; common..., cpu_grid=cpu_grid,
@@ -407,7 +423,8 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
     tag = "P$(p_vert)LFE-$(M) Q$(p_u)/Q$(p_e) $(domain == :d1 ? "1D" : "2D") " *
           "$(distributed ? "dist" : "seq") $(mode) $(flat_bed ? "flat" : "varbed") " *
           "$(regime === :linear ? "lin" : "nl")" *
-          "$(nl_pressure === :none ? "" : "/" * String(nl_pressure))"
+          "$(nl_pressure === :none ? "" : "/" * String(nl_pressure))" *
+          "$(skew_advection ? " SKEW" : "")"
     if verbose
         println("  ── $tag ──")
         println("    pairwise eta: ", round.(pw_eta, digits=3), "   optimal $(p_e+1)")
@@ -423,6 +440,7 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
             #  against Nσ directly (PENDING_TASKS.md §1 tier 3 asks exactly that).
             M=M, p_vert=p_vert, c_bdy=cb, Nsigma=vert.N_dof,
             regime=regime, nl_pressure=nl_pressure, flat_bed=flat_bed,
+            skew_advection=skew_advection,
             domain=domain, mode=mode, distributed=distributed)
 end
 

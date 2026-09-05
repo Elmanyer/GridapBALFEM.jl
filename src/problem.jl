@@ -55,6 +55,14 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
                                       #   (𝓐/𝓚 slope halves + 𝓟 leading part; all paths)
     nl_pressure_full :: Bool          # + comps c∈{1,2,4,5}: 𝓐 half by exact IBP; 𝓚/𝓟 halves via
                                       #   per-step frozen L²-projections (finite-amplitude, O(A³))
+    skew_advection :: Bool            # energy-consistent (skew-symmetric) advection: adds the
+                                      #   Temam-type correction ½∫𝒞(𝗠·U)·W, 𝒞 = the POINTWISE strong
+                                      #   residual of the continuity row. Consistent (𝒞≡0 for the exact
+                                      #   solution) and makes the advection trilinear form exactly
+                                      #   skew-symmetric, removing the spurious grid-scale energy
+                                      #   SOURCE derived in building_files/SKEW_SYMMETRIC_ADVECTION_PLAN.md
+                                      #   §1. A DISCRETISATION choice, deliberately NOT one of the three
+                                      #   orthogonal physics controls. No-op unless `advection`.
     flat_bed     :: Bool              # flat sea-bed assumption ∇h ≡ 0: drops every term carrying a
                                       #   factor ∇h (bed-slope 𝓐 packages, L¹=−u̇·∇h, N{3,6}, the
                                       #   bed-slope IBP half). ∇H = ∇h+∇η → ∇η, so surface-slope
@@ -132,6 +140,7 @@ function build_problem(vert;
         regime       :: Symbol   = :nonlinear,
         nl_pressure  :: Symbol   = :none,
         flat_bed     :: Bool     = false,
+        skew_advection :: Bool   = false,
         mu_sponge    :: Function = (x -> 0.0),
         wm_src       :: Function = ((x, t) -> 0.0),
         relax_bc     :: Bool     = false,
@@ -140,10 +149,18 @@ function build_problem(vert;
         mms_src                  = nothing)
     phys = resolve_physics(; regime=regime, nl_pressure=nl_pressure,
                              flat_bed=flat_bed)
+    #  A launcher that asks for the skew correction on a LINEAR run has asked for a
+    #  treatment that cannot act (the term lives inside the advection block). Warn
+    #  rather than silently no-op: a dead knob yields a clean, confident, wrong
+    #  negative result (CLAUDE.md rule 38d).
+    skew_advection && !phys.advection && @warn(
+        "build_problem: skew_advection=true has NO EFFECT with regime=:linear — the " *
+        "correction lives inside the advection block, which a linear model does not assemble.")
     return build_problem_raw(vert; g=g, h_bathy=h_bathy,
         linearised=phys.linearised, advection=phys.advection,
         lin_pressure=phys.lin_pressure, P_full=phys.P_full,
         nl_pressure68=phys.nl_pressure68, nl_pressure_full=phys.nl_pressure_full,
+        skew_advection=skew_advection,
         flat_bed=phys.flat_bed,
         mu_sponge=mu_sponge, wm_src=wm_src,
         relax_bc=relax_bc, relax_mu=relax_mu, relax_tg=relax_tg,
@@ -171,6 +188,7 @@ function build_problem_raw(vert;
         P_full       :: Bool     = false,
         nl_pressure68:: Bool     = false,
         nl_pressure_full :: Bool = false,
+        skew_advection :: Bool   = false,
         flat_bed     :: Bool     = false,
         mu_sponge    :: Function = (x -> 0.0),
         wm_src       :: Function = ((x, t) -> 0.0),
@@ -193,7 +211,7 @@ function build_problem_raw(vert;
         error("build_problem: relax_bc=true requires relax_tg (incident_fields NamedTuple)")
     return BALFEMProblem(g, h_bathy, vert.N_dof, Φ, Mv, Bv, P, Av, Kv, M3, G3,
                          A3, K3, P3, linearised, advection, lin_pressure,
-                         P_full, nl_pressure68, nl_pressure_full, flat_bed,
+                         P_full, nl_pressure68, nl_pressure_full, skew_advection, flat_bed,
                          Ref{Any}(nothing), mu_sponge, wm_src,
                          relax_bc, relax_mu, relax_tg, mms_src)
 end
@@ -228,6 +246,16 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
     DW  = alg_dx(Wx) + alg_dy(Wy)                              # test-divergence vector
     DUt = alg_dx(Uxt) + alg_dy(Uyt)                            # layer div(u̇)
     ub  = alg_vec2(alg_dot(prob.Φ, Ux), alg_dot(prob.Φ, Uy))   # depth-averaged velocity
+
+    #  The relaxation-zone profile/target and the MMS continuity forcing are built HERE,
+    #  not at their own residual rows, because the skew-advection correction consumes
+    #  them too: 𝒞 must mirror the continuity row TERM FOR TERM (see the advection block
+    #  and building_files/SKEW_SYMMETRIC_ADVECTION_PLAN.md §2.1). Two consumers of one
+    #  row is exactly the hazard of rule 4, so they share one construction site.
+    relax_mug_cf = prob.relax_bc ? CellField(prob.relax_mu, trian) : nothing
+    relax_eta_i  = prob.relax_bc ? CellField(x -> prob.relax_tg.eta(x, t), trian) : nothing
+    mms_Seta     = prob.mms_src === nothing ? nothing :
+                   CellField(x -> prob.mms_src.Seta(x, t), trian)
 
     # ---- mass continuity + wavemaker source ----------------------------------
     #  LINEARISED regime uses the STILL-WATER depth h(x,y) in the flux, ∇·(h ū):
@@ -333,8 +361,8 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
     #  field (classical relaxation-zone practice). Linear in u.
     if prob.relax_bc
         tg     = prob.relax_tg
-        mug_cf = CellField(prob.relax_mu, trian)
-        eta_i  = CellField(x -> tg.eta(x, t), trian)
+        mug_cf = relax_mug_cf
+        eta_i  = relax_eta_i
         ux_i   = CellField(x -> tg.ux(x, t),  trian)
         uy_i   = CellField(x -> tg.uy(x, t),  trian)
         r = r + ∫( mug_cf*q*(η - eta_i)
@@ -353,6 +381,51 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
         gvx  = alg_dc3(prob.G3, alg_outer(S, Ux))
         gvy  = alg_dc3(prob.G3, alg_outer(S, Uy))
         r = r + ∫( H*(advx ⋅ Wx) + H*(advy ⋅ Wy) + (gvx ⋅ Wx) + (gvy ⋅ Wy) ) * dΩh
+
+        # ---- energy-consistent (skew-symmetric) correction ---------------------
+        #  WHY. The block just assembled is NOT energy-neutral. Its exact production is
+        #
+        #      n(U;U,U) = −½∫ ∇·(H ū) (Σᵢⱼ Mᵢⱼ uᵢ·uⱼ) dΩ + ½∮ (flux)          (exact)
+        #
+        #  which follows from the full symmetry of 𝓜, the pointwise chain rule, one exact
+        #  integration by parts, and the σ-tensor identity
+        #
+        #      ½(𝓖ᵢₖⱼ + 𝓖ⱼₖᵢ) = ½𝓜ᵢₖⱼ − ½Φₖ Mᵢⱼ                                  (★)
+        #
+        #  — ★ holds because ψₖ = σΦₖ − varphiₖ VANISHES AT BOTH ENDS of the water column,
+        #  so the σ-IBP has no boundary term. (★ is basis-agnostic and is gated by
+        #  test_vertical_tensors.jl to 1e-12 on five bases.)
+        #
+        #  In the continuum that production is cancelled by ∂H/∂t through continuity, and
+        #  advection is energy-neutral. DISCRETELY the cancellation fails: it needs the
+        #  continuity equation tested against q = ½Σ Mᵢⱼ uᵢ·uⱼ, a QUARTIC that is not in
+        #  the η test space. What is left is a spurious energy SOURCE, cubic in U and
+        #  concentrated at the grid scale — precisely the measured λ ≈ 2–3·dx instability.
+        #
+        #  ⚠ Every step above is exact under exact quadrature, so over-integration cannot
+        #  remove it. That is why the quad_extra ∈ {0,4,8} dose–response found nothing.
+        #
+        #  THE FIX. Add the continuity defect back where the derivation needed it:
+        #
+        #      +½ ∫ 𝒞 · (Σᵢⱼ Mᵢⱼ vᵢ·wⱼ) dΩ ,   𝒞 = POINTWISE strong residual of continuity
+        #
+        #  𝒞 ≡ 0 for the exact solution, so the continuous model is UNCHANGED (consistent);
+        #  in the interior of a physical run 𝒞 = ∂H/∂t + ∇·(Hū) exactly, so the production
+        #  above is cancelled and the trilinear form is exactly skew-symmetric. This is the
+        #  layered, H-weighted Temam correction. Full derivation, risks and the verification
+        #  ladder: building_files/SKEW_SYMMETRIC_ADVECTION_PLAN.md.
+        #
+        #  ⚠ 𝒞 MUST MIRROR THE CONTINUITY ROW TERM FOR TERM. That row is assembled in three
+        #  places above — the mass/source line, the sponge line, the relaxation line — and
+        #  the MMS forcing line below. Change any of them and change this. (Σₖ Φₖ Sₖ = ∇·(Hū),
+        #  so the flux half costs one dot product against the S already in hand.)
+        if prob.skew_advection
+            Cres = ηt + alg_dot(prob.Φ, S) + mu_cf*η - src_cf
+            prob.relax_bc && (Cres = Cres + relax_mug_cf*(η - relax_eta_i))
+            mms_Seta === nothing || (Cres = Cres - mms_Seta)
+            r = r + ∫( 0.5*Cres*( (Wx ⋅ alg_mul(prob.Mv, Ux))
+                                + (Wy ⋅ alg_mul(prob.Mv, Uy)) ) ) * dΩh
+        end
     end
 
     # ---- linear non-hydrostatic pressure (A/K slope package) --------------------
@@ -413,7 +486,7 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
     #  No Jacobian contribution: F is independent of u and u̇.
     if prob.mms_src !== nothing
         S   = prob.mms_src
-        Sη  = CellField(x -> S.Seta(x, t), trian)
+        Sη  = mms_Seta
         Sxf = CellField(x -> S.Sx(x, t),   trian)
         Syf = CellField(x -> S.Sy(x, t),   trian)
         r = r - ∫( q*Sη + (Wx ⋅ Sxf) + (Wy ⋅ Syf) ) * dΩh
@@ -464,7 +537,7 @@ end
 
 "∂R/∂u̇ — effective mass operator (acceleration + R_P dispersion)."
 function jacobian_u_t(t::Real, u, dut, v, prob::BALFEMProblem, trian, dΩh)
-    η = u[1]
+    η, Ux, Uy = u[1], u[2], u[3]
     dηt, dUxt, dUyt = dut[1], dut[2], dut[3]
     q, Wx, Wy = v[1], v[2], v[3]
     lin  = prob.linearised
@@ -541,6 +614,17 @@ function jacobian_u_t(t::Real, u, dut, v, prob::BALFEMProblem, trian, dΩh)
             dLK = alg_mul(prob.Kv[1], dL1) + alg_mul(prob.Kv[2], dL2) + alg_mul(prob.Kv[3], dL3)
             r = r + ∫( (-1.0)*H*( dhx*(Wx ⋅ dLA) + dHx*(Wx ⋅ dLK)
                                 + dhy*(Wy ⋅ dLA) + dHy*(Wy ⋅ dLK) ) ) * dΩh
+        end
+        #  ---- skew-advection correction: the ηt half of 𝒞 -----------------------
+        #  ⚠ MANDATORY AND EXACT. 𝒞 contains ∂H/∂t = ηt, so the correction introduces a
+        #  NEW η̇ ↔ momentum coupling in the effective mass matrix that no other term
+        #  produces. ∂R/∂u̇ is exact in all eight models and must stay exact — an omission
+        #  here is O(1) in amplitude (rule 5: benign only if HIGHER ORDER), i.e. Newton
+        #  would converge to the fixed point of the wrong map. test_jacobians_ad.jl
+        #  compares this block against AD directly.
+        if prob.advection && prob.skew_advection
+            r = r + ∫( 0.5*dηt*( (Wx ⋅ alg_mul(prob.Mv, Ux))
+                               + (Wy ⋅ alg_mul(prob.Mv, Uy)) ) ) * dΩh
         end
     end
     return r
@@ -620,6 +704,28 @@ function jacobian_u(t::Real, u, du, v, prob::BALFEMProblem, trian, dΩh)
         r = r + ∫( dη*((alg_dc3(prob.M3, TMx)) ⋅ Wx) + dη*((alg_dc3(prob.M3, TMy)) ⋅ Wy)
                  + H*((alg_dc3(prob.M3, dTMx)) ⋅ Wx) + H*((alg_dc3(prob.M3, dTMy)) ⋅ Wy)
                  + ((alg_dc3(prob.G3, dTGx)) ⋅ Wx) + ((alg_dc3(prob.G3, dTGy)) ⋅ Wy) ) * dΩh
+
+        # ---- skew-advection correction: ∂/∂u of ½∫𝒞(𝗠·U)·W ---------------------
+        #  COMPLETE, not quasi-Newton: every factor is already formed above (dS, dη,
+        #  dUx, dUy), so there is no reason to spend the omission budget here — and a
+        #  complete derivative keeps test_jacobians_ad.jl's amplitude-scaling gate
+        #  interpretable for the terms that ARE deliberately omitted.
+        #  𝒞 and its derivative mirror global_residual's continuity row term for term.
+        if prob.skew_advection
+            ut  = ∂t(u)
+            Cres = ut[1] + alg_dot(prob.Φ, S) + mu_cf*η - CellField(x -> prob.wm_src(x, t), trian)
+            dCres = alg_dot(prob.Φ, dS) + mu_cf*dη
+            if prob.relax_bc
+                mug_cf = CellField(prob.relax_mu, trian)
+                Cres   = Cres + mug_cf*(η - CellField(x -> prob.relax_tg.eta(x, t), trian))
+                dCres  = dCres + mug_cf*dη
+            end
+            prob.mms_src === nothing ||
+                (Cres = Cres - CellField(x -> prob.mms_src.Seta(x, t), trian))
+            QU  = (Wx ⋅ alg_mul(prob.Mv, Ux))  + (Wy ⋅ alg_mul(prob.Mv, Uy))
+            dQU = (Wx ⋅ alg_mul(prob.Mv, dUx)) + (Wy ⋅ alg_mul(prob.Mv, dUy))
+            r = r + ∫( 0.5*(dCres*QU + Cres*dQU) ) * dΩh
+        end
     end
 
     return r

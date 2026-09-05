@@ -72,6 +72,40 @@ check("P1LFE-3: ΣΦ = 1", abs(sum(vert3.Phi) - 1.0) < 1e-12)
 check("P1LFE-3: applicable kd ≈ 39.2 (±2.0)", abs(kd3 - 39.2) < 2.0)
 check("P1LFE-3: P[:,:,3] = −B", norm(vert3.P[:,:,3] + vert3.B) < 1e-12)
 
+# ---- ★ the skew-symmetry identity, on EVERY basis ------------------------------
+#  ½(𝓖ᵢₖⱼ + 𝓖ⱼₖᵢ) = ½𝓜ᵢₖⱼ − ½Φₖ Mᵢⱼ
+#
+#  This is the algebraic core of the energy-consistent advection reformulation
+#  (building_files/SKEW_SYMMETRIC_ADVECTION_PLAN.md §1.2): it is what makes the
+#  advection block's exact energy production collapse to −½∫∇·(Hū)(ΣMᵢⱼuᵢ·uⱼ),
+#  i.e. to a pure continuity defect, with the 𝓜 pieces cancelling identically.
+#
+#  It holds because ψₖ = σΦₖ − varphiₖ VANISHES AT BOTH ENDS of the water column
+#  (ψₖ(0)=0 by construction, ψₖ(1)=Φₖ−varphiₖ(1)=0), so the σ-integration by parts
+#  carries no boundary term — a statement about the vertical basis alone. It is
+#  therefore BASIS-AGNOSTIC, and this test checks that claim rather than assuming
+#  it: five bases spanning p=1,2 and Nσ=3,4,5. If it ever fails, the correction in
+#  problem.jl is no longer energy-consistent on that basis and must not be used.
+println()
+println("  ★ skew-symmetry identity  ½(𝓖ᵢₖⱼ+𝓖ⱼₖᵢ) = ½𝓜ᵢₖⱼ − ½Φₖ Mᵢⱼ")
+for (nm, M, p, cb) in (("P1LFE-2", 2, 1, [0.0, 0.728, 1.0]),
+                       ("P1LFE-3", 3, 1, [0.0, 0.726, 0.925, 1.0]),
+                       ("P1LFE-4", 4, 1, [0.0, 0.745, 0.923, 0.977, 1.0]),
+                       ("P2LFE-1", 1, 2, [0.0, 1.0]),
+                       ("P2LFE-2", 2, 2, [0.0, 0.8298, 1.0]))
+    v  = assemble_vertical_tensors(M, p, cb)
+    N  = v.N_dof
+    Gc = v.Gcal; Mc = v.Mcal; Mm = v.Mmat; Ph = v.Phi
+    star = maximum(abs(0.5*(Gc[i,k,j] + Gc[j,k,i]) - 0.5*Mc[i,k,j] + 0.5*Ph[k]*Mm[i,j])
+                   for i in 1:N, k in 1:N, j in 1:N)
+    #  𝓜 must be FULLY symmetric — the other half of the cancellation.
+    asym = maximum(max(abs(Mc[i,k,j] - Mc[k,i,j]), abs(Mc[i,k,j] - Mc[i,j,k]))
+                   for i in 1:N, k in 1:N, j in 1:N)
+    @printf("    %-8s Nσ=%d   max|★| = %.2e   max|𝓜 asym| = %.2e\n", nm, N, star, asym)
+    check("$nm: ★ identity holds (< 1e-12)", star < 1e-12)
+    check("$nm: 𝓜 fully symmetric (< 1e-13)", asym < 1e-13)
+end
+
 println()
 println("=" ^ 60)
 @printf("  Results: %d PASS,  %d FAIL\n", n_pass, n_fail)

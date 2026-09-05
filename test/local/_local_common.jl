@@ -148,8 +148,13 @@ end
 
 Read `<dir>/diagnostics.csv`. Columns: step, t, eta_max, x_at_max,
 eta_max_int, eta_max_damped, u_max, mass, mass_drift, energy, energy_ratio,
-nl_iters, nl_stages, res0, res, converged, lin_last, lin_min, lin_max,
-lin_sat, t_solve, rss_mb, rss_peak_mb.
+pi_adv, pi_res, div_flux, nl_iters, nl_stages, res0, res, converged, lin_last,
+lin_min, lin_max, lin_sat, t_solve, rss_mb, rss_peak_mb.
+
+`pi_adv`/`pi_res`/`div_flux` are the advection energy production and its
+continuity-defect decomposition (`NaN` on runs that assemble no advection).
+The reader is HEADER-DRIVEN, so a CSV written before they existed still loads —
+select columns by name, never by position.
 """
 function read_diagnostics(dir::String)
     path = joinpath(dir, "diagnostics.csv")

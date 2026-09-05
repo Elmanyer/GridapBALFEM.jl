@@ -610,6 +610,9 @@ function setup_and_run(;
     # ---- Physics flags (switch individual residual terms on/off) --------------
     regime       :: Symbol  = :nonlinear, # :linear (linearised, no advection) | :nonlinear
     nl_pressure  :: Symbol  = :none,      # nonlinear pressure: :none | :native {3,6,7,8} | :full {+1,2,4,5}
+    skew_advection :: Bool  = false,      # energy-consistent (skew-symmetric) advection correction.
+                                          #   A DISCRETISATION choice, not a physics tier — see
+                                          #   building_files/SKEW_SYMMETRIC_ADVECTION_PLAN.md.
     flat_bed     :: Bool    = false,      # sea-bed geometry: false = variable bathymetry (∇h≠0),
                                           #   true = flat bed (∇h≡0; every ∇h-term dropped, ∇η-terms kept)
     h_bathy                 = nothing,    # x → d(x): variable bathymetry (overrides h_val)
@@ -835,6 +838,7 @@ function setup_and_run(;
                         h_bathy=dfn,                # bathymetry function (x → d(x))
                         regime=regime,              # linear/nonlinear physics
                         nl_pressure=nl_pressure,    # nonlinear pressure treatment
+                        skew_advection=skew_advection,  # energy-consistent advection correction
                         flat_bed=flat_bed,          # whether to drop ∇h terms (flat bed)
                         mu_sponge=sponge,           # sponge damping profile μ(x,y)
                         wm_src=wm,                  # internal wavemaker source S(x,t)
