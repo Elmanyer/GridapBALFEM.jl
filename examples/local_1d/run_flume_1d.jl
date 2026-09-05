@@ -271,6 +271,14 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_horizontal=feord, p_e
           y_wall_bc=ybc_sym, x_wall_bc=false,
           wave_bc=wave_bc, bc_side=bc_side_sym(), bc_profile=bc_profile_sym(),
           relax_bc=use_relax, relax_width=relax_w_val(),
+          #  BALFEM_USE_AD=1 swaps the hand Jacobians for AD of the SAME residual.
+          #  jacobian_u omits every N derivative and the pressure eta-derivatives by
+          #  design (problem.jl: "the N blocks add to the residual but not here"), so
+          #  Newton is quasi-Newton. AD makes it exact and is therefore the direct
+          #  test of whether a nonlinear failure is a SOLVE defect or an OPERATOR one.
+          #  SEQUENTIAL ONLY -- there is no use_ad on the distributed path -- and
+          #  substantially slower per assembly, so use it to diagnose, not to run.
+          use_ad=genv_b("BALFEM_USE_AD", 0),
           output_dir=outdir, save_every=save_ev,
           write_w=write_w_flag(), write_pressure=write_p_flag(), rho=rho_val(),
           solver_type=solver_sym(), tableau=tableau_sym(),
