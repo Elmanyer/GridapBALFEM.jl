@@ -58,6 +58,7 @@ const SUITE = [
     # ---- base ----------------------------------------------------------------
     ("test_vertical.jl",                 :fast,   "vertical tensor identities"),
     ("test_primitives.jl",               :fast,   "tensor index order / contraction semantics"),
+    ("test_taylor_hood.jl",              :fast,   "horizontal pairing gate: TH accepted, equal order REJECTED"),
     ("test_basic.jl",                    :medium, "smoke, linear + fully nonlinear"),
     ("test_dispersion.jl",               :medium, "phase speed vs linear theory, kd=3"),
     ("test_nlpressure.jl",               :medium, "nonlinear-pressure identities + dynamics"),

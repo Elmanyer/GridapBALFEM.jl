@@ -66,7 +66,7 @@ end
 
 const LX, LY = 1.7, 1.1
 const DEPTH  = 1.0
-#  Q3/Q2 — see the pairing note in the header. p_eta < p_horizontal is what makes
+#  Q3/Q2 — see the pairing note in the header. p_eta < p_u is what makes
 #  the theoretical p+1 reachable in both fields.
 const P_U    = 3                     # velocity order  ⇒ optimal u rate P_U+1 = 4
 const P_ETA  = 2                     # surface  order  ⇒ optimal η rate P_ETA+1 = 3
@@ -79,7 +79,7 @@ const P_ETA  = 2                     # surface  order  ⇒ optimal η rate P_ETA
 const M_VERT = parse(Int, get(ENV, "MMS_M",     "2"))
 const P_VERT = parse(Int, get(ENV, "MMS_PVERT", "1"))
 const CASE   = (Lx=LX, Ly=LY, d=DEPTH, M=M_VERT, p_vert=P_VERT,
-                p_horizontal=P_U, p_eta=P_ETA)
+                p_u=P_U, p_eta=P_ETA)
 @printf("  vertical basis: P%dLFE-%d  (Nσ = %d)   [MMS_M / MMS_PVERT to override]\n",
         P_VERT, M_VERT, M_VERT*P_VERT + 1)
 
@@ -210,7 +210,7 @@ println("\n--- G9: forcing off ⇒ exact rest state ---")
 vert = assemble_vertical_tensors(2, 1, [0.0, 0.728, 1.0])
 diags, _, _ = setup_and_run(M=M_VERT, p_vertical=P_VERT, h_val=DEPTH, T_wave=1.6, A_wave=0.0,
                             domain=((0.0,LX),(0.0,LY)), partition=(6,4),
-                            p_horizontal=2, x_wm=0.5*LX, y_wm=nothing,
+                            p_u=2, x_wm=0.5*LX, y_wm=nothing,
                             sponge_wL=0.0, sponge_wR=0.0, mu_max=0.0,
                             T_final=0.05, dt=1e-2, regime=:linear,
                             save_every=0, print_every=typemax(Int))

@@ -66,7 +66,7 @@ gauges  = [(x_g1, Ly/2), (x_g1b, Ly/2), (x_g2, Ly/2)]
 
 diags, vert, prob = setup_and_run(
     M=2, c_bdy=[0.0,0.728,1.0], domain=((0.0,Lx),(0.0,Ly)), partition=(nx,ny),
-    p_horizontal=2, h_val=h_val, g=g, T_wave=Tp, A_wave=Hs/2,
+    p_u=2, h_val=h_val, g=g, T_wave=Tp, A_wave=Hs/2,
     wave_bc=wi, bc_side=:left, bc_profile=:model,
     sponge_wL=0.0, sponge_wR=25.0, sponge_wB=0.0, sponge_wT=0.0, mu_max=5.0,
     T_final=T_final, dt=dt, regime=:linear, nl_pressure=:none,

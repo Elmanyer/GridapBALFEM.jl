@@ -38,7 +38,7 @@ for (name, h_bathy, flat_bed) in (("flat bed",    nothing, true),
     outdir = local_outdir("reststate_" * replace(name, " " => "_"))
     local diags, _, _ = setup_and_run(
         M=FLUME.M, domain=((0.0,Lx),(0.0,FLUME.Ly)), partition=(nx,FLUME.ny),
-        p_horizontal=FLUME.p, h_val=d0, h_bathy=h_bathy, flat_bed=flat_bed,
+        p_u=FLUME.p, h_val=d0, h_bathy=h_bathy, flat_bed=flat_bed,
         T_wave=FLUME.T, A_wave=0.0,                 # NO forcing at all
         x_wm=Lx/2, sponge_wL=0.0, sponge_wR=0.0, mu_max=0.0,
         T_final=Tf, dt=FLUME.dt, regime=:nonlinear, nl_pressure=:none,

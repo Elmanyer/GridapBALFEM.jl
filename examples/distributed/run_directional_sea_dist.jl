@@ -44,13 +44,10 @@ model_name = "P$(p_vert)LFE-$(M)"
 px, py   = genv_i("BALFEM_PX", 16), genv_i("BALFEM_PY", 8)
 nx, ny   = genv_i("BALFEM_NX", 1200), genv_i("BALFEM_NY", 600)
 feord    = genv_i("BALFEM_FE_ORDER", 2)
-#  p_eta = 0 keeps the historical EQUAL-ORDER spaces (unchanged default).
-#  Set BALFEM_P_ETA = BALFEM_FE_ORDER-1 for the Taylor-Hood-like pairing, which is
-#  the only one measured to reach the theoretical order in BOTH fields. It is
-#  NOT automatically the better production choice: at a GIVEN mesh the
-#  equal-order spaces were 40x more accurate, because eta sits in a richer
-#  space. Compare error-vs-DOF before switching.
-p_eta    = genv_i("BALFEM_P_ETA", 0)
+#  ⚠ TAYLOR-HOOD IS MANDATORY: p_eta = BALFEM_FE_ORDER-1 (the default here).
+#  check_taylor_hood ERRORS on any other pairing. eta plays the pressure role of a
+#  Stokes system, so equal order is inf-sup deficient. CLAUDE.md rule 2b.
+p_eta    = genv_i("BALFEM_P_ETA", feord - 1)
 Lx, Ly   = genv_f("BALFEM_LX", 400.0), genv_f("BALFEM_LY", 100.0)
 d        = genv_f("BALFEM_D", 3.5)
 sponge   = genv_f("BALFEM_SPONGE", 40.0)
@@ -72,7 +69,7 @@ is_rank0() && @printf("#   Hs=%.4g m Tp=%.3g s | nθ=%d σθ=%.1f° | bc=%s/%s s
                       string(bc_profile_sym()), genv_i("BALFEM_SEED", 20260723))
 
 diags, vert, prob = setup_and_run_distributed(
-    cpu_grid=(px,py), M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_horizontal=feord, p_eta=p_eta,
+    cpu_grid=(px,py), M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
     domain=(0.0,Lx,0.0,Ly), partition=(nx,ny),
     h_val=d, T_wave=Tp, A_wave=hs_val()/2,
     wave_bc=state, bc_side=bc_side_sym(), bc_profile=bc_profile_sym(),

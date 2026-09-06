@@ -43,7 +43,7 @@ gauges = [(xg, Ly/2) for xg in x_gauges]
 
 diags, _, _ = setup_and_run(
     M=2, c_bdy=[0.0,0.728,1.0], domain=((0.0,Lx),(0.0,Ly)), partition=(nx,ny),
-    p_horizontal=2, h_val=d0, T_wave=T, A_wave=A, x_wm=x_wm, y_wm=nothing,
+    p_u=2, h_val=d0, T_wave=T, A_wave=A, x_wm=x_wm, y_wm=nothing,
     sponge_wL=35.0, sponge_wR=35.0, mu_max=5.0, T_final=T_final, dt=dt,
     h_bathy=h_bathy, save_every=0, gauges=gauges,
     regime=:nonlinear, nl_pressure=:full, flat_bed=false,   # variable bathymetry (the bar): ∇h terms ON

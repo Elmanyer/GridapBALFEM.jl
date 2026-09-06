@@ -46,10 +46,10 @@ function setup_and_run_distributed(;
     # ---- Horizontal discretisation (partitioned over cpu_grid) ---------------
     domain                  = ((0.0, 60.0), (0.0, 20.0)),  # ((x0,x1),(y0,y1)) extent [m]
     partition    :: Tuple   = (120, 40),   # (nx,ny) cells (ideally nx%px==0, ny%py==0)
-    p_horizontal     :: Int     = 2,           # horizontal FE order (≥2 required)
-    p_eta            :: Int     = 0,          # surface FE order. 0 ⇒ EQUAL ORDER (= p_horizontal),
+    p_u     :: Int     = 2,           # horizontal FE order (≥2 required)
+    p_eta            :: Int     = p_u - 1,    # surface FE order. MUST satisfy p_u = p_eta + 1
                                           #   which is the historical default and is UNCHANGED.
-                                          #   Set p_eta = p_horizontal−1 for the Taylor-Hood-like
+                                          #   Set p_eta = p_u−1 for the Taylor-Hood-like
                                           #   pairing: η enters momentum undifferentiated (via ∇·v
                                           #   after IBP), so it plays the pressure role of a Stokes
                                           #   system and equal-order continuous spaces are inf-sup
@@ -153,6 +153,11 @@ function setup_and_run_distributed(;
             flush(stdout)
         end
 
+        #  Pairing gate FIRST, on EVERY rank — before the tensors, the mesh and the JIT.
+        #  Every rank checks, so a bad pairing fails identically everywhere instead of
+        #  deadlocking one rank against the others. CLAUDE.md rule 2b.
+        check_taylor_hood(p_u, p_eta; where = "setup_and_run_distributed")
+
         # ----- STAGE 1: VERTICAL PRE-COMPUTATION (IDENTICAL WORK ON EVERY RANK) -
         # Choose the σ-element boundaries: the paper's optimised set for this M
         # when available, otherwise a uniform split of [0,1] (see resolve_cbdy).
@@ -232,14 +237,13 @@ function setup_and_run_distributed(;
         model, trian = build_horizontal_model_distributed(ranks, cpu_grid,
                                                               dom_flat, (nx, ny);
                                                               y_periodic=y_periodic)
-        dΩh   = Measure(trian, 2*max(p_horizontal, p_eta == 0 ? max(1, p_horizontal - 1) : p_eta) + 2)
+        dΩh   = Measure(trian, 2*max(p_u, p_eta) + 2)
         # Build the stacked FE spaces for the horizontal problem, applying the inflow BCs if provided.
-        #  ⚠ 0 ⇒ TAYLOR-HOOD (p_horizontal−1). Kept identical to the sequential driver:
-        #  a pairing mismatch between the two paths would make every distributed-vs-sequential
-        #  parity check meaningless. CLAUDE.md rule 2b.
-        pe = p_eta == 0 ? max(1, p_horizontal - 1) : p_eta
+        #  Kept identical to the sequential driver: a pairing mismatch between the two
+        #  paths would make every distributed-vs-sequential parity check meaningless.
+        pe = p_eta
         U, V = build_fe_spaces(model,
-                                   p_horizontal,           # horizontal (velocity) FE order
+                                   p_u,           # horizontal (velocity) FE order
                                    vert.N_dof;             # number of vertical DOFs = number of stacked fields
                                    y_wall_bc=y_wall_bc,    # lateral BC type
                                    x_wall_bc=x_wall_bc,    # solid wall BC on x-edges
@@ -333,7 +337,7 @@ function setup_and_run_distributed(;
         # For nl_pressure=:full, the frozen-projection mass solve uses CG + Jacobi
         # here (a partitioned matrix has no direct-factorisation method).
         nlp = nl_pressure == :full ?
-              (prob, build_nlp_ctx(model, p_horizontal, vert.N_dof, trian, dΩh;
+              (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh;
                                    distributed=true, cg_rtol=nlp_cg_rtol,
                                    cg_maxiter=nlp_cg_maxiter)) : nothing
 

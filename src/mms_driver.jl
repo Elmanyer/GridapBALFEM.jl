@@ -33,13 +33,9 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         d::Float64 = 1.0, g::Float64 = g,
                         M::Int = 2, p_vert::Int = 1,
                         c_bdy = nothing,           # σ-element boundaries; nothing ⇒ resolve_cbdy(M)
-                        p_horizontal::Int = 2,
-                        p_eta::Int = 0,            # 0 ⇒ TAYLOR-HOOD (p_horizontal−1), per CLAUDE.md
-                                                   #   rule 2b. CHANGED 2026-09-05: the sentinel used
-                                                   #   to mean equal order, which is inf-sup deficient
-                                                   #   and measures order p rather than p+1 here.
-                                                   #   run_conv_study always passes p_eta EXPLICITLY,
-                                                   #   so no recorded campaign rate is affected.
+                        p_u::Int = 2,
+                        p_eta::Int = p_u - 1,      # MUST satisfy p_u = p_eta + 1 (Taylor-Hood);
+                                                   #   check_taylor_hood ERRORS otherwise. rule 2b.
                         field = nothing,
                         hfun = nothing,            # bathymetry h(x,y); nothing ⇒ constant `d`
                         flat_bed::Bool = true,     # selects BOTH the solver model and the forcing
@@ -67,10 +63,10 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
     # --- mesh + closed-basin FE spaces ------------------------------------
     domain       = ((0.0, Lx), (0.0, Ly))
     model, trian = build_horizontal_model(domain, (nx, ny))
-    pe           = p_eta == 0 ? max(1, p_horizontal - 1) : p_eta   # rule 2b: TH, never equal order
-    U, V         = build_fe_spaces(model, p_horizontal, vert.N_dof;
+    pe           = p_eta
+    U, V         = build_fe_spaces(model, p_u, vert.N_dof;
                                    y_wall_bc = :wall, x_wall_bc = true, p_eta = pe)
-    dΩh          = Measure(trian, 2*max(p_horizontal, pe) + 2)
+    dΩh          = Measure(trian, 2*max(p_u, pe) + 2)
 
     # --- the forcing, derived independently of the residual code ----------
     #  ONE bathymetry object feeds BOTH the forcing and the solver, and the SAME
@@ -102,7 +98,7 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
     #  `mms_forcing` still forces all eight components. The three switches must
     #  select the SOLVER WORKFLOW and the forcing together, never just the forcing.
     nlp = nl_pressure == :full ?
-          (prob, build_nlp_ctx(model, p_horizontal, vert.N_dof, trian, dΩh)) : nothing
+          (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh)) : nothing
 
     # --- IC = u*(t0), which satisfies the wall Dirichlet data exactly ------
     u0 = interpolate_everywhere([mms_exact_eta(f, t0),
@@ -123,7 +119,7 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
     # --- L² errors against the EXACT field, on an elevated quadrature ------
     uh   = final[]
     tF   = isempty(diags) ? t0 : diags[end].t
-    dΩe  = error_measure(trian, p_horizontal)
+    dΩe  = error_measure(trian, p_u)
     e_eta = l2_error(uh[1], mms_exact_eta(f, tF), trian, dΩe)
     e_ux  = l2_error(uh[2], mms_exact_ux(f, tF),  trian, dΩe)
     e_uy  = l2_error(uh[3], mms_exact_uy(f, tF),  trian, dΩe)
@@ -174,9 +170,9 @@ function run_mms_refinement(mode::Symbol; levels::Int = 3,
         push!(ee, r.e_eta); push!(eu, r.e_u); push!(rows, r)
     end
     #  Expectations follow the FE PAIRING actually used, and the two fields differ
-    #  whenever p_eta < p_horizontal. Hardcoding "3" here (as this did) reports an
+    #  whenever p_eta < p_u. Hardcoding "3" here (as this did) reports an
     #  unreachable target on an equal-order run and the wrong target on a mixed one.
-    p_h  = get(kwargs, :p_horizontal, 2)
+    p_h  = get(kwargs, :p_u, 2)
     p_e0 = get(kwargs, :p_eta, 0)
     p_e  = p_e0 == 0 ? p_h : p_e0
     exp_eta, exp_u = mode == :space ? (p_e + 1.0, p_h + 1.0) : (2.0, 2.0)
@@ -221,7 +217,7 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
                                     d::Float64 = 1.0, g::Float64 = g,
                                     M::Int = 2, p_vert::Int = 1,
                                     c_bdy = nothing,  # σ-element boundaries; nothing ⇒ resolve_cbdy(M)
-                                    p_horizontal::Int = 2, p_eta::Int = 0,
+                                    p_u::Int = 2, p_eta::Int = 0,
                                     field = nothing, t0::Float64 = 0.0,
                                     hfun = nothing,            # bathymetry h(x,y); nothing ⇒ constant `d`
                                     flat_bed::Bool = true,     # ) the same three symbols select BOTH
@@ -236,7 +232,7 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
     vert = vert_override === nothing ?
            assemble_vertical_tensors(M, p_vert, resolve_cbdy(M, c_bdy, p_vert)) : vert_override
     f    = field === nothing ? MMSField(vert.N_dof; Lx=Lx, Ly=Ly) : field
-    pe   = p_eta == 0 ? max(1, p_horizontal - 1) : p_eta   # rule 2b: TH, never equal order
+    pe   = p_eta
     #  ONE bathymetry object and ONE set of switches for the forcing and the solver,
     #  built OUTSIDE the MPI block so every rank derives them from identical inputs.
     hf   = hfun === nothing ? ((xx, yy) -> d) : hfun
@@ -246,9 +242,9 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
         ranks = distribute(LinearIndices((prod(cpu_grid),)))
         model, trian = build_horizontal_model_distributed(ranks, cpu_grid,
                             (0.0, Lx, 0.0, Ly), (nx, ny))
-        U, V = build_fe_spaces(model, p_horizontal, vert.N_dof;
+        U, V = build_fe_spaces(model, p_u, vert.N_dof;
                                y_wall_bc=:wall, x_wall_bc=true, p_eta=pe)
-        dΩh  = Measure(trian, 2*max(p_horizontal, pe) + 2)
+        dΩh  = Measure(trian, 2*max(p_u, pe) + 2)
         prob = build_problem(vert; g=g,
                              h_bathy     = (x -> hf(x[1], x[2])),
                              regime      = regime,       # SAME variables as `src` above —
@@ -269,7 +265,7 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
         #  `mms_forcing` still forces all eight components. The three switches must
         #  select the SOLVER WORKFLOW and the forcing together, never just the forcing.
         nlp = nl_pressure == :full ?
-              (prob, build_nlp_ctx(model, p_horizontal, vert.N_dof, trian, dΩh;
+              (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh;
                                    distributed=true)) : nothing
 
         u0 = interpolate_everywhere([mms_exact_eta(f, t0),
@@ -283,7 +279,7 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
                                    final_uh=final, diag_every=-1, check_every=0)
         uh  = final[]
         tF  = isempty(diags) ? t0 : diags[end].t
-        dΩe = error_measure(trian, max(p_horizontal, pe))
+        dΩe = error_measure(trian, max(p_u, pe))
         e_eta = l2_error(uh[1], mms_exact_eta(f, tF), trian, dΩe)
         e_u   = sqrt(l2_error(uh[2], mms_exact_ux(f, tF), trian, dΩe)^2 +
                      l2_error(uh[3], mms_exact_uy(f, tF), trian, dΩe)^2)
@@ -392,7 +388,7 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
         #  distributed 8-model campaign return 8 copies of Model 1 (see A2 above).
         common = (; nx=nx, ny=ny, dt=dt, T_final=T_fin, Lx=Lx, Ly=Ly, d=d,
                     M=M, p_vert=p_vert, c_bdy=cb, vert_override=vert,
-                    p_horizontal=p_u, p_eta=p_e, field=f,
+                    p_u=p_u, p_eta=p_e, field=f,
                     regime=regime, nl_pressure=nl_pressure, flat_bed=flat_bed,
                     hfun=hfun, nl_tol=nl_tol, nl_iter=nl_iter, verbose=false)
         r = distributed ?
@@ -451,8 +447,8 @@ function run_model_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                           d::Float64 = 1.0, g::Float64 = g,
                           M::Int = 2, p_vert::Int = 1,
                           c_bdy = nothing,         # σ-element boundaries; nothing ⇒ resolve_cbdy(M)
-                          p_horizontal::Int = 2, n_mode::Int = 1,
-                          p_eta::Int = 0,            # 0 ⇒ equal order. Set < p_horizontal for the
+                          p_u::Int = 2, n_mode::Int = 1,
+                          p_eta::Int = 0,            # 0 ⇒ equal order. Set < p_u for the
                                                      #   Taylor-Hood-like pairing — same meaning and
                                                      #   same default as run_mms_case, so the forced
                                                      #   and unforced studies stay comparable.
@@ -467,10 +463,10 @@ function run_model_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
 
     domain       = ((0.0, Lx), (0.0, Ly))
     model, trian = build_horizontal_model(domain, (nx, ny))
-    pe           = p_eta == 0 ? max(1, p_horizontal - 1) : p_eta   # rule 2b: TH, never equal order
-    U, V         = build_fe_spaces(model, p_horizontal, vert.N_dof;
+    pe           = p_eta
+    U, V         = build_fe_spaces(model, p_u, vert.N_dof;
                                    y_wall_bc = :wall, x_wall_bc = true, p_eta = pe)
-    dΩh          = Measure(trian, 2*max(p_horizontal, pe) + 2)
+    dΩh          = Measure(trian, 2*max(p_u, pe) + 2)
 
     prob = build_problem(vert; g = g, h_bathy = (x -> d),
                          regime = :linear, nl_pressure = :none, flat_bed = true,
@@ -492,7 +488,7 @@ function run_model_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
 
     uh  = final[]
     tF  = isempty(diags) ? t0 : diags[end].t
-    dΩe = error_measure(trian, p_horizontal)
+    dΩe = error_measure(trian, p_u)
     eF, uxF, uyF = exact_cfs(cbs, vert.N_dof, tF)
     e_eta = l2_error(uh[1], eF,  trian, dΩe)
     e_u   = sqrt(l2_error(uh[2], uxF, trian, dΩe)^2 +
@@ -531,7 +527,7 @@ function run_model_refinement(mode::Symbol; levels::Int = 3,
     end
     #  As in run_mms_refinement: the expectations are a property of the FE pairing,
     #  not a constant. See the note there.
-    p_h  = get(kwargs, :p_horizontal, 2)
+    p_h  = get(kwargs, :p_u, 2)
     p_e0 = get(kwargs, :p_eta, 0)
     p_e  = p_e0 == 0 ? p_h : p_e0
     exp_eta, exp_u = mode == :space ? (p_e + 1.0, p_h + 1.0) : (2.0, 2.0)

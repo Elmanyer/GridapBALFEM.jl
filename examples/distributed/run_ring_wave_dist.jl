@@ -39,13 +39,10 @@ px, py   = genv_i("BALFEM_PX", 2), genv_i("BALFEM_PY", 2)
 L        = genv_f("BALFEM_L", 200.0)
 nx, ny   = genv_i("BALFEM_NX", 200), genv_i("BALFEM_NY", 200)
 feord    = genv_i("BALFEM_FE_ORDER", 2)
-#  p_eta = 0 keeps the historical EQUAL-ORDER spaces (unchanged default).
-#  Set BALFEM_P_ETA = BALFEM_FE_ORDER-1 for the Taylor-Hood-like pairing, which is
-#  the only one measured to reach the theoretical order in BOTH fields. It is
-#  NOT automatically the better production choice: at a GIVEN mesh the
-#  equal-order spaces were 40x more accurate, because eta sits in a richer
-#  space. Compare error-vs-DOF before switching.
-p_eta    = genv_i("BALFEM_P_ETA", 0)
+#  ⚠ TAYLOR-HOOD IS MANDATORY: p_eta = BALFEM_FE_ORDER-1 (the default here).
+#  check_taylor_hood ERRORS on any other pairing. eta plays the pressure role of a
+#  Stokes system, so equal order is inf-sup deficient. CLAUDE.md rule 2b.
+p_eta    = genv_i("BALFEM_P_ETA", feord - 1)
 d        = genv_f("BALFEM_D", 3.5)
 Twave    = genv_f("BALFEM_TWAVE", 1.6)
 Awave    = genv_f("BALFEM_AWAVE", 0.001)
@@ -60,7 +57,7 @@ outdir   = genv("BALFEM_OUTDIR", joinpath(ROOT, "output", "ring_wave_dist_$(mode
 banner("RING WAVE (point source) — distributed", M, (px,py), (nx,ny), nx*ny, outdir)
 
 diags, vert, prob = setup_and_run_distributed(
-    cpu_grid=(px,py), M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_horizontal=feord, p_eta=p_eta,
+    cpu_grid=(px,py), M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
     domain=(0.0,L,0.0,L), partition=(nx,ny),
     h_val=d, T_wave=Twave, A_wave=Awave,
     x_wm=L/2, y_wm=L/2,                                   # point source → ring waves

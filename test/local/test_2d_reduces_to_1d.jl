@@ -57,7 +57,7 @@ function run_width(Ly, ny, tag)
     outdir = local_outdir("reduce2d_" * tag)
     diags, _, _ = setup_and_run(
         M=FLUME.M, domain=((0.0,Lx),(0.0,Ly)), partition=(nx,ny),
-        p_horizontal=FLUME.p, h_val=FLUME.d, flat_bed=true,
+        p_u=FLUME.p, h_val=FLUME.d, flat_bed=true,
         T_wave=FLUME.T, A_wave=FLUME.A,
         x_wm=x_wm, y_wm=nothing,                       # LINE source ⇒ y-invariant
         sponge_wL=6.0, sponge_wR=8.0, mu_max=20.0,

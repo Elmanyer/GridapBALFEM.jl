@@ -560,18 +560,15 @@ function setup_and_run(;
     # ---- Horizontal discretisation -------------------------------------------
     domain                  = ((0.0, 60.0), (0.0, 10.0)),  # ((x0,x1),(y0,y1)) extent [m]
     partition    :: Tuple   = (120, 20),  # (nx,ny) number of horizontal cells
-    p_horizontal :: Int     = 2,          # horizontal FE order (must be ≥2: Q1 zeroes the dispersion)
+    p_u :: Int     = 2,          # horizontal FE order (must be ≥2: Q1 zeroes the dispersion)
     quad_extra   :: Int     = 0,          # EXTRA quadrature degree on top of the default
                                           #   2·max(p_h,p_η)+2. The default integrates the LINEAR
                                           #   terms exactly but is one degree SHORT of the nonlinear
                                           #   advection integrand φᵢ·u_k·∇u_j·H (degree 3p+1 at
                                           #   equal order). Raise it to test aliasing hypotheses.
-    p_eta        :: Int     = 0,          # surface FE order. 0 ⇒ TAYLOR-HOOD (= p_horizontal−1).
-                                          #   ⚠ CHANGED 2026-09-05: the sentinel used to mean EQUAL
-                                          #   ORDER. Equal order is inf-sup deficient here and is no
-                                          #   longer reachable by default — pass p_eta=p_horizontal
-                                          #   EXPLICITLY if you truly want it. See CLAUDE.md rule 2b.
-                                          #   Taylor-Hood-like
+    p_eta        :: Int     = p_u - 1,    # surface FE order. MUST satisfy p_u = p_eta + 1
+                                          #   (Taylor-Hood); check_taylor_hood ERRORS otherwise.
+                                          #   Equal order is inf-sup deficient here — see rule 2b
                                           #   pairing: η enters momentum undifferentiated (via ∇·v
                                           #   after IBP), so it plays the pressure role of a Stokes
                                           #   system and equal-order continuous spaces are inf-sup
@@ -658,6 +655,11 @@ function setup_and_run(;
 )
     # Choose the σ-element boundaries: the paper's optimised set for this M when
     # available, otherwise a uniform split of [0,1]. One resolver, one definition.
+    #  Pairing gate FIRST — before the σ-tensors, the mesh, the JIT and the hours.
+    #  build_fe_spaces gates it too, but that is ~30 min of compilation away on a cold
+    #  session, and a run should not get that far only to be told its element orders
+    #  were wrong. CLAUDE.md rule 2b.
+    check_taylor_hood(p_u, p_eta; where = "setup_and_run")
     c_bdy = resolve_cbdy(M, c_bdy)
 
     # --- STAGE 1: VERTICAL PRE-COMPUTATION (MESH INDEPENDENT, DONE ONCE) -------
@@ -684,8 +686,8 @@ function setup_and_run(;
     # --- STAGE 2 SETUP: HORIZONTAL MESH + INTEGRATION MEASURE ----------------- 
     # `y_periodic` glues the top/bottom edges when y_wall_bc == :periodic.
     model, trian = build_horizontal_model(domain, partition; y_periodic=y_periodic)
-    # quadrature degree = 2·p_horizontal+2 integrates the nonlinear (product) terms exactly enough.
-    dΩh = Measure(trian, 2*max(p_horizontal, p_eta == 0 ? max(1, p_horizontal - 1) : p_eta) + 2 + quad_extra)
+    # quadrature degree = 2·p_u+2 integrates the nonlinear (product) terms exactly enough.
+    dΩh = Measure(trian, 2*max(p_u, p_eta) + 2 + quad_extra)
 
     # Forcing frequency and the matching wavenumber from the Airy relation
     # ω² = g k tanh(kd) (used to size the wavemaker and report kd).
@@ -787,13 +789,9 @@ function setup_and_run(;
     end
 
     # Build the stacked FE spaces for the horizontal problem, applying the inflow BCs if provided.
-    #  ⚠ 0 ⇒ TAYLOR-HOOD (p_horizontal−1), not equal order. η plays the pressure role of a
-    #  Stokes system (it enters momentum undifferentiated, via ∇·v after IBP), so equal-order
-    #  continuous spaces are inf-sup deficient: the analytic MMS measures order p rather than
-    #  p+1 there, and the whole verified scope was measured on Q3/Q2. CLAUDE.md rule 2b.
-    pe = p_eta == 0 ? max(1, p_horizontal - 1) : p_eta
+    pe = p_eta
     U, V = build_fe_spaces(model, 
-                                p_horizontal,           # horizontal (velocity) FE order
+                                p_u,           # horizontal (velocity) FE order
                                 vert.N_dof;             # number of vertical DOFs = number of stacked fields
                                 y_wall_bc=y_wall_bc,    # lateral BC type
                                 x_wall_bc=x_wall_bc,    # solid wall BC on x-edges
@@ -893,7 +891,7 @@ function setup_and_run(;
     # For nl_pressure=:full, build the frozen-projection context (mass matrix
     # factorised once) used to evaluate the irreducible ∇H/𝓟 pressure halves.
     nlp = nl_pressure == :full ?
-          (prob, build_nlp_ctx(model, p_horizontal, vert.N_dof, trian, dΩh)) : nothing
+          (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh)) : nothing
 
     # Reconstruction context for optional w/p VTK output (nothing if both off).
     recon = build_field_recon(vert, dfn, g; rho=rho,

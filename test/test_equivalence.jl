@@ -70,13 +70,13 @@ check("vertical tensors match oracle (Mmat,Phi,B,Mcal,Gcal,A,K,P,Acal,Kcal)",
 
 domain    = ((0.0, 10.0), (0.0, 5.0))
 partition = (6, 4)
-p_horizontal  = 2
+p_u  = 2
 model, trian = build_horizontal_model_2D(domain, partition)
-dΩh = Measure(trian, 2*p_horizontal + 2)
+dΩh = Measure(trian, 2*p_u + 2)
 
 # unconstrained spaces → all DOFs free, interpolated states identical
-U_lay, V_lay = build_fe_spaces_2D(model, p_horizontal, Nσ; y_wall_bc=false)   # old solver: Bool
-U, V = ALG.build_fe_spaces(model, p_horizontal, Nσ; y_wall_bc=:open)
+U_lay, V_lay = build_fe_spaces_2D(model, p_u, Nσ; y_wall_bc=false)   # old solver: Bool
+U, V = ALG.build_fe_spaces(model, p_u, Nσ; y_wall_bc=:open)
 
 # ---- analytic states / test functions -----------------------------------------
 eta_f  = x -> 0.02*cos(0.4*x[1])*cos(0.5*x[2]) + 0.005*x[1]/10.0

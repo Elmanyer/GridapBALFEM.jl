@@ -87,7 +87,7 @@ x_g1 = 2*lam_max; x_g2 = x_g1 + 0.9; y_g = Ly/2
 
 diags, _, _ = setup_and_run(
     M=2, c_bdy=[0.0,0.728,1.0], domain=((0.0,Lx),(0.0,Ly)), partition=(nx,ny),
-    p_horizontal=2, h_val=h_val, T_wave=Ts[2], A_wave=maximum(amps),
+    p_u=2, h_val=h_val, T_wave=Ts[2], A_wave=maximum(amps),
     wave_bc=wi, bc_side=:left, sponge_wL=0.0, sponge_wR=10.0,
     sponge_wB=0.0, sponge_wT=0.0, mu_max=30.0, T_final=Tf, dt=dt,
     #  ⚠ solver_type=:theta IS LOAD-BEARING — do not drop it to "use the default".

@@ -565,7 +565,7 @@ println("  $(nworkers()) worker processes ready"); flush(stdout)
             f = MMSField(Nsg; Lx=_LX, Ly=_LY, omega=ω, ky=0.0)   # ky=0 ⇒ quasi-1D
             r = run_mms_case(; nx=nx, ny=ny, dt=dt, T_final=Tf, Lx=_LX, Ly=_LY,
                                d=_DEPTH, M=c.M, p_vert=c.p, c_bdy=cb,
-                               p_horizontal=_PU, p_eta=_PETA, field=f,
+                               p_u=_PU, p_eta=_PETA, field=f,
                                regime=m.regime, nl_pressure=m.nlp, flat_bed=m.flat_bed,
                                hfun=hf, solver_type=c.integrator, theta=0.5,
                                nl_tol=nltol_for(m.regime), nl_iter=nliter, verbose=false)

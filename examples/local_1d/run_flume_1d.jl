@@ -89,7 +89,7 @@ feord   = genv_i("BALFEM_FE_ORDER", 2)
 #  before this date used equal order -- i.e. a discretisation the campaign never verified.
 #  Equal order is still reachable with an EXPLICIT BALFEM_P_ETA = BALFEM_FE_ORDER, but it
 #  is not a supported production configuration. CLAUDE.md rule 2b.
-p_eta   = genv_i("BALFEM_P_ETA", 0)
+p_eta   = genv_i("BALFEM_P_ETA", feord - 1)
 d       = genv_f("BALFEM_D", 3.5)
 Twave   = genv_f("BALFEM_TWAVE", 1.6)
 Awave   = genv_f("BALFEM_AWAVE", 0.001)
@@ -263,7 +263,7 @@ if is_rank0()
     flush(stdout)
 end
 
-common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_horizontal=feord, p_eta=p_eta, quad_extra=genv_i("BALFEM_QUAD_EXTRA", 0),
+common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta, quad_extra=genv_i("BALFEM_QUAD_EXTRA", 0),
           h_val=d, h_bathy=h_bathy, T_wave=Twave, A_wave=Awave,
           x_wm=x_wm, y_wm=nothing,
           sponge_wL=spL, sponge_wR=spR, sponge_wB=0.0, sponge_wT=0.0, mu_max=mumax,

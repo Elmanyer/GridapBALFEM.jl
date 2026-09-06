@@ -75,7 +75,7 @@ nx = round(Int, Lx/(lam/6)); ny = 2
 dt = T_wave/24; Tf = 12*T_wave
 x_g1 = 2lam; x_g2 = x_g1 + lam/2; y_g = Ly/2
 common = (M=2, c_bdy=[0.0,0.728,1.0], domain=((0.0,Lx),(0.0,Ly)),
-          partition=(nx,ny), p_horizontal=2, h_val=h_val, T_wave=T_wave,
+          partition=(nx,ny), p_u=2, h_val=h_val, T_wave=T_wave,
           A_wave=A_wave, sponge_wR=8.0, sponge_wB=0.0, sponge_wT=0.0,
           mu_max=30.0, dt=dt, save_every=0,
           #  ⚠ solver_type=:theta IS LOAD-BEARING for cases A–C, which gate the

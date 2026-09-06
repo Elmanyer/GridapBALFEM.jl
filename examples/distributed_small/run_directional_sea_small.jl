@@ -14,7 +14,7 @@
 #    BALFEM_NTHETA / BALFEM_SPREAD_STD / BALFEM_THETA_MAX  spreading  (7 / 15deg / 40deg)
 #    BALFEM_HBAR/XBAR/WBAR   bar shape, used only when FLAT_BED=0   1.5 / 26 / 6
 #
-#  Fixed defaults: mesh 200x80 (square cells), partition 8x8 (64 ranks), p_horizontal
+#  Fixed defaults: mesh 200x80 (square cells), partition 8x8 (64 ranks), p_u
 #  2, dt 0.02, d 3.5, right sponge 12, lateral sponges 8, mu_max 40, inflow
 #  relaxation zone ON (width 6 m), periods 26 (transit-based), save_every 10.
 #
@@ -51,13 +51,10 @@ model_name = "P$(p_vert)LFE-$(M)"
 px, py  = genv_i("BALFEM_PX", 8), genv_i("BALFEM_PY", 8)      # 8*8 = 64 ranks
 nx, ny  = genv_i("BALFEM_NX", 200), genv_i("BALFEM_NY", 80)   # square cells 0.25x0.25
 feord   = genv_i("BALFEM_FE_ORDER", 2)
-#  p_eta = 0 keeps the historical EQUAL-ORDER spaces (unchanged default).
-#  Set BALFEM_P_ETA = BALFEM_FE_ORDER-1 for the Taylor-Hood-like pairing, which is
-#  the only one measured to reach the theoretical order in BOTH fields. It is
-#  NOT automatically the better production choice: at a GIVEN mesh the
-#  equal-order spaces were 40x more accurate, because eta sits in a richer
-#  space. Compare error-vs-DOF before switching.
-p_eta   = genv_i("BALFEM_P_ETA", 0)
+#  ⚠ TAYLOR-HOOD IS MANDATORY: p_eta = BALFEM_FE_ORDER-1 (the default here).
+#  check_taylor_hood ERRORS on any other pairing. eta plays the pressure role of a
+#  Stokes system, so equal order is inf-sup deficient. CLAUDE.md rule 2b.
+p_eta   = genv_i("BALFEM_P_ETA", feord - 1)
 Lx, Ly  = genv_f("BALFEM_LX", 50.0), genv_f("BALFEM_LY", 20.0)
 d       = genv_f("BALFEM_D", 3.5)
 spR     = genv_f("BALFEM_SPONGE_R", 12.0)
@@ -94,7 +91,7 @@ is_rank0() && @printf("#   Hs=%.4g m Tp=%.3g s | nth=%d sth=%.1f thmax=%.1f | be
                       genv_f("BALFEM_THETA_MAX", 40.0), bedtag, genv_i("BALFEM_SEED", 20260723))
 
 diags, vert, prob = setup_and_run_distributed(
-    cpu_grid=(px,py), M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_horizontal=feord, p_eta=p_eta,
+    cpu_grid=(px,py), M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
     domain=(0.0,Lx,0.0,Ly), partition=(nx,ny),
     h_val=d, T_wave=Tp, A_wave=hs_val()/2,
     wave_gen=:bc_gen, wave_bc=state, bc_side=bc_side_sym(), bc_profile=bc_profile_sym(),

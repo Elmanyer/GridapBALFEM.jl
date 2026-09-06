@@ -13,7 +13,7 @@
 #  Corner tags are MANDATORY in any wall BC (omitting them leaves corner DOFs
 #  unconstrained → exponential instability; root CLAUDE.md rule 5).
 #
-#  All fields H1-conforming Lagrange, p_horizontal ≥ 2 (linear elements zero the
+#  All fields H1-conforming Lagrange, p_u ≥ 2 (linear elements zero the
 #  dispersion term and disable all non-hydrostatic physics).
 # ==============================================================
 
@@ -21,7 +21,7 @@
     build_horizontal_model(domain, partition; y_periodic=false) → (model, trian)
 
 2D Cartesian mesh on ((x0,x1),(y0,y1)) (or flat (x0,x1,y0,y1)) with
-`partition = (nx, ny)` cells. Create the measure as `Measure(trian, 2*p_horizontal+2)`.
+`partition = (nx, ny)` cells. Create the measure as `Measure(trian, 2*p_u+2)`.
 `y_periodic=true` builds the mesh periodic in y (the matching top/bottom edge DOFs
 are identified), for the `:periodic` lateral boundary condition.
 """
@@ -47,7 +47,56 @@ function side_tags(side::Symbol)
 end
 
 """
-    build_fe_spaces(model, p_horizontal, Nσ; y_wall_bc=:wall, x_wall_bc=false,
+    check_taylor_hood(p_u, p_eta; where="")
+
+**THE horizontal element-pairing gate. Every path that builds FE spaces goes through
+it, and it RAISES rather than warns.**
+
+The BALFE-M horizontal pairing is **Taylor-Hood by design**: `p_u = p_eta + 1`. This
+is not a preference, it is a well-posedness requirement, and it is enforced here
+because getting it wrong is silent, slow and expensive.
+
+**Why.** `η` enters the momentum equation *undifferentiated* — it reaches the test
+function only through `∇·v`, after the integration by parts that produces `R_P`. It
+therefore plays exactly the role pressure plays in a Stokes system, and the pairing is
+subject to the same **inf-sup (LBB)** condition. Equal-order continuous spaces
+(`p_u = p_eta`) are inf-sup deficient: they admit a spurious checkerboard mode at
+`λ ≈ 2·dx` which the discrete operator cannot see and refinement does not remove.
+
+**What that cost, before this gate existed.** Every fully nonlinear run was launched
+at equal order while the entire MMS verification campaign ran Taylor-Hood, so the
+configuration that blew up was never the configuration that was verified. The result
+looked like a physical instability of the model: an unbounded grid-scale mode that got
+*worse* under refinement (blow-up at t≈24 s for `dx=0.25`, t≈10 s for `dx=0.125`). Ten
+hypotheses were refuted against it — Jacobian, sponge, boundaries, domain length, CFL,
+Benjamin–Feir, quadrature aliasing, advection energy conservation — over three days.
+On Taylor-Hood the mode does not exist and the refinement signature inverts.
+See CLAUDE.md rules 2b and 12b.
+
+`p_eta ≥ 1` is required as well: `p_u = p_eta + 1 ≥ 2` then follows, which is rule 2
+(`Q1` velocity zeroes `R_P` and disables all non-hydrostatic physics).
+"""
+function check_taylor_hood(p_u::Int, p_eta::Int; where::AbstractString = "")
+    ctx = isempty(where) ? "" : "$where: "
+    p_eta ≥ 1 || error(
+        ctx * "p_eta = $p_eta is invalid — the surface order must be ≥ 1.\n" *
+        "  A Q0 surface cannot represent ∇η at all.")
+    p_u == p_eta + 1 || error(
+        ctx * "NON-TAYLOR-HOOD horizontal pairing: p_u = $p_u, p_eta = $p_eta.\n" *
+        "  BALFE-M requires p_u = p_eta + 1 (velocity exactly one order above the surface).\n" *
+        (p_u == p_eta ?
+          "  You asked for EQUAL ORDER, which is inf-sup deficient here: η plays the\n" *
+          "  pressure role of a Stokes system, and equal-order continuous spaces admit a\n" *
+          "  spurious checkerboard at λ ≈ 2·dx. This is the defect that produced the\n" *
+          "  'nonlinear instability' of 2026-09 (CLAUDE.md rule 12b).\n" :
+          "  A gap other than one is not a supported pairing; nothing in the verified\n" *
+          "  scope was measured on it.\n") *
+        "  Use p_u = $(p_eta + 1) with p_eta = $p_eta, or p_u = $p_u with p_eta = $(p_u - 1).")
+    return nothing
+end
+
+"""
+    build_fe_spaces(model, p_u, Nσ; y_wall_bc=:wall, x_wall_bc=false,
                         inflow=nothing) → (U, V)
 
 Stacked 3-field MultiFieldFESpace `[η, 𝖴x, 𝖴y]`. The lateral (y) boundary
@@ -72,22 +121,19 @@ Other arguments:
   `:periodic`). With `x_wall_bc=true` the opposite x-side keeps its zero wall.
   Sides `:left` / `:right` are supported for generation.
 """
-function build_fe_spaces(model, p_horizontal::Int, Nσ::Int;
+
+function build_fe_spaces(model, p_u::Int, Nσ::Int;
                              y_wall_bc::Symbol = :wall, x_wall_bc::Bool = false,
                              inflow = nothing,
-                             p_eta::Int = p_horizontal)
-    #  p_eta < p_horizontal gives a TAYLOR-HOOD-LIKE pairing (velocity one order
-    #  above the surface). η enters the momentum equation undifferentiated, via
-    #  ∇·v after integration by parts, so it plays the role pressure plays in
-    #  Stokes; equal order (the default, p_eta = p_horizontal) is the analogue of
-    #  equal-order velocity/pressure and is not generally inf-sup optimal. The
-    #  analytic MMS measures order p rather than p+1 on the equal-order pairing —
-    #  see building_files/MMS_ANALYTIC_PLAN.md. Default is UNCHANGED, so every
-    #  existing call keeps the equal-order spaces it had.
+                             p_eta::Int = p_u - 1)
+    #  THE gate. Every FE space in this solver is built here, so validating the pairing
+    #  at this one point makes a non-Taylor-Hood run impossible rather than merely
+    #  discouraged. Default p_eta = p_u − 1 is Taylor-Hood by construction.
+    check_taylor_hood(p_u, p_eta; where = "build_fe_spaces")
     y_wall_bc in (:wall, :open, :periodic) ||
         error("build_fe_spaces: y_wall_bc must be :wall, :open or :periodic (got :$y_wall_bc)")
     reffe_eta = ReferenceFE(lagrangian, Float64, p_eta)
-    reffe_U   = ReferenceFE(lagrangian, VectorValue{Nσ,Float64}, p_horizontal)
+    reffe_U   = ReferenceFE(lagrangian, VectorValue{Nσ,Float64}, p_u)
     zvv       = VectorValue(ntuple(_ -> 0.0, Nσ)...)
     # Dirichlet y-wall only for :wall; :open and :periodic impose no y-essential BC
     # (the periodic case identifies the y-edge DOFs at the mesh level instead).

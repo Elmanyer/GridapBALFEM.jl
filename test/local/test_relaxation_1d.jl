@@ -65,7 +65,7 @@ i_o1, i_o2 = 4, 5
 out1 = local_outdir("relax_generation")
 diags1, _, _ = setup_and_run(
     M=FLUME.M, domain=((0.0,Lx1),(0.0,FLUME.Ly)), partition=(nx1,FLUME.ny),
-    p_horizontal=FLUME.p, h_val=FLUME.d, flat_bed=true,
+    p_u=FLUME.p, h_val=FLUME.d, flat_bed=true,
     T_wave=FLUME.T, A_wave=A_in,
     wave_bc=wi, bc_side=:left, relax_bc=true, relax_width=w_rel,
     sponge_wL=0.0, sponge_wR=12.0, mu_max=40.0,
@@ -138,7 +138,7 @@ for use_relax in (true, false)
     out2 = local_outdir("relax_absorption_" * tag)
     local diags2, _, _ = setup_and_run(
         M=FLUME.M, domain=((0.0,Lx2),(0.0,FLUME.Ly)), partition=(nx2,FLUME.ny),
-        p_horizontal=FLUME.p, h_val=FLUME.d, flat_bed=true,
+        p_u=FLUME.p, h_val=FLUME.d, flat_bed=true,
         T_wave=FLUME.T, A_wave=A_eps,
         wave_bc=wi0, bc_side=:left, relax_bc=use_relax, relax_width=w_rel,
         sponge_wL=0.0, sponge_wR=0.0, mu_max=40.0,   # NO sponge anywhere: the zone is the only absorber

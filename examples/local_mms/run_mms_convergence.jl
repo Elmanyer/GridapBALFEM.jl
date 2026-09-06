@@ -92,7 +92,7 @@ nl_iter     = genv_i("BALFEM_MMS_NLITER", regime === :linear ? 50 : 400)
 #  Variable bed ⇒ hand run_mms_case the same bathymetry object it gives the forcing.
 hfun    = flat_bed ? nothing : bathymetry_field(; d0=dval, a_b=a_b, kbx=1.3, kby=0.0)
 
-CASE = (Lx=Lx, Ly=Ly, d=dval, M=Mvert, p_vert=p_vert, p_horizontal=order, p_eta=p_eta,
+CASE = (Lx=Lx, Ly=Ly, d=dval, M=Mvert, p_vert=p_vert, p_u=order, p_eta=p_eta,
         solver_type=solver, regime=regime, nl_pressure=nlp, flat_bed=flat_bed,
         hfun=hfun, nl_iter=nl_iter)
 

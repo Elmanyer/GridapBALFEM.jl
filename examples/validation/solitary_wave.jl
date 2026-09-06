@@ -32,10 +32,10 @@ c_th = sqrt(g*(d + A))                       # solitary-wave celerity
 @printf("  A/d=%.2f  c_th=%.3f m/s  width 1/κ=%.1f m\n", A/d, c_th, 1/κ)
 
 vert = assemble_vertical_tensors(2, 1, [0.0, 0.728, 1.0]); Nσ = vert.N_dof
-domain = ((0.0, 50.0), (0.0, 2.0)); p_horizontal = 2
+domain = ((0.0, 50.0), (0.0, 2.0)); p_u = 2
 model, trian = build_horizontal_model(domain, (120, 4))     # ~12 cells across the soliton
-dΩh = Measure(trian, 2*p_horizontal + 2)
-U, V = build_fe_spaces(model, p_horizontal, Nσ; y_wall_bc=:wall, x_wall_bc=true)   # closed x!
+dΩh = Measure(trian, 2*p_u + 2)
+U, V = build_fe_spaces(model, p_u, Nσ; y_wall_bc=:wall, x_wall_bc=true)   # closed x!
 
 sponge = make_sponge(domain, 0.0, 12.0, 0.0, 0.0, 8.0)          # absorb at the far end
 prob = build_problem(vert; g=g, h_bathy=x -> d, regime=:nonlinear,

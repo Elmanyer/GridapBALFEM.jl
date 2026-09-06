@@ -60,7 +60,7 @@ function run_case(name; mu_max, x_wall_bc, y_wall_bc, eta0_func=nothing,
     outdir = local_outdir("boundary_" * name)
     diags, _, _ = setup_and_run(
         M=FLUME.M, domain=((0.0,Lx),(0.0,FLUME.Ly)), partition=(nx,FLUME.ny),
-        p_horizontal=FLUME.p, h_val=FLUME.d, flat_bed=true,
+        p_u=FLUME.p, h_val=FLUME.d, flat_bed=true,
         T_wave=FLUME.T, A_wave=A_wave, x_wm=Lx/2, y_wm=nothing,
         sponge_wL=10.0, sponge_wR=10.0, mu_max=mu_max,
         T_final=Tf, dt=FLUME.dt, regime=:linear, nl_pressure=:none,

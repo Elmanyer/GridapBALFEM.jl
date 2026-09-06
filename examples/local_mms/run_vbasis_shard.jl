@@ -263,7 +263,7 @@ for (n, c) in enumerate(mine)
             end
             f = MMSField(Nsg; Lx=LX, Ly=LY, omega=ω, ky=0.0)
             r = run_mms_case(; nx=nx, ny=ny, dt=dt, T_final=Tf, Lx=LX, Ly=LY, d=DEPTH,
-                    M=c.M, p_vert=c.p, c_bdy=cb, p_horizontal=P_U, p_eta=P_ETA, field=f,
+                    M=c.M, p_vert=c.p, c_bdy=cb, p_u=P_U, p_eta=P_ETA, field=f,
                     regime=m.regime, nl_pressure=m.nlp, flat_bed=m.flat_bed, hfun=hf,
                     solver_type=c.integrator, theta=0.5,
                     nl_tol=nltol, nl_iter=nliter, verbose=false)

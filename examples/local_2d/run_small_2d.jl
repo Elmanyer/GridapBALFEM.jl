@@ -74,13 +74,10 @@ nx, ny  = genv_i("BALFEM_NX", 96), genv_i("BALFEM_NY", 36)   # dx = dy = 0.417 m
 #  against ≈29k before — the cores bought a bigger, better-resolved case, not a
 #  faster one.
 feord   = genv_i("BALFEM_FE_ORDER", 2)
-#  p_eta = 0 keeps the historical EQUAL-ORDER spaces (unchanged default).
-#  Set BALFEM_P_ETA = BALFEM_FE_ORDER-1 for the Taylor-Hood-like pairing, which is
-#  the only one measured to reach the theoretical order in BOTH fields. It is
-#  NOT automatically the better production choice: at a GIVEN mesh the
-#  equal-order spaces were 40x more accurate, because eta sits in a richer
-#  space. Compare error-vs-DOF before switching.
-p_eta   = genv_i("BALFEM_P_ETA", 0)
+#  ⚠ TAYLOR-HOOD IS MANDATORY: p_eta = BALFEM_FE_ORDER-1 (the default here).
+#  check_taylor_hood ERRORS on any other pairing. eta plays the pressure role of a
+#  Stokes system, so equal order is inf-sup deficient. CLAUDE.md rule 2b.
+p_eta   = genv_i("BALFEM_P_ETA", feord - 1)
 d       = genv_f("BALFEM_D", 3.5)
 Twave   = genv_f("BALFEM_TWAVE", 1.6)                      # kd = 5.5, λ = 4.0 m
 Awave   = genv_f("BALFEM_AWAVE", 0.001)
@@ -157,7 +154,7 @@ if is_rank0()
     flush(stdout)
 end
 
-common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_horizontal=feord, p_eta=p_eta,
+common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           h_val=d, h_bathy=h_bathy, T_wave=Twave, A_wave=Awave,
           x_wm=x_wm, y_wm=y_wm,
           sponge_wL=spL, sponge_wR=spR, sponge_wB=spB, sponge_wT=spT, mu_max=mumax,

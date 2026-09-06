@@ -11,7 +11,7 @@
 #    BALFEM_PX,BALFEM_PY  MPI process grid (px×py)           MUST satisfy px·py == mpiexec -n
 #    BALFEM_NX,BALFEM_NY  horizontal elements                (nx divisible by px, ny by py)
 #    BALFEM_FE_ORDER    VELOCITY Q-order (≥2 required)     2
-#    BALFEM_P_ETA       SURFACE Q-order; 0 = equal order   0
+#    BALFEM_P_ETA       SURFACE Q-order; MUST be FE_ORDER-1   FE_ORDER-1
 #                     Set to BALFEM_FE_ORDER−1 for the Taylor-Hood-like pairing.
 #                     η enters momentum undifferentiated (via ∇·v after IBP), so
 #                     equal-order spaces are inf-sup deficient and the analytic

@@ -38,10 +38,10 @@ Meff = vert.Mmat .- (kd^2).*vert.B
 T_th = 2π/(k*sqrt(g*h_val*dot(vert.Phi, Meff \ vert.Phi)))
 @printf("  standing wave: T_th=%.4f s  (basin %.1f×%.1f m)\n", T_th, L, Ly)
 
-domain = ((0.0, L), (0.0, Ly)); partition = (24, 4); p_horizontal = 2
+domain = ((0.0, L), (0.0, Ly)); partition = (24, 4); p_u = 2
 model, trian = build_horizontal_model(domain, partition)
-dΩh = Measure(trian, 2*p_horizontal + 2)
-U, V = build_fe_spaces(model, p_horizontal, Nσ; y_wall_bc=:wall, x_wall_bc=true)   # closed basin
+dΩh = Measure(trian, 2*p_u + 2)
+U, V = build_fe_spaces(model, p_u, Nσ; y_wall_bc=:wall, x_wall_bc=true)   # closed basin
 
 prob = build_problem(vert; g=g, h_bathy=x -> h_val, regime=:linear,
                      mu_sponge=x -> 0.0, wm_src=(x, t) -> 0.0)

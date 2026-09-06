@@ -193,7 +193,7 @@ end
 # ----------------------------------------------------------
 
 """
-    build_nlp_ctx(model, p_horizontal, Nσ, trian, dΩh; distributed=false,
+    build_nlp_ctx(model, p_u, Nσ, trian, dΩh; distributed=false,
                   cg_rtol=1e-10, cg_maxiter=500)
 
 Projection context for `nl_pressure_full`: an UNCONSTRAINED VectorValue{Nσ}
@@ -216,10 +216,10 @@ exact partition equality. `allocate_in_range`/`allocate_in_domain` are the
 matrix-derived vector types that are *guaranteed* compatible with `A` on both
 paths.
 """
-function build_nlp_ctx(model, p_horizontal::Int, Nσ::Int, trian, dΩh;
+function build_nlp_ctx(model, p_u::Int, Nσ::Int, trian, dΩh;
                        distributed::Bool = false,
                        cg_rtol::Float64 = 1e-10, cg_maxiter::Int = 500)
-    reffe = ReferenceFE(lagrangian, VectorValue{Nσ,Float64}, p_horizontal)
+    reffe = ReferenceFE(lagrangian, VectorValue{Nσ,Float64}, p_u)
     Vp = FESpace(model, reffe; conformity=:H1)
     Up = TrialFESpace(Vp)
     a(u, v) = ∫( u ⋅ v ) * dΩh

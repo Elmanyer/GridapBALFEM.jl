@@ -31,14 +31,14 @@ contracts every component, so a `VectorValue{Nσ}` field sums over the layers.
 l2(u, dΩ) = sqrt(sum( ∫( u ⊙ u ) * dΩ ))
 
 """
-    error_measure(trian, p_horizontal; extra=2) → Measure
+    error_measure(trian, p_u; extra=2) → Measure
 
 Quadrature for error evaluation: degree `2(p+1)+extra`, strictly higher than the
 assembly degree, so the reported error is discretisation error and not quadrature
 error. Saturating a rate on quadrature is a classic false negative.
 """
-error_measure(trian, p_horizontal::Int; extra::Int = 2) =
-    Measure(trian, 2*(p_horizontal + 1) + extra)
+error_measure(trian, p_u::Int; extra::Int = 2) =
+    Measure(trian, 2*(p_u + 1) + extra)
 
 """
     l2_error(uh, exact, trian, dΩ) → Float64

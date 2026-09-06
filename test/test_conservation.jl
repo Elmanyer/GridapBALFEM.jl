@@ -24,10 +24,10 @@ g = 9.81; h_val = 1.0
 vert = assemble_vertical_tensors(2, 1, [0.0, 0.728, 1.0])
 Nσ = vert.N_dof
 
-domain = ((0.0, 10.0), (0.0, 2.0)); partition = (20, 4); p_horizontal = 2
+domain = ((0.0, 10.0), (0.0, 2.0)); partition = (20, 4); p_u = 2
 model, trian = build_horizontal_model(domain, partition)
-dΩh = Measure(trian, 2*p_horizontal + 2)
-U, V = build_fe_spaces(model, p_horizontal, Nσ; y_wall_bc=:wall, x_wall_bc=true)
+dΩh = Measure(trian, 2*p_u + 2)
+U, V = build_fe_spaces(model, p_u, Nσ; y_wall_bc=:wall, x_wall_bc=true)
 
 prob = build_problem(vert; g=g, h_bathy=x -> h_val,
     regime=:nonlinear,                 # mass conservation is physics-independent

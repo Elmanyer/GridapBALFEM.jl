@@ -114,7 +114,7 @@ bed   = bathymetry_field(; d0=DEPTH, a_b=A_BED, kbx=1.3, kby=0.0)
 #  the linear solver would make a parity difference uninterpretable — two tests
 #  sharing a bathymetry and a physics tier can still be different problems.
 common = (; nx=NX, ny=NY, dt=1e-5, T_final=1e-4, Lx=LX, Ly=LY, d=DEPTH,
-            vert_override=vert, p_horizontal=P_U, p_eta=P_ETA, field=field,
+            vert_override=vert, p_u=P_U, p_eta=P_ETA, field=field,
             nl_tol=1e-12, nl_iter=400, verbose=false)
 
 models = (

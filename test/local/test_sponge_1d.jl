@@ -121,7 +121,7 @@ for mu_max in mu_sweep
     outdir = local_outdir(@sprintf("sponge_mu%.0f", mu_max))
     local diags, _, _ = setup_and_run(
         M=FLUME.M, domain=((0.0,Lx),(0.0,FLUME.Ly)), partition=(nx,FLUME.ny),
-        p_horizontal=FLUME.p, h_val=FLUME.d, flat_bed=true,
+        p_u=FLUME.p, h_val=FLUME.d, flat_bed=true,
         T_wave=FLUME.T, A_wave=FLUME.A, x_wm=x_wm, y_wm=nothing,
         sponge_wL=w_spL, sponge_wR=w_sp, mu_max=mu_max,
         T_final=Tf, dt=FLUME.dt, regime=:linear, nl_pressure=:none,

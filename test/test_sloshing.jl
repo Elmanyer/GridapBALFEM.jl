@@ -35,7 +35,7 @@ dt = T_th / 40; Tf = 3 * T_th
 # closed basin (x_wall_bc MANDATORY for IC problems); no wavemaker, no sponge
 diags, _, _ = setup_and_run(
     M=2, c_bdy=[0.0, 0.728, 1.0], h_val=h_val, g=g,
-    domain=((0.0, L), (0.0, Ly)), partition=(24, 2), p_horizontal=2,
+    domain=((0.0, L), (0.0, Ly)), partition=(24, 2), p_u=2,
     T_wave=1.0, A_wave=0.0, x_wm=-1e6,
     sponge_wL=0.0, sponge_wR=0.0, sponge_wB=0.0, sponge_wT=0.0, mu_max=0.0,
     T_final=Tf, dt=dt, eta0_func=eta0,

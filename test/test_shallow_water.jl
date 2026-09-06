@@ -80,7 +80,7 @@ x_g1 = x_wm + 2lam; x_g2 = x_g1 + lam/2; y_g = Ly/2
 
 diags, _, _ = setup_and_run(
     M=2, c_bdy=[0.0,0.728,1.0], domain=((0.0,Lx),(0.0,Ly)), partition=(nx,ny),
-    p_horizontal=2, h_val=d, T_wave=T_wave, A_wave=5e-4, x_wm=x_wm, y_wm=nothing,
+    p_u=2, h_val=d, T_wave=T_wave, A_wave=5e-4, x_wm=x_wm, y_wm=nothing,
     sponge_wL=15.0, sponge_wR=15.0, mu_max=5.0, T_final=Tf, dt=dt, save_every=0,
     gauges=[(x_g1,y_g),(x_g2,y_g)], regime=:nonlinear, flat_bed=true,   # ★ full nonlinear
     #  (was `linearised=false, advection=true` — the pre-2026-08 kwargs, retired when
