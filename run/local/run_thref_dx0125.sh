@@ -18,8 +18,8 @@
 #      dx=0.125  DIED t~10 s   (control run skewA4: eta=0.79 at t=8.4)
 #  Taylor-Hood dx=0.25 (TH1) is flat at 0.105 through t=14.8 so far.
 #
-#  dt IS HELD FIXED at 0.04 across the ladder ON PURPOSE: NONLINEAR_INSTABILITY.md
-#  F4 establishes the growth is dt-insensitive at fixed dx, so holding dt keeps this
+#  dt IS HELD FIXED at 0.04 across the ladder ON PURPOSE: CLAUDE.md rule 12b
+#  establishes the growth is dt-insensitive at fixed dx, so holding dt keeps this
 #  a ONE-VARIABLE comparison. The dt axis is a separate test.
 source "$(dirname "${BASH_SOURCE[0]}")/balfem_local.sh"
 export BALFEM_WAVE_GEN=bc

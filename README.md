@@ -122,7 +122,7 @@ GridapBALFEM.jl/
 │   ├── waveinput.jl             Dirichlet boundary wave generation + WaveSpec.jl coupling
 │   ├── timeloop_dist.jl         distributed mesh + GMRES+Jacobi+Newton solver + time loop
 │   └── utilities_dist.jl        setup_and_run_distributed
-├── test/                         # 27 test files + runtests.jl + test/cluster/ — see Validation
+├── test/                         # 31 test files + runtests.jl + test/cluster/ — see Validation
 │   ├── runtests.jl              batch runner; verdict from GATE OUTPUT, never the exit code
 │   └── local/                   5 machinery gates on quasi-1D flumes + runner (minutes, 6 cores)
 ├── examples/
@@ -218,7 +218,8 @@ diags, vert, prob = setup_and_run(
     M            = 2,                          # vertical layers (P1LFE-2)
     domain       = ((0.0, 60.0), (0.0, 10.0)),
     partition    = (120, 20),                  # horizontal mesh
-    p_horizontal = 2,                          # Q2 (≥2 required — Q1 zeroes dispersion)
+    p_u          = 2,                          # velocity order (≥2 — Q1 zeroes dispersion)
+    p_eta        = 1,                          # surface order; MUST be p_u−1 (Taylor-Hood)
     h_val        = 3.5, T_wave = 1.6, A_wave = 0.001,
     x_wm         = 12.0,                        # wavemaker position (line source; y_wm=nothing)
     sponge_wL    = 12.0, sponge_wR = 12.0, mu_max = 5.0,
@@ -312,7 +313,7 @@ by mtime when an image predates that stamp. Set `BALFEM_STRICT_SYSIMAGE=1` to ab
 | Argument | Meaning |
 |---|---|
 | `M`, `p_vertical`, `c_bdy` | vertical layers, polynomial order, σ-node positions (defaults = Yang & Liu Table 1 optimised nodes for M≤4) |
-| `domain`, `partition`, `p_horizontal` | horizontal mesh (`p_horizontal ≥ 2` required — Q1 zeroes the dispersion term) |
+| `domain`, `partition`, `p_u`, `p_eta` | horizontal mesh and element orders. **`p_u = p_eta + 1` is REQUIRED** (Taylor-Hood) and enforced by `check_taylor_hood`, which raises otherwise; `p_u ≥ 2` follows, since Q1 zeroes the dispersion term |
 | `h_val` / `h_bathy` | constant depth, or `h_bathy(x)` for variable bathymetry (pair with `flat_bed=false`) |
 | **`regime`** | `:linear` (linearised, no advection) \| `:nonlinear` (full finite-amplitude core) |
 | **`nl_pressure`** | `:none` \| `:native` `{3,6,7,8}` \| `:full` `+{1,2,4,5}` — the O(A³) non-hydrostatic pressure |
@@ -364,7 +365,7 @@ All gates below are standalone Julia scripts in `test/`; run with
 see file headers). The project must be the **package** environment — since the migration the tests
 do `using GridapBALFEM`, which the parent repository's environment cannot resolve unless you also
 `Pkg.develop(path="GridapBALFEM.jl")` there.
-The full suite is **27 test files + `runtests.jl` + `test/cluster/` + `test/local/`**. **The whole
+The full suite is **31 test files + `runtests.jl` + `test/cluster/` + `test/local/`**. **The whole
 suite was run end to end on 2026-08-18/19**, so every figure below is measured, not carried over:
 **sequential 20/20 counted files PASS** (`julia --project=. test/runtests.jl`; `test_equivalence` is
 RETIRED and correctly not counted), **distributed 13/13 gates PASS** on 4 ranks,
@@ -570,13 +571,18 @@ records are in `building_files/ARCHITECTURE.md` and `building_files/MODEL.md`.
   at `Q2/Q1` it stalls near 2.4 (optimal 3) and at `Q4/Q3` near 4.65 (optimal 5), rates still falling.
   The 1-D `Q4` figure of 3.345 is a **round-off floor, not a rate** (`e_u` 1.79e-11 → 1.14e-11).
   **`Q3/Q2` is the pairing to prefer on current evidence.**
-  `η` enters momentum undifferentiated via `∇·v` after integration
-  by parts, so it plays the pressure role and equal order is inf-sup deficient — the Stokes analogue,
-  fixed by the Taylor–Hood pairing. This is also *what verified the residual*: the operator code is
-  identical across those runs, and a wrong coefficient cannot be repaired by changing FE spaces.
-  `build_fe_spaces(...; p_eta=…)` exposes the choice and **defaults to equal order (unchanged)**.
-  Do not switch production on the rate alone — at `nx=24` `Q3/Q3` was 40× more accurate than `Q3/Q2`
-  despite the worse rate; an error-vs-DOF study at production resolution is not yet run.
+  `η` enters momentum undifferentiated via `∇·v` after integration by parts, so it plays the
+  pressure role of a Stokes system and **equal order is inf-sup deficient**. This is also *what
+  verified the residual*: the operator code is identical across those runs, and a wrong coefficient
+  cannot be repaired by changing FE spaces.
+
+  ⚠ **TAYLOR-HOOD IS NOW MANDATORY AND ENFORCED** (2026-09-06). `p_eta` defaults to `p_u − 1` and
+  `check_taylor_hood` **raises** on any other pairing. Equal order is not a tuning option: it is
+  what produced the year-long "nonlinear instability" — an unbounded grid-scale mode at `λ ≈ 2·dx`
+  that got *worse* under refinement and survived ten refuted hypotheses. On Taylor-Hood it does not
+  exist, and the refinement signature inverts. Full account: `CLAUDE.md` rules 2b and 12b.
+  The old advice to weigh equal order's better error-at-a-given-mesh is **withdrawn**: that accuracy
+  was measured on runs too short for the instability to emerge.
 
 
 - The vendored **`WaveSpec.jl`** must track the **GitHub repository version, not a tagged release**:

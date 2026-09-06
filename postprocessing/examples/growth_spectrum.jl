@@ -2,7 +2,7 @@
 #  growth_spectrum.jl — rank an instability by what GROWS, never by what is LARGEST
 #
 #  WHY THIS EXISTS AS A SCRIPT. The 2026-09-05 diagnosis of the nonlinear grid-scale
-#  instability (building_files/NONLINEAR_INSTABILITY.md §5b) was done ad hoc, and its
+#  instability (building_files/CLAUDE.md rule 12b) was done ad hoc, and its
 #  FIRST attempt returned the wrong answer convincingly: ranking the spectrum by
 #  AMPLITUDE above an arbitrary cut found the carrier's own harmonics at λ ≈ 1.5–1.8 m,
 #  a wavelength that does not scale with dx — which reads as evidence AGAINST a grid
