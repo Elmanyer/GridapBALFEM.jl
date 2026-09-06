@@ -82,12 +82,14 @@ model_name = "P$(p_vert)LFE-$(M)"
 Lx, Ly  = genv_f("BALFEM_LX", 60.0), genv_f("BALFEM_LY", 0.25)
 nx, ny  = genv_i("BALFEM_NX", 240), genv_i("BALFEM_NY", 1)
 feord   = genv_i("BALFEM_FE_ORDER", 2)
-#  p_eta = 0 keeps the historical EQUAL-ORDER spaces (unchanged default).
-#  Set BALFEM_P_ETA = BALFEM_FE_ORDER-1 for the Taylor-Hood-like pairing, which is
-#  the only one measured to reach the theoretical order in BOTH fields. It is
-#  NOT automatically the better production choice: at a GIVEN mesh the
-#  equal-order spaces were 40x more accurate, because eta sits in a richer
-#  space. Compare error-vs-DOF before switching.
+#  ⚠ p_eta = 0 now means TAYLOR-HOOD (BALFEM_FE_ORDER-1), NOT equal order.
+#  CHANGED 2026-09-05. eta enters momentum undifferentiated (via div(v) after IBP), so it
+#  plays the pressure role of a Stokes system: equal-order continuous spaces are inf-sup
+#  deficient, the analytic MMS measures order p rather than p+1 on them, and the ENTIRE
+#  verified scope of this solver was measured on Q3/Q2. Every nonlinear-instability run
+#  before this date used equal order -- i.e. a discretisation the campaign never verified.
+#  Equal order is still reachable with an EXPLICIT BALFEM_P_ETA = BALFEM_FE_ORDER, but it
+#  is not a supported production configuration. CLAUDE.md rule 2b.
 p_eta   = genv_i("BALFEM_P_ETA", 0)
 d       = genv_f("BALFEM_D", 3.5)
 Twave   = genv_f("BALFEM_TWAVE", 1.6)

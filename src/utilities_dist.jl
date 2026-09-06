@@ -234,9 +234,12 @@ function setup_and_run_distributed(;
         model, trian = build_horizontal_model_distributed(ranks, cpu_grid,
                                                               dom_flat, (nx, ny);
                                                               y_periodic=y_periodic)
-        dΩh   = Measure(trian, 2*max(p_horizontal, p_eta == 0 ? p_horizontal : p_eta) + 2)
+        dΩh   = Measure(trian, 2*max(p_horizontal, p_eta == 0 ? max(1, p_horizontal - 1) : p_eta) + 2)
         # Build the stacked FE spaces for the horizontal problem, applying the inflow BCs if provided.
-        pe = p_eta == 0 ? p_horizontal : p_eta   # 0 ⇒ equal order (unchanged default)
+        #  ⚠ 0 ⇒ TAYLOR-HOOD (p_horizontal−1). Kept identical to the sequential driver:
+        #  a pairing mismatch between the two paths would make every distributed-vs-sequential
+        #  parity check meaningless. CLAUDE.md rule 2b.
+        pe = p_eta == 0 ? max(1, p_horizontal - 1) : p_eta
         U, V = build_fe_spaces(model,
                                    p_horizontal,           # horizontal (velocity) FE order
                                    vert.N_dof;             # number of vertical DOFs = number of stacked fields

@@ -34,8 +34,12 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         M::Int = 2, p_vert::Int = 1,
                         c_bdy = nothing,           # σ-element boundaries; nothing ⇒ resolve_cbdy(M)
                         p_horizontal::Int = 2,
-                        p_eta::Int = 0,            # 0 ⇒ equal order. Set < p_horizontal for a
-                                                   #   Taylor-Hood-like pairing (see build_fe_spaces).
+                        p_eta::Int = 0,            # 0 ⇒ TAYLOR-HOOD (p_horizontal−1), per CLAUDE.md
+                                                   #   rule 2b. CHANGED 2026-09-05: the sentinel used
+                                                   #   to mean equal order, which is inf-sup deficient
+                                                   #   and measures order p rather than p+1 here.
+                                                   #   run_conv_study always passes p_eta EXPLICITLY,
+                                                   #   so no recorded campaign rate is affected.
                         field = nothing,
                         hfun = nothing,            # bathymetry h(x,y); nothing ⇒ constant `d`
                         flat_bed::Bool = true,     # selects BOTH the solver model and the forcing
@@ -69,7 +73,7 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
     # --- mesh + closed-basin FE spaces ------------------------------------
     domain       = ((0.0, Lx), (0.0, Ly))
     model, trian = build_horizontal_model(domain, (nx, ny))
-    pe           = p_eta == 0 ? p_horizontal : p_eta
+    pe           = p_eta == 0 ? max(1, p_horizontal - 1) : p_eta   # rule 2b: TH, never equal order
     U, V         = build_fe_spaces(model, p_horizontal, vert.N_dof;
                                    y_wall_bc = :wall, x_wall_bc = true, p_eta = pe)
     dΩh          = Measure(trian, 2*max(p_horizontal, pe) + 2)
@@ -240,7 +244,7 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
     vert = vert_override === nothing ?
            assemble_vertical_tensors(M, p_vert, resolve_cbdy(M, c_bdy, p_vert)) : vert_override
     f    = field === nothing ? MMSField(vert.N_dof; Lx=Lx, Ly=Ly) : field
-    pe   = p_eta == 0 ? p_horizontal : p_eta
+    pe   = p_eta == 0 ? max(1, p_horizontal - 1) : p_eta   # rule 2b: TH, never equal order
     #  ONE bathymetry object and ONE set of switches for the forcing and the solver,
     #  built OUTSIDE the MPI block so every rank derives them from identical inputs.
     hf   = hfun === nothing ? ((xx, yy) -> d) : hfun
@@ -481,7 +485,7 @@ function run_model_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
 
     domain       = ((0.0, Lx), (0.0, Ly))
     model, trian = build_horizontal_model(domain, (nx, ny))
-    pe           = p_eta == 0 ? p_horizontal : p_eta
+    pe           = p_eta == 0 ? max(1, p_horizontal - 1) : p_eta   # rule 2b: TH, never equal order
     U, V         = build_fe_spaces(model, p_horizontal, vert.N_dof;
                                    y_wall_bc = :wall, x_wall_bc = true, p_eta = pe)
     dΩh          = Measure(trian, 2*max(p_horizontal, pe) + 2)

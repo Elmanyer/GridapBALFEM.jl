@@ -17,21 +17,43 @@
 > | [`OPEN_ITEMS.md`](building_files/OPEN_ITEMS.md) | open work, each with its decisive next step |
 > | [`PENDING_TASKS.md`](building_files/PENDING_TASKS.md) | studies designed but not begun, with their blocking prerequisites |
 > | [`MMS_VBASIS_CAMPAIGN.md`](building_files/MMS_VBASIS_CAMPAIGN.md) | the vertical-basis campaign: the `(M,p)` × 8-model convergence matrix (its Phase-1 minimax σ-meshes are superseded by `src/vopt.jl`) |
-> | [`NONLINEAR_INSTABILITY.md`](building_files/NONLINEAR_INSTABILITY.md) | the growing mode in fully nonlinear runs: the phenomenon, 8 refuted hypotheses, the aliasing test, the cure space |
+> | [`NONLINEAR_INSTABILITY.md`](building_files/NONLINEAR_INSTABILITY.md) | ✅ **RESOLVED 2026-09-06** — the equal-order pairing, not the model. The phenomenon, ten refuted hypotheses, and the pairing that ended it. ⚠ its quantitative phenomenology is VOID (rule 12b) |
 > | [`CAMPAIGN_COST.md`](building_files/CAMPAIGN_COST.md) | measured run costs, memory bands, queue limits and campaign-scheduling lessons |
 >
-> **⚠ OPEN: A GRID-SCALE INSTABILITY IN THE FULLY NONLINEAR MODEL (2026-09-05).** Nonlinear runs
-> develop an unbounded free-surface mode; the *same case* linear is flat for 80 s at **4× the
-> amplitude**. **Refining `dx` makes it worse** (blow-up t≈24 s at `dx=0.25`, t≈10 s at `dx=0.125`),
-> which excludes under-resolution and identifies a spatial-discretisation instability. Eight
-> **nine** hypotheses are refuted on evidence — Jacobian (exact AD agrees to 4 dp), sponge
-> reflection, boundary generation, domain length, CFL, Benjamin–Feir, and **quadrature
-> under-integration** (degrees 6/10/14 agree to 4 dp against an exact control, so aliasing is *not*
-> the driver). **✅ DIAGNOSED: the growth spectrum peaks at `λ ≈ 2–3·dx` on both meshes** — grid-scale
-> content gains 10³–10⁴× while the carrier gains 6× — so the Galerkin advection operator's **missing
-> energy sink** is measured, not merely inferred. Next step is a cure (skew-symmetric reformulation
-> first); every remaining option changes the residual and costs MMS re-verification. ⚠ **No existing test can detect this** — every nonlinear test is far shorter than the
-> 50–80 s over which the low-amplitude growth emerges, which is how it reached production runs.
+> **✅ THE GRID-SCALE NONLINEAR INSTABILITY IS RESOLVED (2026-09-06). IT WAS THE EQUAL-ORDER
+> ELEMENT PAIRING, NOT THE MODEL.** `η` enters the momentum equation *undifferentiated*, through
+> `∇·v` after the integration by parts, so it plays exactly the role pressure plays in a Stokes
+> system. The runs that blew up used **equal-order `Q2/Q2`** spaces, which are **inf-sup (LBB)
+> deficient**; their classic failure mode is a spurious checkerboard at `λ ≈ 2·dx`, and the measured
+> growth spectrum peaked at `λ ≈ 2–3·dx`. Switching to a **Taylor-Hood** pairing removes it:
+>
+> | `dx` | equal-order `Q2/Q2` | Taylor-Hood `Q2/Q1` |
+> |---|---|---|
+> | 0.50 | suppressed | ✅ 80 s, peak 0.1169 |
+> | 0.25 | **died t=26.4, η→5.06** | ✅ 80 s, peak 0.1115 |
+> | 0.125 | **died t≈10** | ✅ peak 0.1112 |
+>
+> **The refinement signature INVERTED** — peak amplitude now *decreases* monotonically with `dx`
+> (0.1169 → 0.1115 → 0.1112, converging on the delivered 0.102) where it used to get worse.
+> Confirmed on **three integrators** (`SDIRK_2_2`, `SDIRK_3_3`, explicit `EXRK_RungeKutta_4_4`), so
+> it is not `dt`-dissipation masking, and on **both** Taylor-Hood pairings. The verified `Q3/Q2`
+> reproduces it. `Q2/Q1` at `A=0.10` holds a mean `η` of 0.1058–0.1059 over t=30–80 (fourth decimal,
+> 50 wave periods) with Newton at **3.99 iterations/step**, against 30–57 as the equal-order run tore
+> itself apart. It sits **+5.2 % above the linear control** — the second-order Stokes crest elevation
+> the model exists to produce, a regime previously unreachable because the run died first.
+>
+> ⚠ **THE FIX COSTS NOTHING.** No residual term changes: `Q2/Q1` and `Q3/Q2` are the pairings the MMS
+> campaign already certifies (30/30 spatial, five bases, eight models). Enforced by **rule 2b** — the
+> `p_eta = 0` sentinel now resolves to Taylor-Hood everywhere.
+>
+> ⚠ **THE OLD PHENOMENOLOGY IS VOID, NOT SUPERSEDED.** The `σ ∝ A⁴` growth rates, the "no amplitude
+> threshold" finding, the `:none`/`:native`/`:full` tier ordering and the `dt`-masking observations
+> were all measured on a discretisation that is no longer used. Do not re-explain them; discard them.
+> ⚠ **The three refuted-cure findings remain valid and are worth keeping**: quadrature aliasing is not
+> the driver (degrees 6/10/14 agree to 4 dp), the hand Jacobian is not at fault (exact AD agrees to
+> 4 dp), and the **advection operator's energy production is exactly the continuity defect** —
+> derived, gated to 8 significant figures by `test/test_skew_advection.jl`, and measured to be five
+> orders too small to drive the mode.
 > Full account: [`NONLINEAR_INSTABILITY.md`](building_files/NONLINEAR_INSTABILITY.md).
 >
 > **One-line status (2026-09-02).** The solver is feature-complete in serial and distributed. The
@@ -102,9 +124,9 @@ Tables comparing our numbers against theirs must not label both sides the same w
 |---|---|
 | `Project.toml` / `Manifest.toml` | the Julia package manifest — `name = "GridapBALFEM"`, `uuid = 43e94d05-4d7d-4679-96a4-d46e2615da34`. Loaded with **`using GridapBALFEM`, never `include()`** (§5). This directory is **both the package and the working environment**, so `Test`, `BlockArrays`, `MPIPreferences`, `Preferences` are in `[deps]`, not `[extras]`. `[compat]` admits two Gridap minors **on measured evidence** — see `CONFIGURATION.md` §1 |
 | `src/` | the solver package — **17 files** (`vopt.jl` added 2026-09-01), mapped in `ARCHITECTURE.md` §2 |
-| `test/` | 28 test files + `runtests.jl` + `test/cluster/` + `test/local/` — inventory and scores in `TEST_SUITE.md`. `test_mms_distributed_parity.jl` (4 ranks) gates the distributed MMS path against the sequential one |
+| `test/` | **30** test files + `runtests.jl` + `test/cluster/` + `test/local/` — inventory and scores in `TEST_SUITE.md`. `test_mms_distributed_parity.jl` (4 ranks) gates the distributed MMS path against the sequential one; `test_skew_advection.jl` (added 2026-09-05, `:medium`) gates the advection energy identity ★★ on the assembled operator |
 | `examples/` | 7 sequential + `distributed/` (7 cluster scripts + `_dist_common.jl`), `distributed_small/` (5 parametric), `validation/` (7), `local_1d/`, `local_2d/`, `local_mms/` (**11** — the parametric MMS studies, the vertical-basis campaign (`run_vbasis_campaign.jl`, `run_vbasis_shard.jl`, `report_vbasis_campaign.jl`), and the Phase-B batch: `run_phaseB_shard.jl` + `supervise_phaseB2.sh`, a resume-capable runner with a memory-aware supervisor), `inspect_run.jl` — `RUNNING.md` §2 |
-| `run/` | 10 production SLURM launchers + `run/dist_small/` (**30** small-domain 2-D cases — the 7 superseded 1-D twins were deleted 2026-09-02) + `run/local/` (**47** scripts: the original 30 incl. **6** 1-D cases + `run_all_1d.sh`, plus the **16** `run_1dnl_*.sh` nonlinear-instability ladder — 4 physics tiers × A∈{0.05,0.10,0.15,0.20} — + `run_all_1dnl.sh`), all through `run/balfem_env.sh` (cluster) or `balfem_local.sh` (workstation) — `RUNNING.md` §3–4. ⚠ Every launcher is sized to **≤48 cores/node and ≤224 GB/node**: a rome node advertises 256 GB but SLURM allocates only ~224, so `64 × 4 GB` is refused at submit time |
+| `run/` | 10 production SLURM launchers + `run/dist_small/` (**30** small-domain 2-D cases — the 7 superseded 1-D twins were deleted 2026-09-02) + `run/local/` (**47** scripts: the original 30 incl. **6** 1-D cases + `run_all_1d.sh`, plus the **16** `run_1dnl_*.sh` nonlinear-instability ladder — 4 physics tiers × A∈{0.05,0.10,0.15,0.20} — + `run_all_1dnl.sh`; ⚠ **all 16 of those ran EQUAL ORDER and their results are void — see rule 12b**; plus the **6** `run_skewA_*.sh` (energy-consistent advection, refuted) and the **9** Taylor-Hood campaign scripts `run_th_*.sh` / `run_thref_*.sh` + `run_all_th.sh` that resolved the instability), all through `run/balfem_env.sh` (cluster) or `balfem_local.sh` (workstation) — `RUNNING.md` §3–4. ⚠ Every launcher is sized to **≤48 cores/node and ≤224 GB/node**: a rome node advertises 256 GB but SLURM allocates only ~224, so `64 × 4 GB` is refused at submit time |
 | `compile/` | the cluster sysimage build chain — `RUNNING.md` §5 |
 | `postprocessing/` | `GridapBALFEMPost` — self-contained, own environment, **no dependency on the solver** |
 | `WaveSpec.jl/` | vendored stochastic sea-state synthesis (CMOE-TUDelft). Tracks the **GitHub repository version, not a tagged release** — the release's `change_seed!` is broken |
@@ -245,6 +267,18 @@ carries a mesh-independent velocity-error floor (`VERIFICATION.md` §4).
 hand Jacobians, the full nonlinear physics, the SDIRK/θ integrators, all boundary treatments, and
 Dirichlet boundary wave generation with WaveSpec coupling.
 
+**✅ NEW (2026-09-06) — long fully-nonlinear runs are now stable, and that is the headline change.**
+The grid-scale instability that made every long nonlinear run unusable was the **equal-order element
+pairing** (rules 2b, 12b). On Taylor-Hood the 1-D flume runs **50 wave periods at `A=0.10`
+(`κa ≈ 0.16`, `kd = 5.5`)** with a mean `η` flat to the fourth decimal over t=30–80 and Newton at
+3.99 iterations/step — and sitting **+5.2 % above the linear control**, i.e. reproducing the
+second-order Stokes crest elevation. This is the regime the model was built for and it was
+unreachable until now. It cost **no residual change and no re-verification**.
+
+⚠ **In progress, not finished:** the Taylor-Hood campaign's `Q3/Q2` and RK4 legs were still running
+when this was written, and the **17 physics/smoke tests need re-baselining** onto Taylor-Hood (§5
+open work). Neither affects the result above.
+
 **Verified scope — six of eight models** (`Q3/Q2`, 1-D static unless noted). ⚠ **The table below is
 the ORIGINAL single-basis (P1LFE-2) campaign.** Every one of these rows has since been reproduced on
 four further vertical bases — see `MMS_VBASIS_CAMPAIGN.md` — so "verified" now means verified across
@@ -348,12 +382,38 @@ assembled, T9 tier 2 (the horizontal pairings), T10 the `p ≥ 2` bases on the n
   over once the third-order part has decayed. It is **not** caused by the new σ-meshes: P2LFE-1 has
   no free interface at all and degrades identically.
 
-* 🔴 **THE NONLINEAR GRID-SCALE INSTABILITY — DIAGNOSED 2026-09-05, UNFIXED.** The single most
-  consequential open item, because it affects *results*, not verification. Growth spectrum peaks at
-  **`λ ≈ 2–3·dx`** (gain 13 302× at `dx=0.125`, 4 291× at `dx=0.25`, against ~6× for the carrier), so
-  the Galerkin advection operator's **missing energy sink** is measured, not inferred. Nine
-  hypotheses refuted, quadrature among them. Cure requires a residual change ⇒ MMS re-verification.
-  Full account: `building_files/NONLINEAR_INSTABILITY.md`; `OPEN_ITEMS.md` §0.
+* ✅ **THE NONLINEAR GRID-SCALE INSTABILITY — RESOLVED 2026-09-06.** It was the **equal-order
+  `Q2/Q2`** pairing (inf-sup deficient; spurious checkerboard at `λ ≈ 2·dx`, matching the measured
+  `λ ≈ 2–3·dx` growth peak), not the model, the residual or the integrator. Taylor-Hood removes it
+  and the **refinement signature inverts**. Costs nothing — `Q2/Q1` and `Q3/Q2` are already MMS-
+  verified. Enforced by rule 2b. See 12b; `NONLINEAR_INSTABILITY.md`.
+  * ⚠ **FOLLOW-UP OWED — the 17 physics/smoke tests re-baselined.** `test_basic`, `test_dispersion`,
+    `test_dispersion_nonlinear`, `test_nlpressure`, `test_sloshing`, `test_conservation`,
+    `test_convergence`, `test_shallow_water`, `test_bc_generation{,_distributed}`, `test_bc_spectrum`,
+    `test_basic_distributed`, `test_nlpressure_distributed`, and `test/local/` `test_2d_reduces_to_1d`,
+    `test_boundary_modes_1d`, `test_relaxation_1d`, `test_reststate_1d`, `test_sponge_1d` all call
+    `setup_and_run` **without** an explicit `p_eta`, so they moved from `Q2/Q2` to `Q2/Q1` when the
+    sentinel flipped. Their pinned constants were measured on equal order and must be **re-measured,
+    not re-thresholded**. ✅ The verification tier is UNAFFECTED: `test_mms_convergence*`,
+    `test_jacobians_ad`, `test_linear_newton_gate`, `test_mms_distributed_parity` and
+    `test_skew_advection` all pass `p_eta` explicitly and were already Taylor-Hood.
+  * ⚠ **A long-duration nonlinear regression is still missing.** No test runs long enough to have
+    caught this (the mode needed 50–80 s to emerge); that gap is why it reached production. The
+    Taylor-Hood 80 s flume run is the natural basis for one.
+* ✅ **the energy-consistent (skew-symmetric) advection correction — DERIVED, VERIFIED, REFUTED as
+  the cure** (branch `fix-nonlinear-instabilities`, commit `25be653`). Kept because the *derivation*
+  is a permanent asset even though the cure failed: the advection block's energy production is
+  **exactly** the continuity defect,
+  `n(U;U,U) = −½∫∇·(Hū)(Σ M_ij u_i·u_j) + ½∮flux`, resting on the basis-agnostic σ-tensor identity
+  `½(𝓖_ikj + 𝓖_jki) = ½𝓜_ikj − ½Φ_k M_ij` (true because `ψ_k = σΦ_k − varphi_k` vanishes at **both**
+  ends of the water column). Gated by `test/test_skew_advection.jl` (8/8; closed-basin `pi_adv` =
+  −3.04e-03 vs `pi_res` = −3.83e-11) and `test_vertical.jl` (★ ≤ 3.9e-15 on five bases). ⚠ The
+  correction is **off by default** (`skew_advection=false`) and should stay off: the defect it removes
+  is 0.4–17 % of a production that is itself `O(1e-3)`, and switching it on moved the solution by
+  <5e-5 while the instability grew 10³–10⁴×.
+  **Method lesson (now standing): verifying a knob is LIVE is not enough — it must be BIG ENOUGH TO
+  MATTER.** Measuring `‖𝒞‖` against the energy growth rate on a stored baseline would have cost
+  seconds and pre-empted 12 h of runs.
 * 🟠 **`VOPT_KAPPA` should probably move 2.17 → 2.112, but the change is HELD.** Yang & Liu's Table 1
   gives the design bands directly — **`Ω_kd` = 8, 24, 80** for `M` = 2, 3, 4 — so for `p = 1` the κ
   fixed point is not needed at all. At those published bands `optimise_cbdy` reproduces Table 1 to
@@ -449,6 +509,30 @@ supporting measurement is in the linked document.
    integration by parts vanishes; the volume part must be assembled. Without it the model degenerates
    to non-dispersive shallow water.
 2. **`fe_order ≥ 2`.** `Q1` elements zero `R_P` and disable all non-hydrostatic physics.
+
+2b. **ALWAYS USE TAYLOR-HOOD HORIZONTAL PAIRS: `p_eta = fe_order − 1`. NEVER EQUAL ORDER.**
+    `η` enters the momentum equation **undifferentiated**, through `∇·v` after the integration by
+    parts, so it plays exactly the role pressure plays in a Stokes system. Equal-order continuous
+    spaces are therefore **inf-sup (LBB) deficient**, and their classic failure mode is a spurious
+    **checkerboard mode at `λ ≈ 2·dx`** that refinement does not remove.
+
+    **The evidence was already in hand and was not acted on.** The analytic MMS measures order `p`
+    rather than `p+1` on equal-order spaces, and **the entire verified scope of this solver —
+    all 30/30 spatial studies, five vertical bases, eight models — was measured on `Q3/Q2`.**
+
+    ⚠ **Every nonlinear-instability run before 2026-09-05 used `Q2/Q2`** (`BALFEM_P_ETA` unset, and
+    the sentinel then meant equal order). So the configuration that blew up and the configuration
+    that was verified **were never the same discretisation**, and the measured instability sits at
+    `λ ≈ 2–3·dx` — exactly where the equal-order spurious mode lives. That is not proof of cause,
+    but it means no equal-order result can be quoted as a property of the model.
+
+    **Enforced, not merely documented (2026-09-05):** the `p_eta = 0` sentinel in `setup_and_run`,
+    `setup_and_run_distributed` and `run_flume_1d.jl` now resolves to `p_horizontal − 1`. Equal
+    order requires an explicit `p_eta = p_horizontal` and is not a supported production setting.
+    ⚠ Suite reference constants measured on equal order may shift; that is intended.
+
+    **Corollary: a comparison across the pairing is not a one-variable comparison.** Never set an
+    equal-order result beside a Taylor-Hood one and attribute the difference to physics.
 3. **`B_stored = −B̃ ≤ 0`**, and the explicit `(−1)` factors in the `R_P` and slope-pressure terms
    are load-bearing. ⚠ **The invariant is NEGATIVE DEFINITENESS, not the elementwise sign.**
    `B̃ = ∫φᵢ_int φⱼ_int` is a Gram matrix, so `B_stored = −B̃ ≺ 0` for every `(M,p)` — but the
@@ -523,25 +607,52 @@ supporting measurement is in the linked document.
 
     **Corollary: the `:wall` default above is not a compromise.** It is exact precisely *because*
     1-D cases are normal-incidence — the two rules support each other.
-13. **`A_wave ≤ 0.001 m`** for stable long fully-nonlinear integrations.
+13. ~~**`A_wave ≤ 0.001 m`** for stable long fully-nonlinear integrations.~~ ✅ **LIFTED 2026-09-06 —
+    THIS WAS THE INSTABILITY WEARING A DISGUISE.** The cap was never a property of the model; it was
+    the equal-order pairing's growth rate being slow enough at tiny amplitude to finish a run
+    (rule 12b). On **Taylor-Hood** the 1-D flume completes 50 wave periods at `A_wave = 0.10 m`
+    (`κa ≈ 0.16`, `kd = 5.5`) with the mean `η` flat to the fourth decimal — **100× the old cap**.
+    ⚠ This does not license unlimited amplitude: physical limits (Miche, breaking) still apply, and
+    the model has no breaking closure. It removes a *numerical* restriction, not a physical one.
 
-12b. **THE FULLY NONLINEAR MODEL HAS A GRID-SCALE GROWING MODE, AND REFINING `dx` MAKES IT WORSE.**
-    Measured on the 1-D flume at `kd=5.5`: blow-up at t≈24 s for `dx=0.25`, t≈10 s for `dx=0.125`,
-    and barely at all for `dx=0.50` — at an identical delivered amplitude. The linear model at **4×
-    the amplitude** is flat for 80 s, so it is the nonlinear terms alone. **There is no true amplitude
-    threshold** — only a growth rate `σ ≈ 0.012 / 0.055 / 0.214 s⁻¹` at `A = 0.05 / 0.075 / 0.10`;
-    what looked like a threshold was a run that ended before the mode emerged. **The mode is measured:
-    `λ ≈ 2–3·dx`, gaining 10³–10⁴× while the carrier gains 6×** — the nonlinear cascade reaches the
-    grid scale and the energy-conserving Galerkin operator has no sink to remove it. It is **not** a
-    Jacobian, boundary, sponge, domain-length, CFL or Benjamin–Feir effect — all refuted on evidence.
-    Full investigation: [`NONLINEAR_INSTABILITY.md`](building_files/NONLINEAR_INSTABILITY.md).
+12b. ✅ **THE GRID-SCALE NONLINEAR MODE WAS AN EQUAL-ORDER ARTEFACT — RESOLVED 2026-09-06 BY
+    RULE 2b.** For a year the fully nonlinear model appeared to carry a grid-scale growing mode that
+    got **worse under refinement** (blow-up t≈24 s at `dx=0.25`, t≈10 s at `dx=0.125`, barely at all
+    at `dx=0.50`). Every one of those runs used **equal-order `Q2/Q2`** spaces. On Taylor-Hood the
+    mode does not exist: `dx` = 0.50 / 0.25 / 0.125 all complete 50 wave periods with peak `η` =
+    0.1169 / 0.1115 / 0.1112 — **decreasing with refinement**, converging on the delivered 0.102.
 
-12c. **"STABLE" IS MEANINGLESS WITHOUT `dx`, `dt` AND DURATION.** `SDIRK_2_2` is L-stable, so its
-    numerical dissipation grows with `dt` and can *mask* the mode above: at `dx=0.25`, `dt=0.08`
-    saturates at 0.21 where `dt=0.04` reaches 2.81. Conversely at `dx=0.125` a 4× `dt` change is
-    invisible — the growth is too fast for any admissible `dt` to damp. **A run that completes may
-    simply be one whose numerical dissipation exceeded the growth rate.** This is rule 15's trap in a
-    new guise, and it means apparent stability is not evidence of a stable discretisation.
+    **What the investigation got right, and where it went wrong.** Ten hypotheses were refuted on
+    evidence — Jacobian, sponge, boundary generation, domain length, CFL, Benjamin–Feir, quadrature
+    aliasing, and finally the advection operator's own energy production. Rule 38b correctly
+    identified a *discretisation-stability* problem. What none of it questioned was the **FE space
+    pairing**, because it was not a parameter anyone was varying: the launchers left `BALFEM_P_ETA`
+    unset, and the sentinel then meant equal order.
+
+    ⚠ **THE DEEPER LESSON: THE CONFIGURATION THAT BLEW UP WAS NEVER THE CONFIGURATION THAT WAS
+    VERIFIED.** The whole MMS campaign ran `Q3/Q2`; every instability run ran `Q2/Q2`. The two were
+    compared for months as though they were the same solver. **Before diagnosing a numerical failure,
+    diff the failing configuration against the verified one — parameter by parameter, including the
+    ones nobody thought to set.**
+
+    ⚠ **Everything measured about the mode is void, not superseded** — the `σ ∝ A⁴` rates, the
+    "no amplitude threshold" claim, the tier ordering, the `dt`-masking numbers. They characterise a
+    discretisation no longer in use. Full account:
+    [`NONLINEAR_INSTABILITY.md`](building_files/NONLINEAR_INSTABILITY.md).
+
+12c. **"STABLE" IS MEANINGLESS WITHOUT `dx`, `dt` AND DURATION.** An L-stable integrator's numerical
+    dissipation grows with `dt` and can *mask* a growing mode, so **a run that completes may simply
+    be one whose dissipation exceeded the growth rate.** This is rule 15's trap in a new guise, and
+    the rule stands on its own merits — but note how it was DISCHARGED for 12b, because that is the
+    template: the same case was run on `SDIRK_2_2` (L-stable, 2nd order), `SDIRK_3_3` (3rd order) and
+    **explicit `EXRK_RungeKutta_4_4`** (essentially non-dissipative). All three stayed flat, and RK4
+    tracked SDIRK_2_2 to within 1–5 % with the same envelope shape — the offset being exactly the
+    L-stable damping. **Three integrators of different order and stability character agreeing is what
+    retires a dissipation-masking objection; a `dt` ladder on one scheme is not.**
+    ⚠ Gridap DOES provide explicit tableaux (`Gridap.jl/src/ODEs/ODESolvers/TableausEX.jl`, 18 of
+    them incl. classical RK4). They cost a mass solve per stage here, since `∂R/∂u̇` carries the `B`
+    dispersion term and is not the identity — but they run, and they are the right tool for exactly
+    this question.
 14. **The `c_g` transit trap.** At `kd = 5.5`, `c_g = 1.25 m/s` — filling a 45 m flume takes 22.5
     periods. Budget `t_settle ≈ (x_sponge − x_source)/c_g + 3T` before reading any steady state. It
     caught three separate measurements.

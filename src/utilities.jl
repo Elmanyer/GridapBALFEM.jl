@@ -566,9 +566,12 @@ function setup_and_run(;
                                           #   terms exactly but is one degree SHORT of the nonlinear
                                           #   advection integrand φᵢ·u_k·∇u_j·H (degree 3p+1 at
                                           #   equal order). Raise it to test aliasing hypotheses.
-    p_eta        :: Int     = 0,          # surface FE order. 0 ⇒ EQUAL ORDER (= p_horizontal),
-                                          #   which is the historical default and is UNCHANGED.
-                                          #   Set p_eta = p_horizontal−1 for the Taylor-Hood-like
+    p_eta        :: Int     = 0,          # surface FE order. 0 ⇒ TAYLOR-HOOD (= p_horizontal−1).
+                                          #   ⚠ CHANGED 2026-09-05: the sentinel used to mean EQUAL
+                                          #   ORDER. Equal order is inf-sup deficient here and is no
+                                          #   longer reachable by default — pass p_eta=p_horizontal
+                                          #   EXPLICITLY if you truly want it. See CLAUDE.md rule 2b.
+                                          #   Taylor-Hood-like
                                           #   pairing: η enters momentum undifferentiated (via ∇·v
                                           #   after IBP), so it plays the pressure role of a Stokes
                                           #   system and equal-order continuous spaces are inf-sup
@@ -685,7 +688,7 @@ function setup_and_run(;
     # `y_periodic` glues the top/bottom edges when y_wall_bc == :periodic.
     model, trian = build_horizontal_model(domain, partition; y_periodic=y_periodic)
     # quadrature degree = 2·p_horizontal+2 integrates the nonlinear (product) terms exactly enough.
-    dΩh = Measure(trian, 2*max(p_horizontal, p_eta == 0 ? p_horizontal : p_eta) + 2 + quad_extra)
+    dΩh = Measure(trian, 2*max(p_horizontal, p_eta == 0 ? max(1, p_horizontal - 1) : p_eta) + 2 + quad_extra)
 
     # Forcing frequency and the matching wavenumber from the Airy relation
     # ω² = g k tanh(kd) (used to size the wavemaker and report kd).
@@ -787,7 +790,11 @@ function setup_and_run(;
     end
 
     # Build the stacked FE spaces for the horizontal problem, applying the inflow BCs if provided.
-    pe = p_eta == 0 ? p_horizontal : p_eta   # 0 ⇒ equal order (unchanged default)
+    #  ⚠ 0 ⇒ TAYLOR-HOOD (p_horizontal−1), not equal order. η plays the pressure role of a
+    #  Stokes system (it enters momentum undifferentiated, via ∇·v after IBP), so equal-order
+    #  continuous spaces are inf-sup deficient: the analytic MMS measures order p rather than
+    #  p+1 there, and the whole verified scope was measured on Q3/Q2. CLAUDE.md rule 2b.
+    pe = p_eta == 0 ? max(1, p_horizontal - 1) : p_eta
     U, V = build_fe_spaces(model, 
                                 p_horizontal,           # horizontal (velocity) FE order
                                 vert.N_dof;             # number of vertical DOFs = number of stacked fields
