@@ -475,8 +475,9 @@ assembled, T9 tier 2 (the horizontal pairings), T10 the `p ≥ 2` bases on the n
   (`PENDING_TASKS.md` §1), tier 3's `:full`-floor-vs-`Nσ` question, and `OPEN_ITEMS.md` §6's
   velocity-shortfall question for the vertical-basis case (pre-asymptotic — the horizontal `Q2/Q1`
   and `Q4/Q3` pairings are still untested on an extended ladder, and the recipe is now cheap)
-* naming follow-through outside this checkout: GitHub repo (still `GridapLFEM.jl`; the remote URL
-  is stale but redirects), cluster checkout, sysimage rebuild
+* naming follow-through outside this checkout: ✅ the GitHub repo is renamed and the local remote
+  URL was updated to `git@github.com:Elmanyer/GridapBALFEM.jl.git` (2026-09-06); **still outstanding:**
+  the cluster checkout and the sysimage rebuild
 
 ---
 
