@@ -164,6 +164,40 @@ $(echo "$newer" | sed 's|^|[balfem_env]             |')"
 #  balfem_run <nranks> <julia-script> [script args...]
 #    <julia-script> is relative to $BALFEM_PROJ (absolute paths also accepted).
 # ----------------------------------------------------------------------------
+# --- Taylor-Hood pairing guard (CLAUDE.md rule 2b) -------------------------
+#  Resolve and VALIDATE the horizontal element pair before anything expensive
+#  starts. The solver gates this too (check_taylor_hood), but on the cluster that
+#  is a queue wait plus a JIT away, and on a workstation it is ~30 min of
+#  compilation — a bad pairing should cost seconds, not an allocation.
+#
+#  WHY IT IS A HARD REQUIREMENT: eta enters momentum undifferentiated, via div(v)
+#  after the integration by parts, so it plays the pressure role of a Stokes system
+#  and equal-order continuous spaces are inf-sup deficient. Equal order is what
+#  produced the year-long "nonlinear instability" -- an unbounded grid-scale mode at
+#  lambda ~ 2*dx that got WORSE under refinement. CLAUDE.md rules 2b and 12b.
+#
+#  Every launcher gets this by sourcing the helper, so the pairing is enforced and
+#  RECORDED IN THE LOG for local, cluster, sequential and distributed runs alike --
+#  which is what makes a run's discretisation auditable after the fact.
+balfem_require_taylor_hood() {
+    export BALFEM_FE_ORDER="${BALFEM_FE_ORDER:-2}"
+    export BALFEM_P_ETA="${BALFEM_P_ETA:-$((BALFEM_FE_ORDER - 1))}"
+    if [ "$BALFEM_P_ETA" -lt 1 ] 2>/dev/null; then
+        echo "FATAL: BALFEM_P_ETA=$BALFEM_P_ETA — the surface order must be >= 1." >&2
+        return 2
+    fi
+    if [ "$BALFEM_FE_ORDER" -ne $((BALFEM_P_ETA + 1)) ] 2>/dev/null; then
+        echo "FATAL: NON-TAYLOR-HOOD pairing Q$BALFEM_FE_ORDER/Q$BALFEM_P_ETA." >&2
+        echo "  BALFE-M requires BALFEM_FE_ORDER = BALFEM_P_ETA + 1 (velocity one order" >&2
+        echo "  above the surface). Equal order is inf-sup deficient here and caused the" >&2
+        echo "  2026-09 grid-scale instability — CLAUDE.md rules 2b and 12b." >&2
+        echo "  Use FE_ORDER=$((BALFEM_P_ETA + 1)) P_ETA=$BALFEM_P_ETA, or FE_ORDER=$BALFEM_FE_ORDER P_ETA=$((BALFEM_FE_ORDER - 1))." >&2
+        return 2
+    fi
+    echo "  elements : Q${BALFEM_FE_ORDER}/Q${BALFEM_P_ETA} (Taylor-Hood, verified pairing)"
+    return 0
+}
+
 balfem_run() {
     local nranks="$1"; shift
     local script="$1"; shift
@@ -190,10 +224,14 @@ balfem_run() {
         simg_msg="$BALFEM_SYSIMAGE"
     fi
 
+    #  Pairing FIRST: a bad element pair should not consume a queue slot.
+    balfem_require_taylor_hood || exit 2
+
     echo "[balfem_env] project  : $BALFEM_PROJ"
     echo "[balfem_env] cluster  : $BALFEM_CLUSTER"
     echo "[balfem_env] sysimage : $simg_msg"
     echo "[balfem_env] ranks    : $nranks"
+    echo "[balfem_env] elements : Q$BALFEM_FE_ORDER/Q$BALFEM_P_ETA (Taylor-Hood)"
     echo "[balfem_env] script   : $script"
 
     # Is the image still in sync with src/? (warns; fatal under BALFEM_STRICT_SYSIMAGE=1)
