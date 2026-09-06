@@ -208,20 +208,6 @@ models = SEL == "all" ? all_models :
          end
 SEL == "all" || println("  MODEL SUBSET: $SEL  (partial run — not a full verification)")
 
-#  BALFEM_JAC_SKEW=1 re-runs the SAME eight models with the energy-consistent
-#  (skew-symmetric) advection correction switched on. It is applied only to the
-#  nonlinear models — the correction lives inside the advection block, so a linear
-#  model would silently ignore it and M1/M2 would report a false confirmation.
-#
-#  ⚠ The correction's ∂R/∂u̇ contribution is CLAIMED EXACT: 𝒞 carries ηt, so it adds
-#  an η̇ ↔ momentum coupling to the effective mass matrix that exists nowhere else,
-#  and rule 5 forbids omissions there (an O(1) mass-matrix error makes Newton
-#  converge to the fixed point of the wrong map). The amplitude-vanishing gate below
-#  is what checks it: with the correction present but its u̇-derivative missing, ‖ΔB‖
-#  would stop shrinking with amplitude. See SKEW_SYMMETRIC_ADVECTION_PLAN.md §2.2.
-const SKEW = get(ENV, "BALFEM_JAC_SKEW", "0") in ("1", "true", "yes")
-SKEW && println("  SKEW-ADVECTION VARIANT: skew_advection=true on the nonlinear models")
-
 const TOL_EXACT = 1e-10   # round-off is ~1e-15; this is a generous ceiling
 const AMP       = 1.0     # reference state amplitude for the nonlinear scaling gate
 
@@ -263,7 +249,6 @@ for m in models
 
     prob = build_problem(vert; g = G, h_bathy = h_bathy,
                          regime = m.regime, nl_pressure = m.nlp, flat_bed = m.flat,
-                         skew_advection = SKEW && m.regime === :nonlinear,
                          mu_sponge = (x -> 0.0), wm_src = ((x, t) -> 0.0))
 
     #  Re-seed the frozen projections AT THE AMPLITUDE BEING TESTED. Leaving them

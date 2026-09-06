@@ -334,10 +334,6 @@ mutable struct RunDiagnostics
     d_cf       :: Any        # still-water depth CellField
     g          :: Float64
     Mv         :: Any        # vertical mass tensor (kinetic energy weight)
-    Φ          :: Any        # depth weights — ∇·(H ū) = Σₖ Φₖ ∇·(H uₖ)
-    M3         :: Any        # advection 𝓜 ) present only when the run assembles
-    G3         :: Any        # advection 𝓖 ) advection; `nothing` otherwise
-    flat_bed   :: Bool       # ∇h ≡ 0 (mirrors global_residual's single control point)
     x_vals     :: Any        # x-coordinate per η free DOF (aligned with η)
     mu_vals    :: Any        # total damping μ per η free DOF (sponge + relaxation)
     eta_ref    :: Float64    # reference wave amplitude scale (0 ⇒ unknown)
@@ -383,16 +379,13 @@ function build_run_diagnostics(prob, U0, trian, dΩ;
         mkpath(output_dir)
         csv = open(joinpath(output_dir, "diagnostics.csv"), "w")
         println(csv, "step,t,eta_max,x_at_max,eta_max_int,eta_max_damped,u_max,",
-                     "mass,mass_drift,energy,energy_ratio,pi_adv,pi_res,div_flux,",
+                     "mass,mass_drift,energy,energy_ratio,",
                      "nl_iters,nl_stages,res0,res,converged,",
                      "lin_last,lin_min,lin_max,lin_sat,t_solve,rss_mb,rss_peak_mb")
         flush(csv)
     end
 
-    rd = RunDiagnostics(ranks, dΩ, d_cf, prob.g, prob.Mv, prob.Φ,
-                        prob.advection ? prob.M3 : nothing,
-                        prob.advection ? prob.G3 : nothing,
-                        prob.flat_bed,
+    rd = RunDiagnostics(ranks, dΩ, d_cf, prob.g, prob.Mv,
                         get_free_dof_values(xh[1]), get_free_dof_values(muh[1]),
                         eta_ref, div_limit, NaN, NaN, 0.0, csv)
     # Seed the conserved-quantity baselines from the ACTUAL initial state, not
@@ -435,41 +428,6 @@ function field_diagnostics(rd::RunDiagnostics, u_n)
     isnan(rd.mass0)   && (rd.mass0   = mass)
     isnan(rd.energy0) && (rd.energy0 = energy)
 
-    #  ---- advection energy production (the grid-scale instability's driver) ------
-    #  π_adv := n(U;U,U), the advection block tested with W := U — i.e. the rate at
-    #  which the advection operator FEEDS the kinetic energy. The plain Galerkin form
-    #  is not energy-neutral, and §1 of SKEW_SYMMETRIC_ADVECTION_PLAN.md derives its
-    #  production EXACTLY:
-    #
-    #      n(U;U,U) = −½∫ ∇·(Hū) (Σ Mᵢⱼ uᵢ·uⱼ) + ½∮(flux)                    (★★)
-    #
-    #  so π_res := π_adv + ½∫∇·(Hū)(ΣMᵢⱼuᵢ·uⱼ) must equal the BOUNDARY FLUX ALONE.
-    #  π_res is therefore a running numerical test of ★★ on the actual discrete
-    #  states — not on a manufactured one — and π_adv/π_res together say how much of
-    #  the production is the continuity defect the skew correction removes.
-    #
-    #  ⚠ Written out here from the tensors, NOT by calling into problem.jl. A
-    #  diagnostic that shares a code path with the operator it is judging tests
-    #  nothing (CLAUDE.md rule 28); the duplication is the point.
-    pi_adv = NaN; pi_res = NaN; div_flux = NaN
-    if rd.M3 !== nothing
-        dhx = rd.flat_bed ? 0.0*alg_dx(rd.d_cf) : alg_dx(rd.d_cf)
-        dhy = rd.flat_bed ? 0.0*alg_dy(rd.d_cf) : alg_dy(rd.d_cf)
-        dHx = dhx + alg_dx(η);  dHy = dhy + alg_dy(η)
-        DU  = alg_dx(Ux) + alg_dy(Uy)
-        Sk  = H*DU + (dHx*Ux + dHy*Uy)                 # ∇·(H uₖ), stacked
-        TMx = alg_outer(Ux, alg_dx(Ux)) + alg_outer(Uy, alg_dy(Ux))
-        TMy = alg_outer(Ux, alg_dx(Uy)) + alg_outer(Uy, alg_dy(Uy))
-        ke2 = (Ux ⋅ alg_mul(rd.Mv, Ux)) + (Uy ⋅ alg_mul(rd.Mv, Uy))   # Σ Mᵢⱼ uᵢ·uⱼ
-        dHu = alg_dot(rd.Φ, Sk)                                       # ∇·(H ū)
-        pi_adv = sum(∫( H*((alg_dc3(rd.M3, TMx)) ⋅ Ux)
-                      + H*((alg_dc3(rd.M3, TMy)) ⋅ Uy)
-                      + ((alg_dc3(rd.G3, alg_outer(Sk, Ux))) ⋅ Ux)
-                      + ((alg_dc3(rd.G3, alg_outer(Sk, Uy))) ⋅ Uy) ) * rd.dΩ)
-        pi_res   = pi_adv + sum(∫( 0.5*dHu*ke2 ) * rd.dΩ)
-        div_flux = sqrt(abs(sum(∫( dHu*dHu ) * rd.dΩ)))
-    end
-
     rss = global_max_scalar(rss_bytes(), rd.ranks)
     rss > rd.rss_peak && (rd.rss_peak = rss)
 
@@ -477,7 +435,6 @@ function field_diagnostics(rd::RunDiagnostics, u_n)
             u_max = umax, ratio = emax > 0 ? umax/emax : NaN,
             mass = mass, mass_drift = mass - rd.mass0, energy = energy,
             energy_ratio = rd.energy0 != 0 ? energy/rd.energy0 : NaN,
-            pi_adv = pi_adv, pi_res = pi_res, div_flux = div_flux,
             rss = rss, rss_peak = rd.rss_peak)
 end
 
@@ -519,10 +476,9 @@ function diag_csv_row(rd::RunDiagnostics, step::Int, t::Float64, fd, stats)
     lmx = stats === nothing ? -1  : stats.lin_max
     lst = stats === nothing ? 0   : Int(stats.lin_sat)
     ts  = stats === nothing ? NaN : stats.t_solve
-    @printf(rd.csv, "%d,%.6f,%.8e,%.4f,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,",
+    @printf(rd.csv, "%d,%.6f,%.8e,%.4f,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,",
             step, t, fd.eta_max, fd.x_at_max, fd.eta_int, fd.eta_damped,
-            fd.u_max, fd.mass, fd.mass_drift, fd.energy, fd.energy_ratio,
-            fd.pi_adv, fd.pi_res, fd.div_flux)
+            fd.u_max, fd.mass, fd.mass_drift, fd.energy, fd.energy_ratio)
     @printf(rd.csv, "%d,%d,%.6e,%.6e,%d,%d,%d,%d,%d,%.4f,%.1f,%.1f\n",
             ni, nst, r0, rf, cv, ll, lmn, lmx, lst, ts,
             fd.rss/1e6, fd.rss_peak/1e6)

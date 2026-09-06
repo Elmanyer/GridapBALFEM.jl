@@ -32,7 +32,6 @@
 #                        sea   = Dirichlet boundary generation, WaveSpec JONSWAP
 #    BALFEM_REGIME       linear | nonlinear          linear
 #    BALFEM_NL_PRESSURE  none | native | full        none
-#    BALFEM_SKEW         1 = energy-consistent advection 0  (nonlinear runs only)
 #    BALFEM_FLAT_BED     1 flat | 0 submerged bar    1
 #    BALFEM_MPI          0 sequential | 1 MPI        1   (sequential keeps GAUGES;
 #                                                       the distributed driver
@@ -270,13 +269,6 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_horizontal=feord, p_e
           sponge_wL=spL, sponge_wR=spR, sponge_wB=0.0, sponge_wT=0.0, mu_max=mumax,
           T_final=Tfinal, dt=dt,
           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
-          #  BALFEM_SKEW=1 selects the energy-consistent (skew-symmetric) advection
-          #  form: the residual gains the Temam-type continuity-residual correction
-          #  that removes the spurious grid-scale energy SOURCE of the plain Galerkin
-          #  advection operator. A DISCRETISATION switch, not a physics tier — it is a
-          #  no-op (and warns) under BALFEM_REGIME=linear.
-          #  building_files/SKEW_SYMMETRIC_ADVECTION_PLAN.md
-          skew_advection=genv_b("BALFEM_SKEW", 0),
           flat_bed=flat_bed_flag(1),
           y_wall_bc=ybc_sym, x_wall_bc=false,
           wave_bc=wave_bc, bc_side=bc_side_sym(), bc_profile=bc_profile_sym(),

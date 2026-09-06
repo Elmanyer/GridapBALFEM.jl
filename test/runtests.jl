@@ -55,7 +55,6 @@ const SUITE = [
     ("test_jacobians_ad.jl",             :slow,   "hand ∂R/∂u, ∂R/∂u̇ vs AD, all 8 models"),
     ("test_mms_convergence.jl",          :slow,   "order of accuracy, Model 1"),
     ("test_mms_convergence_nonlinear.jl",:slow,   "order of accuracy, Models 3–4"),
-    ("test_skew_advection.jl",           :medium, "advection energy identity ★★ (skew correction)"),
     # ---- base ----------------------------------------------------------------
     ("test_vertical.jl",                 :fast,   "vertical tensor identities"),
     ("test_primitives.jl",               :fast,   "tensor index order / contraction semantics"),

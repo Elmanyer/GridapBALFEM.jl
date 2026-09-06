@@ -23,8 +23,9 @@
 #    julia --project=postprocessing postprocessing/examples/growth_spectrum.jl \
 #          <run_dir> [t_early] [t_late]
 #
-#    Compare two runs (e.g. skew off vs on) by running it on each and reading the
-#    `gain` column — that column, not eta_max, is what the cure has to change.
+#    Compare two runs (e.g. two element pairings, or two meshes) by running it on
+#    each and reading the `gain` column — that column, not eta_max, is what a cure
+#    has to change.
 # ==============================================================
 
 using GridapBALFEMPost
