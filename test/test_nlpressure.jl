@@ -38,7 +38,15 @@ Nσ   = vert.N_dof                      # = 3
 Lx, Ly = 4.0, 2.0
 model, trian = build_horizontal_model(((0.0,Lx),(0.0,Ly)), (8,4))
 dΩh = Measure(trian, 14)                # integrates every polynomial term exactly
-U, V = build_fe_spaces(model, 2, Nσ; y_wall_bc=:open)
+#  ⚠ Q3/Q2, NOT Q2/Q1. G1 below compares an ANALYTIC evaluation against the
+#  implemented block evaluated on the INTERPOLATED FE state, so it is an identity
+#  only if the FE spaces represent the manufactured field EXACTLY. Both eta_f and
+#  ujx/ujy are QUADRATIC (see below), so η needs Q2 and u needs at least Q2 —
+#  and the only Taylor-Hood pair satisfying that is p_u=3, p_eta=2.
+#  With Q2/Q1 the Q1 surface cannot hold a quadratic η and G1 fails at the
+#  INTERPOLATION ERROR (measured 2.05e-03), which looks like a broken identity and
+#  is not one. Taylor-Hood is mandatory (rule 2b), so raise p_u rather than lower p_eta.
+U, V = build_fe_spaces(model, 3, Nσ; y_wall_bc=:open, p_eta=2)
 nq = num_free_dofs(V[1])               # continuity-row count
 
 # polynomial state (all degree ≤ 2; u·n = 0 on the whole boundary)
