@@ -41,6 +41,12 @@ MPIPreferences.use_system_binary(;
     force         = true,
 )
 
+# Add WaveSpec from repository, with the fix on change_seed function bug.
+Pkg.add(url = "https://github.com/Elmanyer/WaveSpec.jl.git")
+
+# Add Gridap from repository, with the fix for multifield transient calculation of Jacobians using AD.
+Pkg.add(url = "https://github.com/Elmanyer/Gridap.jl.git", rev = "fix-transient-multifield-ad")
+
 # Rebuild MPI's precompile cache now so the system binding is in place BEFORE the
 # sysimage build bakes it.
 Pkg.precompile()
