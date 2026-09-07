@@ -81,8 +81,8 @@ model_name = "P$(p_vert)LFE-$(M)"
 Lx, Ly  = genv_f("BALFEM_LX", 60.0), genv_f("BALFEM_LY", 0.25)
 nx, ny  = genv_i("BALFEM_NX", 240), genv_i("BALFEM_NY", 1)
 feord   = genv_i("BALFEM_FE_ORDER", 2)
-#  ⚠ p_eta = 0 now means TAYLOR-HOOD (BALFEM_FE_ORDER-1), NOT equal order.
-#  CHANGED 2026-09-05. eta enters momentum undifferentiated (via div(v) after IBP), so it
+#  ⚠ BALFEM_P_ETA defaults to BALFEM_FE_ORDER-1 (Taylor-Hood). There is no longer a
+#  sentinel: check_taylor_hood REJECTS p_eta<1 and any non-Taylor-Hood pairing. eta enters momentum undifferentiated (via div(v) after IBP), so it
 #  plays the pressure role of a Stokes system: equal-order continuous spaces are inf-sup
 #  deficient, the analytic MMS measures order p rather than p+1 on them, and the ENTIRE
 #  verified scope of this solver was measured on Q3/Q2. Every nonlinear-instability run

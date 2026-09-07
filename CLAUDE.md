@@ -528,8 +528,10 @@ supporting measurement is in the linked document.
     but it means no equal-order result can be quoted as a property of the model.
 
     **Enforced, not merely documented (2026-09-05):** the `p_eta = 0` sentinel in `setup_and_run`,
-    `setup_and_run_distributed` and `run_flume_1d.jl` now resolves to `p_horizontal − 1`. Equal
-    order requires an explicit `p_eta = p_horizontal` and is not a supported production setting.
+    `setup_and_run_distributed` and `run_flume_1d.jl` now resolves to `p_u − 1`. ⚠ **The sentinel
+    was subsequently REMOVED entirely** (`0cf8cb5`): `p_eta` defaults to `p_u − 1` and
+    `check_taylor_hood` REJECTS `p_eta < 1`, so equal order can only be requested explicitly and is
+    then refused. `p_horizontal` was renamed `p_u` in the same commit.
     ⚠ Suite reference constants measured on equal order may shift; that is intended.
 
     **Corollary: a comparison across the pairing is not a one-variable comparison.** Never set an

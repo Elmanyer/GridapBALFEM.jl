@@ -26,7 +26,7 @@ using GridapBALFEM
 # ── tiny SEQUENTIAL solve — specializes residual/Jacobians for CellField ──────
 seq(reg, nlp) = setup_and_run(
     M=2, c_bdy=[0.0, 0.728, 1.0], domain=((0.0, 4.0), (0.0, 4.0)), partition=(4, 4),
-    p_horizontal=2, h_val=3.5, T_wave=1.6, A_wave=0.001,
+    p_u=2, p_eta=1, h_val=3.5, T_wave=1.6, A_wave=0.001,
     x_wm=1.0, y_wm=nothing, sponge_wL=0.5, sponge_wR=0.5, mu_max=5.0,
     T_final=0.1, dt=0.05, regime=reg, nl_pressure=nlp, flat_bed=true,
     save_every=0, print_every=10^6,
@@ -36,7 +36,7 @@ seq(reg, nlp) = setup_and_run(
 dist(reg, nlp) = setup_and_run_distributed(
     cpu_grid=(1, 1), M=2, c_bdy=[0.0, 0.728, 1.0],
     domain=(0.0, 4.0, 0.0, 4.0), partition=(4, 4),
-    p_horizontal=2, h_val=3.5, T_wave=1.6, A_wave=0.001,
+    p_u=2, p_eta=1, h_val=3.5, T_wave=1.6, A_wave=0.001,
     x_wm=1.0, y_wm=nothing, sponge_wL=0.5, sponge_wR=0.5, mu_max=5.0,
     T_final=0.1, dt=0.05, regime=reg, nl_pressure=nlp, flat_bed=true,
     save_every=0, print_every=10^6,
