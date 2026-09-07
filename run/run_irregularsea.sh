@@ -1,11 +1,16 @@
 #!/bin/bash
 
+#  SNELLIUS ROME SIZING: 42 ranks x 4 GiB = 168 GiB = exactly 6/8 of a node.
+#  Was 48 ranks, which billed 7/8 (memory fraction 6.86/8 rounds up). The rome node is
+#  128 cores / 224 GiB divided into EIGHTHS, and the LARGER of the core/memory fraction
+#  sets the bill -- at 4 GiB/rank memory always wins, so the cost-optimal count is 7k
+#  ranks for tier k/8. See run/SNELLIUS_ROME_LAUNCH_CONFIGS.md.
 #SBATCH --job-name="BALFEM_irregularsea"
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
 #SBATCH --nodes=2
-#SBATCH --ntasks=96
-#SBATCH --ntasks-per-node=48
+#SBATCH --ntasks=84
+#SBATCH --ntasks-per-node=42
 #SBATCH --cpus-per-task=1
 # Memory: the rome node default (2 GB/core) was TESTED (2026-08) and the job was
 # still OOM-killed. 4 GB/core is required, and is now MEASURED rather than
@@ -28,8 +33,8 @@
 source $HOME/GridapBALFEM.jl/run/balfem_env.sh
 
 # --- MPI process grid (PX*PY MUST equal the rank count given to balfem_run) ---
-export BALFEM_PX=32
-export BALFEM_PY=3             # 32*3 = 96 ranks; mesh 2000x100
+export BALFEM_PX=14
+export BALFEM_PY=6            # 14*6 = 84 ranks (2 nodes)
 
 # --- Sea state (WaveSpec JONSWAP, seeded phases — long-crested) --------------
 # export BALFEM_HS=0.002        # significant wave height [m] (linear regime)

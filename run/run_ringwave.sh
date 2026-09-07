@@ -1,11 +1,16 @@
 #!/bin/bash
 
+#  SNELLIUS ROME SIZING: 42 ranks x 4 GiB = 168 GiB = exactly 6/8 of a node.
+#  Was 48 ranks, which billed 7/8 (memory fraction 6.86/8 rounds up). The rome node is
+#  128 cores / 224 GiB divided into EIGHTHS, and the LARGER of the core/memory fraction
+#  sets the bill -- at 4 GiB/rank memory always wins, so the cost-optimal count is 7k
+#  ranks for tier k/8. See run/SNELLIUS_ROME_LAUNCH_CONFIGS.md.
 #SBATCH --job-name="BALFEM_ringwave"
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
 #SBATCH --nodes=1
-#SBATCH --ntasks=48
-#SBATCH --ntasks-per-node=48
+#SBATCH --ntasks=42
+#SBATCH --ntasks-per-node=42
 #SBATCH --cpus-per-task=1
 # Memory: the rome node default (2 GB/core) was TESTED (2026-08) and the job was
 # still OOM-killed. 4 GB/core is required, and is now MEASURED rather than
@@ -28,8 +33,8 @@
 source $HOME/GridapBALFEM.jl/run/balfem_env.sh
 
 # --- MPI process grid (PX*PY MUST equal the rank count given to balfem_run) ---
-export BALFEM_PX=8
-export BALFEM_PY=6              # 8*6 = 48 ranks; mesh 200x200 -> 25x33 cells/rank
+export BALFEM_PX=7
+export BALFEM_PY=6            # 7*6 = 42 ranks
 
 # --- Case-specific knobs (defaults shown; uncomment to override) ------------
 # export BALFEM_L=200           # basin side length [m]

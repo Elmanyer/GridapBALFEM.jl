@@ -19,12 +19,17 @@
 #  OUTDIR IS SET EXPLICITLY. The driver builds its output tag from
 #  regime/nl_pressure/bed/A/T and does NOT include the depth, so a shallow run
 #  would otherwise overwrite its deep-water twin of the same tier.
+#  SNELLIUS ROME SIZING: 28 ranks x 4 GiB = 112 GiB = exactly 4/8 of a node.
+#  Was 32 ranks, which billed 5/8 (memory fraction 4.57/8 rounds up). The rome node is
+#  128 cores / 224 GiB divided into EIGHTHS, and the LARGER of the core/memory fraction
+#  sets the bill -- at 4 GiB/rank memory always wins, so the cost-optimal count is 7k
+#  ranks for tier k/8. See run/SNELLIUS_ROME_LAUNCH_CONFIGS.md.
 #SBATCH --job-name="BALFEM_nl_native_bcplane_shallow"
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
-#SBATCH --ntasks=32
+#SBATCH --ntasks=28
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=32
+#SBATCH --ntasks-per-node=28
 #SBATCH --cpus-per-task=1
 # Memory: the rome node default (2 GB/core) was TESTED (2026-08) and OOM-killed.
 # 4 GB/core is required and is MEASURED: the small-domain runs peaked at 3633
@@ -37,8 +42,8 @@
 #SBATCH --output=%x.%j.out
 #SBATCH --error=%x.%j.err
 source $HOME/GridapBALFEM.jl/run/balfem_env.sh
-export BALFEM_PX=8
-export BALFEM_PY=4            # 8*4 = 32 ranks
+export BALFEM_PX=7
+export BALFEM_PY=4            # 7*4 = 28 ranks
 export BALFEM_REGIME=nonlinear
 export BALFEM_NL_PRESSURE=native
 export BALFEM_FLAT_BED=1

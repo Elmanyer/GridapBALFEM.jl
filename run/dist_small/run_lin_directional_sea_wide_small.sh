@@ -52,12 +52,17 @@
 #
 #  OUTDIR IS SET EXPLICITLY: the driver's tag carries regime/tier/bed/Hs but not
 #  the geometry, so this would otherwise overwrite the 20 m-wide linear run.
+#  SNELLIUS ROME SIZING: 35 ranks x 4 GiB = 140 GiB = exactly 5/8 of a node.
+#  Was 40 ranks, which billed 6/8 (memory fraction 5.71/8 rounds up). The rome node is
+#  128 cores / 224 GiB divided into EIGHTHS, and the LARGER of the core/memory fraction
+#  sets the bill -- at 4 GiB/rank memory always wins, so the cost-optimal count is 7k
+#  ranks for tier k/8. See run/SNELLIUS_ROME_LAUNCH_CONFIGS.md.
 #SBATCH --job-name="BALFEM_lin_directional_wide"
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
-#SBATCH --ntasks=40
+#SBATCH --ntasks=35
 #SBATCH --nodes=1
-#SBATCH --ntasks-per-node=40
+#SBATCH --ntasks-per-node=35
 #SBATCH --cpus-per-task=1
 # Memory: 5 GB/core requested (up from the 4 GB the rest of the suite uses),
 # because this run carries twice the cells of the small-domain cases on fewer
@@ -69,7 +74,7 @@
 # FALLBACK if 200 GB/node is still refused: 36 ranks on a (6,6) grid = 180 GB,
 # which is below the 192 GB already proven to submit. That gives 889 cells/rank
 # (~4630 MB, 90 % of the 5 GB cap) instead of 800 (~4310 MB, 84 %).
-#SBATCH --mem-per-cpu=5G
+#SBATCH --mem-per-cpu=4G
 #SBATCH --output=%x.%j.out
 #SBATCH --error=%x.%j.err
 
@@ -79,8 +84,8 @@ source $HOME/GridapBALFEM.jl/run/balfem_env.sh
 #  (8,5) on 200x160 divides EXACTLY both ways: 25 x 32 cells per rank, i.e.
 #  6.25 x 8.00 m subdomains (aspect 1.28). The alternative (10,4) gives
 #  5 x 10 m subdomains (aspect 2.00) and more halo for the same rank count.
-export BALFEM_PX=8
-export BALFEM_PY=5            # 8*5 = 40 ranks; 200/8 = 25, 160/5 = 32 cells each (exact)
+export BALFEM_PX=7
+export BALFEM_PY=5            # 7*5 = 35 ranks
 
 # --- Case-specific overrides ---
 export BALFEM_REGIME=linear
