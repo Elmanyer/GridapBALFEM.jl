@@ -81,8 +81,19 @@ h_bathy = usebar ?
 
 state   = build_airy_state(d; directional=true)
 bedtag  = usebar ? "bar" : "flat"
-tag     = "$(regime_sym())_$(nl_pressure_sym())_$(bedtag)_Hs$(hs_val())"
-outdir  = genv("BALFEM_OUTDIR", joinpath(ROOT, "output", "small_directional_$(tag)_$(model_name)"))
+#  Standardised name — building_files/OUTPUT_NAMING_PROPOSAL.md, generator in
+#  src/utilities.jl. ⚠ y_wall_bc here MUST match the setup_and_run_distributed call
+#  below — it is what makes the <domain> token truthful.
+#  One grammar for every driver; the old per-script prefixes
+#  (small_bcplane_, small_ring_, …) named the SCRIPT, not the case.
+_name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:open,
+                           wave_kind="dir", wave_gen=:bc,
+                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           bed=bedtag, p_u=feord, p_eta=p_eta,
+                           amplitude=hs_val(), period=tp_val(), irregular=true)
+#  Never overwrite an existing run (suffixes _v2, _v3 …).
+outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
+         unique_output_dir(joinpath(ROOT, "output"), _name)
 
 banner("SMALL | directional sea (Dirichlet BC) | $(regime_sym()) $(nl_pressure_sym()) $bedtag Hs=$(hs_val())",
        M, (px,py), (nx,ny), nx*ny, outdir)

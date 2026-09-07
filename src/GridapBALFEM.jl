@@ -94,6 +94,8 @@ export alg_dx, alg_dy, alg_mul, alg_dot, alg_dc3, alg_outer, alg_vec2
 # Horizontal stage
 export build_horizontal_model
 export build_fe_spaces, check_taylor_hood
+export output_dir_name, unique_output_dir, model_token, domain_token, wave_token,
+       regime_token, discr_token
 
 # Problem
 export BALFEMProblem, build_problem, build_problem_raw, resolve_physics

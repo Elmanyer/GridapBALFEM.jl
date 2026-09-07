@@ -136,8 +136,29 @@ else                                        # sea
 end
 spR = genv_f("BALFEM_SPONGE_R", 10.0)
 
-tag    = @sprintf("%s_%s_%s_%s_A%g", kind, regime_sym(), nl_pressure_sym(), bedtag, Awave)
-outdir = genv("BALFEM_OUTDIR", joinpath(ROOT, "output", "local_2d", "small2d_$(tag)_$(model_name)"))
+#  Standardised name — building_files/OUTPUT_NAMING_PROPOSAL.md; generator in
+#  src/utilities.jl. `kind` names the GENERATION here ("line"/"point"/"bc"/"sea"),
+#  so it is translated into the spec's <wave> token: mechanism as a prefix on the
+#  wave type (bcplane), never a separate field.
+_wavekind = kind == "point" ? "ring" : kind == "sea" ? "irr" : "plane"
+_gen      = kind == "bc" ? :bc : kind == "sea" ? :bc : :inner
+_is_sea   = kind == "sea"
+_amp      = _is_sea ? hs_val() : Awave
+_per      = _is_sea ? tp_val() : Twave
+_extra = String[]
+solver_sym() === :theta && push!(_extra, "theta")
+(solver_sym() === :sdirk && tableau_sym() !== :SDIRK_2_2) &&
+    push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
+
+_name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=ybc,
+                           wave_kind=_wavekind, wave_gen=_gen,
+                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           bed=bedtag, p_u=feord, p_eta=p_eta,
+                           amplitude=_amp, period=_per, irregular=_is_sea,
+                           extra=_extra)
+#  Never overwrite an existing run (suffixes _v2, _v3 …).
+outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
+         unique_output_dir(joinpath(ROOT, "output", "local_2d"), _name)
 
 if is_rank0()
     @printf("############################################################\n")

@@ -52,7 +52,16 @@ dt       = genv_f("BALFEM_DT", 0.02)
 periods  = genv_f("BALFEM_PERIODS", 20.0)
 Tfinal   = haskey(ENV, "BALFEM_TFINAL") ? genv_f("BALFEM_TFINAL", 0.0) : periods * Twave
 save_ev  = genv_i("BALFEM_SAVE_EVERY", 20)
-outdir   = genv("BALFEM_OUTDIR", joinpath(ROOT, "output", "ring_wave_dist_$(model_name)"))
+#  Standardised name — building_files/OUTPUT_NAMING_PROPOSAL.md; generator in
+#  src/utilities.jl. ⚠ y_wall_bc must match the setup_and_run_distributed call
+#  below: it is what makes the <domain> token truthful.
+_name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
+                           wave_kind="ring", wave_gen=(:inner),
+                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           bed="flat", p_u=feord, p_eta=p_eta,
+                           amplitude=Awave, period=Twave, irregular=false)
+outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
+         unique_output_dir(joinpath(ROOT, "output"), _name)
 
 banner("RING WAVE (point source) — distributed", M, (px,py), (nx,ny), nx*ny, outdir)
 

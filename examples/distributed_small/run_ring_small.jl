@@ -74,8 +74,19 @@ periods = genv_f("BALFEM_PERIODS", 12.0)
 Tfinal  = haskey(ENV, "BALFEM_TFINAL") ? genv_f("BALFEM_TFINAL", 0.0) : periods * Twave
 save_ev = genv_i("BALFEM_SAVE_EVERY", 10)
 
-tag     = "$(regime_sym())_$(nl_pressure_sym())_A$(Awave)_T$(Twave)"
-outdir  = genv("BALFEM_OUTDIR", joinpath(ROOT, "output", "small_ring_$(tag)_$(model_name)"))
+#  Standardised name — building_files/OUTPUT_NAMING_PROPOSAL.md, generator in
+#  src/utilities.jl. ⚠ y_wall_bc here MUST match the setup_and_run_distributed call
+#  below — it is what makes the <domain> token truthful.
+#  One grammar for every driver; the old per-script prefixes
+#  (small_bcplane_, small_ring_, …) named the SCRIPT, not the case.
+_name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
+                           wave_kind="ring", wave_gen=:inner,
+                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           bed="flat", p_u=feord, p_eta=p_eta,
+                           amplitude=Awave, period=Twave, irregular=false)
+#  Never overwrite an existing run (suffixes _v2, _v3 …).
+outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
+         unique_output_dir(joinpath(ROOT, "output"), _name)
 
 banner("SMALL | ring wave (point source, flat bed) | $(regime_sym()) $(nl_pressure_sym()) A=$Awave",
        M, (px,py), (nx,ny), nx*ny, outdir)

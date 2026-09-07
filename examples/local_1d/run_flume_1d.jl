@@ -245,9 +245,38 @@ gauges = use_mpi ? Tuple{Float64,Float64}[] :
          [(0.2Lx, y_c), (0.4Lx, y_c), (0.5Lx, y_c), (0.5Lx + 1.0, y_c),
           (0.6Lx, y_c), (0.8Lx, y_c)]
 
-tag    = @sprintf("%s_%s_%s_%s_A%g_T%g", wave_gen_kind, regime_sym(),
-                  nl_pressure_sym(), bedtag, Awave, Twave)
-outdir = genv("BALFEM_OUTDIR", joinpath(ROOT, "output", "local_1d", "flume_$(tag)_$(model_name)"))
+#  STANDARDISED OUTPUT NAME — building_files/OUTPUT_NAMING_PROPOSAL.md
+#      <model>_<domain>_<wave>_<regime>_<nlp>_<bed>_<discr>_<amplitude>_<period>[_extra]
+#      P1LFE-2_1d_bcplane_nl_full_flat_Q2Q1_A0.1_T1.6
+#  One generator for every driver (output_dir_name in src/utilities.jl); the old
+#  per-driver `flume_…`/`small2d_…`/`small_…` prefixes named the SCRIPT, not the case.
+#  ⚠ The discretisation token is why this exists: nothing in the old names distinguished
+#  Q2/Q1 from Q2/Q2, which is how equal-order runs were compared against the Taylor-Hood
+#  MMS campaign for months (CLAUDE.md rule 12b).
+_is_sea   = wave_gen_kind == "sea"
+_wavekind = _is_sea ? "irr" : "plane"
+_gen      = wave_gen_kind == "inner" ? :inner : :bc
+_amp      = _is_sea ? genv_f("BALFEM_HS", 0.002) : Awave
+_per      = _is_sea ? genv_f("BALFEM_TP", Twave) : Twave
+#  Extras: only what a study DELIBERATELY varies, in the spec's order.
+_extra = String[]
+solver_sym() === :theta && push!(_extra, "theta")
+(solver_sym() === :sdirk && tableau_sym() !== :SDIRK_2_2) &&
+    push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
+genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
+genv_i("BALFEM_QUAD_EXTRA", 0) != 0 && push!(_extra, "q$(genv_i("BALFEM_QUAD_EXTRA",0))")
+
+_name = output_dir_name(; M = M, p_vert = p_vert, ny = ny, y_wall_bc = ybc_sym,
+                          wave_kind = _wavekind, wave_gen = _gen,
+                          regime = regime_sym(), nl_pressure = nl_pressure_sym(),
+                          bed = bedtag, p_u = feord, p_eta = p_eta,
+                          amplitude = _amp, period = _per, irregular = _is_sea,
+                          nx = nx, nx_in_name = haskey(ENV, "BALFEM_NX"),
+                          extra = _extra)
+#  unique_output_dir NEVER overwrites: it suffixes _v2, _v3 … A re-executed batch wrote
+#  six finished runs over their own output on 2026-09-06 and destroyed them.
+outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
+         unique_output_dir(joinpath(ROOT, "output", "local_1d"), _name)
 
 if is_rank0()
     @printf("############################################################\n")

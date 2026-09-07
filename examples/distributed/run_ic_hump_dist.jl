@@ -51,7 +51,16 @@ sig0     = genv_f("BALFEM_SIGMA0", 4.0)
 dt       = genv_f("BALFEM_DT", 0.02)
 Tfinal   = genv_f("BALFEM_TFINAL", 40.0)
 save_ev  = genv_i("BALFEM_SAVE_EVERY", 25)
-outdir   = genv("BALFEM_OUTDIR", joinpath(ROOT, "output", "ic_hump_dist_$(model_name)"))
+#  Standardised name — building_files/OUTPUT_NAMING_PROPOSAL.md; generator in
+#  src/utilities.jl. ⚠ y_wall_bc must match the setup_and_run_distributed call
+#  below: it is what makes the <domain> token truthful.
+_name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
+                           wave_kind="hump", wave_gen=(:ic),
+                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           bed="flat", p_u=feord, p_eta=p_eta,
+                           amplitude=Awave, period=Twave, irregular=false)
+outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
+         unique_output_dir(joinpath(ROOT, "output"), _name)
 
 xc, yc = L/2, L/2
 eta0(x) = A0 * exp(-((x[1]-xc)^2 + (x[2]-yc)^2) / sig0^2)

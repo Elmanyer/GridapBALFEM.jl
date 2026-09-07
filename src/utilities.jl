@@ -951,3 +951,127 @@ function setup_and_run(;
 
     return diags, vert, prob
 end
+
+# ==============================================================
+#  Standardised output-directory naming
+#  (building_files/OUTPUT_NAMING_PROPOSAL.md — the accepted spec)
+#
+#      <model>_<domain>_<wave>_<regime>_<nlp>_<bed>_<discr>_<amplitude>_<period>[_<extra>…]
+#      P1LFE-2_1d_bcplane_nl_full_flat_Q2Q1_A0.10_T1.6
+#
+#  ONE generator for every driver, sequential and distributed. Three drivers building
+#  names three different ways is the defect this replaces.
+#
+#  ⚠ FIELDS ARE NEVER OMITTED, and an absent field must never encode a default. The
+#  discretisation field exists because nothing in the old names said Q2/Q1 vs Q2/Q2 —
+#  which is exactly how the equal-order runs and the Taylor-Hood MMS campaign were
+#  compared for months as though they were the same solver (CLAUDE.md rule 12b).
+# ==============================================================
+
+"Vertical basis token: `P{p_vert}LFE-{M}`. The legacy `M2` spelling is retired."
+model_token(M::Int, p_vert::Int) = "P$(p_vert)LFE-$(M)"
+
+"""
+    domain_token(; ny, y_wall_bc) -> "1d" | "2d" | "2dper" | "2dopen"
+
+`ny == 1` with solid walls is the narrow flume, i.e. a 1-D horizontal case
+(CLAUDE.md rule 12). Otherwise the lateral boundary condition names the class.
+"""
+function domain_token(; ny::Int, y_wall_bc::Symbol)
+    ny == 1 && y_wall_bc === :wall && return "1d"
+    y_wall_bc === :periodic && return "2dper"
+    y_wall_bc === :open     && return "2dopen"
+    return "2d"
+end
+
+"""
+    wave_token(kind, gen) -> e.g. "bcplane", "plane", "irr", "dir", "ichump"
+
+The generation mechanism is a PREFIX on the wave type, not a separate field: `bcplane`
+keeps the mechanism attached to the thing it generates and reads better than `plane_bc`.
+`gen`: `:bc` | `:inner` | `:ic` | `:none`.
+"""
+function wave_token(kind::AbstractString, gen::Symbol)
+    pre = gen === :bc ? "bc" : gen === :ic ? "ic" : ""
+    return pre * kind
+end
+
+"`:linear`→`lin`, `:nonlinear`→`nl`."
+regime_token(regime::Symbol) = regime === :linear ? "lin" : "nl"
+
+"""
+    discr_token(p_u, p_eta; nx=nothing, ny=nothing) -> "Q2Q1" | "Q2Q1-nx480" | …
+
+⚠ `p_eta` is written even though Taylor-Hood makes it redundant in principle. A
+discretisation that is not visible in the output is one nobody checks.
+"""
+function discr_token(p_u::Int, p_eta::Int; nx = nothing, ny = nothing)
+    t = "Q$(p_u)Q$(p_eta)"
+    nx === nothing && return t
+    return ny === nothing || ny == 1 ? "$t-nx$(nx)" : "$t-nx$(nx)x$(ny)"
+end
+
+"Trim a float to a compact, unambiguous decimal (`0.1`→`0.10`, `1.6`→`1.6`, `0.001`→`0.001`)."
+function _num(x::Real)
+    s = @sprintf("%.10g", float(x))
+    return s
+end
+
+"""
+    output_dir_name(; M, p_vert, ny, y_wall_bc, wave_kind, wave_gen, regime,
+                      nl_pressure, bed, p_u, p_eta, amplitude, period,
+                      irregular=false, nx=nothing, nx_in_name=false, extra=String[]) -> String
+
+Build the standardised directory name. **Refuses combinations that cannot exist**, rather
+than labelling them: a name generator that can express an impossible case will eventually
+be asked to label one.
+"""
+function output_dir_name(; M::Int, p_vert::Int,
+                           ny::Int, y_wall_bc::Symbol,
+                           wave_kind::AbstractString, wave_gen::Symbol,
+                           regime::Symbol, nl_pressure::Symbol,
+                           bed::AbstractString,
+                           p_u::Int, p_eta::Int,
+                           amplitude::Real, period::Real,
+                           irregular::Bool = false,
+                           nx = nothing, nx_in_name::Bool = false,
+                           extra::AbstractVector{<:AbstractString} = String[])
+    dom = domain_token(; ny = ny, y_wall_bc = y_wall_bc)
+    #  ⚠ A 1-D domain carries one propagation direction; directional content has a
+    #  transverse wavenumber a one-cell-wide flume cannot represent (rule 12). Refuse it.
+    (dom == "1d" && occursin("dir", wave_kind)) && error(
+        "output_dir_name: directional content ($wave_kind) is impossible on a 1-D domain " *
+        "— a flume one cell across cannot represent k_y (CLAUDE.md rule 12).")
+    regime === :linear && nl_pressure !== :none && error(
+        "output_dir_name: regime=:linear with nl_pressure=:$nl_pressure — a linear model " *
+        "carries no 𝓝 (mirrors resolve_physics).")
+    check_taylor_hood(p_u, p_eta; where = "output_dir_name")
+
+    amp = (irregular ? "Hs" : "A") * _num(amplitude)
+    per = (irregular ? "Tp" : "T")  * _num(period)
+    parts = [model_token(M, p_vert), dom,
+             wave_token(wave_kind, wave_gen),
+             regime_token(regime), String(nl_pressure), String(bed),
+             discr_token(p_u, p_eta; nx = nx_in_name ? nx : nothing, ny = nothing),
+             amp, per]
+    append!(parts, extra)
+    return join(parts, "_")
+end
+
+"""
+    unique_output_dir(root, name) -> String
+
+Join and, if the directory already exists and is non-empty, suffix `_v2`, `_v3`, …
+
+⚠ **NEVER silently overwrite.** On 2026-09-06 a re-executed batch wrote six finished runs
+over their own output and destroyed them. A path that cannot collide cannot do that.
+"""
+function unique_output_dir(root::AbstractString, name::AbstractString)
+    path = joinpath(root, name)
+    (!isdir(path) || isempty(readdir(path))) && return path
+    v = 2
+    while isdir("$(path)_v$(v)") && !isempty(readdir("$(path)_v$(v)"))
+        v += 1
+    end
+    return "$(path)_v$(v)"
+end

@@ -58,7 +58,16 @@ periods  = genv_f("BALFEM_PERIODS", 20.0)
 Tp       = tp_val()
 Tfinal   = haskey(ENV, "BALFEM_TFINAL") ? genv_f("BALFEM_TFINAL", 0.0) : periods * Tp
 save_ev  = genv_i("BALFEM_SAVE_EVERY", 1)     # SAVE A LOT OF SCREENSHOTS FOR VISUALISATION
-outdir   = genv("BALFEM_OUTDIR", joinpath(ROOT, "output", "irregular_sea_dist_$(model_name)"))
+#  Standardised name — building_files/OUTPUT_NAMING_PROPOSAL.md; generator in
+#  src/utilities.jl. ⚠ y_wall_bc must match the setup_and_run_distributed call
+#  below: it is what makes the <domain> token truthful.
+_name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
+                           wave_kind="irr", wave_gen=(:bc),
+                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           bed="flat", p_u=feord, p_eta=p_eta,
+                           amplitude=hs_val(), period=tp_val(), irregular=true)
+outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
+         unique_output_dir(joinpath(ROOT, "output"), _name)
 
 state = build_airy_state(d; directional=false)
 
