@@ -3,12 +3,12 @@
 #SBATCH --job-name="BALFEM_periodicplanewave"
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
-#SBATCH --nodes=2
-#SBATCH --ntasks=84
+#SBATCH --nodes=1
+#SBATCH --ntasks=42
 #SBATCH --ntasks-per-node=42
 #SBATCH --cpus-per-task=1
 # 4 GiB/rank is REQUIRED (measured peak 3633 MB/rank; 2 GB/core was OOM-killed).
-# Sizing: 42 ranks/node x 4 GiB = 168 GiB/node = 6/8 of a rome node (84 total).
+# Sizing: 42 ranks x 4 GiB = 168 GiB = 6/8 of ONE rome node.
 # Rules and tiers: run/SNELLIUS_ROME_LAUNCH_CONFIGS.md
 #SBATCH --mem-per-cpu=4G
 #SBATCH --output=GridapBALFEM.%j.out
@@ -17,8 +17,8 @@
 source $HOME/GridapBALFEM.jl/run/balfem_env.sh
 
 # --- MPI process grid (PX*PY MUST equal the rank count given to balfem_run) ---
-export BALFEM_PX=14
-export BALFEM_PY=6            # 14*6 = 84 ranks (2 nodes)
+export BALFEM_PX=7
+export BALFEM_PY=6            # 7*6 = 42 ranks
 
 # --- Case-specific knobs (periodic-width flume; defaults shown) --------------
 #     The y-edges are periodic (set in the example) -> no lateral sponges.
@@ -36,4 +36,4 @@ export BALFEM_PY=6            # 14*6 = 84 ranks (2 nodes)
 # export BALFEM_LS_MAXITER=4000
 # export BALFEM_NL_TOL=1e-6
 
-balfem_run 84 examples/distributed/run_periodic_plane_wave_dist.jl
+balfem_run 42 examples/distributed/run_periodic_plane_wave_dist.jl

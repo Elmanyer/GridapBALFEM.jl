@@ -103,6 +103,16 @@ export BALFEM_PY=4              # 7*4 = 28
   submit time. The table above uses the real 224.
 * **`--mem` and `--mem-per-cpu` are exclusive.** This repo uses `--mem-per-cpu` throughout so the
   arithmetic stays per-rank.
+* **One node beats two, when the problem fits.** All six production launchers were moved from
+  `2 × 42 ranks` (6/8 on each of two nodes) to `1 × 42` (6/8 on one) on 2026-09-07.
+  ⚠ **Be precise about why this is cheaper.** It halves the *reservation*, but billing is
+  fraction × wall-time, and halving the ranks roughly doubles the wall-time — so on a perfectly
+  scaling problem the node-hours would come out **the same**. It wins because scaling is *not*
+  perfect: at 84 ranks each subdomain is small, the GMRES communication share is larger, and
+  parallel efficiency is lower than at 42. Fewer, better-loaded ranks therefore cost fewer
+  node-hours for the same work — and a single-node job also queues sooner and avoids inter-node
+  communication entirely. **Re-measure if a case grows; this is an efficiency argument, not an
+  identity.**
 * **Fewer ranks is often cheaper *and* faster.** Beyond the point where each rank holds a meaningful
   share, adding ranks raises the communication cost *and* the bill. Spend spare capacity on more
   *cases*, not on decomposing one case further (`CLAUDE.md` rule 23).
