@@ -19,11 +19,6 @@
 #  OUTDIR IS SET EXPLICITLY. The driver builds its output tag from
 #  regime/nl_pressure/bed/A/T and does NOT include the depth, so a shallow run
 #  would otherwise overwrite its deep-water twin of the same tier.
-#  SNELLIUS ROME SIZING: 28 ranks x 4 GiB = 112 GiB = exactly 4/8 of a node.
-#  Was 32 ranks, which billed 5/8 (memory fraction 4.57/8 rounds up). The rome node is
-#  128 cores / 224 GiB divided into EIGHTHS, and the LARGER of the core/memory fraction
-#  sets the bill -- at 4 GiB/rank memory always wins, so the cost-optimal count is 7k
-#  ranks for tier k/8. See run/SNELLIUS_ROME_LAUNCH_CONFIGS.md.
 #SBATCH --job-name="BALFEM_nl_native_bcplane_shallow"
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
@@ -31,13 +26,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=28
 #SBATCH --cpus-per-task=1
-# Memory: the rome node default (2 GB/core) was TESTED (2026-08) and OOM-killed.
-# 4 GB/core is required and is MEASURED: the small-domain runs peaked at 3633
-# MB/rank, so 3 GB/core would OOM too. RSS rose over the first ~100 steps then
-# PLATEAUED -- no per-step leak. See building_files/OPEN_ITEMS.md section 1.
-# A rome node advertises 256 GB but SLURM can allocate only ~224 GB, so
-# 64 ranks/node x 4 GB = 256 GB/node is REFUSED at submit time. 32 ranks x 4 GB
-# = 128 GB/node fits and is the proven small-domain configuration.
+# 4 GiB/rank is REQUIRED (measured peak 3633 MB/rank; 2 GB/core was OOM-killed).
+# Sizing: 28 ranks/node x 4 GiB = 112 GiB/node = 4/8 of a rome node (28 total).
+# Rules and tiers: run/SNELLIUS_ROME_LAUNCH_CONFIGS.md
 #SBATCH --mem-per-cpu=4G
 #SBATCH --output=%x.%j.out
 #SBATCH --error=%x.%j.err
@@ -53,4 +44,4 @@ export BALFEM_D=0.85          # kd = 1.079  (deep twin: d=3.5, kd=3.527)
 #  leaving ~23 s of steady state -- more margin than the deep cases get.
 export BALFEM_PERIODS=30
 export BALFEM_OUTDIR=$HOME/GridapBALFEM.jl/output/small_bcplane_nonlinear_native_shallow_d0.85_A0.1_T2.0_P1LFE-2
-balfem_run 32 examples/distributed_small/run_bc_plane_small.jl
+balfem_run 28 examples/distributed_small/run_bc_plane_small.jl

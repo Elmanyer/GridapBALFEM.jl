@@ -20,11 +20,6 @@
 #
 #  Expect the A=0.15 case to diverge before 60 s -- that is fine and expected.
 #  The rate is measured during growth, not at saturation.
-#  SNELLIUS ROME SIZING: 28 ranks x 4 GiB = 112 GiB = exactly 4/8 of a node.
-#  Was 32 ranks, which billed 5/8 (memory fraction 4.57/8 rounds up). The rome node is
-#  128 cores / 224 GiB divided into EIGHTHS, and the LARGER of the core/memory fraction
-#  sets the bill -- at 4 GiB/rank memory always wins, so the cost-optimal count is 7k
-#  ranks for tier k/8. See run/SNELLIUS_ROME_LAUNCH_CONFIGS.md.
 #SBATCH --job-name="BALFEM_nl_full_bcplane_A0.15"
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
@@ -32,9 +27,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=28
 #SBATCH --cpus-per-task=1
-# Memory: 4 GB/core is required and MEASURED (this exact case peaked at 2882 MB
-# on 32 ranks / 250 cells per rank). 32 x 4 GB = 128 GB/node, well inside the
-# ~224 GB a rome node can allocate. See building_files/OPEN_ITEMS.md section 1.
+# 4 GiB/rank is REQUIRED (measured peak 3633 MB/rank; 2 GB/core was OOM-killed).
+# Sizing: 28 ranks/node x 4 GiB = 112 GiB/node = 4/8 of a rome node (28 total).
+# Rules and tiers: run/SNELLIUS_ROME_LAUNCH_CONFIGS.md
 #SBATCH --mem-per-cpu=4G
 #SBATCH --output=%x.%j.out
 #SBATCH --error=%x.%j.err
@@ -53,4 +48,4 @@ export BALFEM_AWAVE=0.15
 #  rung cannot overwrite the existing 16-period production run, whose auto-tag
 #  (which carries A but NOT the duration) is otherwise identical.
 export BALFEM_OUTDIR=$HOME/GridapBALFEM.jl/output/small_bcplane_nlfull_ampladder_A0.15_P1LFE-2
-balfem_run 32 examples/distributed_small/run_bc_plane_small.jl
+balfem_run 28 examples/distributed_small/run_bc_plane_small.jl

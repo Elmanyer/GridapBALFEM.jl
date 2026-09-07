@@ -1,10 +1,5 @@
 #!/bin/bash
 
-#  SNELLIUS ROME SIZING: 42 ranks x 4 GiB = 168 GiB = exactly 6/8 of a node.
-#  Was 48 ranks, which billed 7/8 (memory fraction 6.86/8 rounds up). The rome node is
-#  128 cores / 224 GiB divided into EIGHTHS, and the LARGER of the core/memory fraction
-#  sets the bill -- at 4 GiB/rank memory always wins, so the cost-optimal count is 7k
-#  ranks for tier k/8. See run/SNELLIUS_ROME_LAUNCH_CONFIGS.md.
 #SBATCH --job-name="BALFEM_bathymetry"
 #SBATCH --partition=rome
 #SBATCH --time=72:00:00
@@ -12,15 +7,9 @@
 #SBATCH --ntasks=84
 #SBATCH --ntasks-per-node=42
 #SBATCH --cpus-per-task=1
-# Memory: the rome node default (2 GB/core) was TESTED (2026-08) and the job was
-# still OOM-killed. This request is therefore NOT provisional headroom for a
-# compile spike -- it is required until the consumption is attributed; see
-# building_files/OPEN_ITEMS.md section 1. Sized so it FITS a rome
-# node. This cluster does not admit more than 48 cores per node together with
-# the raised 4 GB/core, so 100 ranks over 2 nodes (50/node) is REFUSED; 96 ranks
-# over 2 nodes = 48/node x 4 GB = 192 GB/node is the largest that submits.
-# Do NOT drop this on the argument that the sysimage removes the per-rank
-# compile: that argument was tested and refuted.
+# 4 GiB/rank is REQUIRED (measured peak 3633 MB/rank; 2 GB/core was OOM-killed).
+# Sizing: 42 ranks/node x 4 GiB = 168 GiB/node = 6/8 of a rome node (84 total).
+# Rules and tiers: run/SNELLIUS_ROME_LAUNCH_CONFIGS.md
 #SBATCH --mem-per-cpu=4G
 #SBATCH --output=GridapBALFEM.%j.out
 #SBATCH --error=GridapBALFEM.%j.err
@@ -52,4 +41,4 @@ export BALFEM_PY=6            # 14*6 = 84 ranks (2 nodes)
 # export BALFEM_LS_MAXITER=4000
 # export BALFEM_NL_TOL=1e-6
 
-balfem_run 96 examples/distributed/run_bathymetry_dist.jl
+balfem_run 84 examples/distributed/run_bathymetry_dist.jl

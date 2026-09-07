@@ -27,7 +27,7 @@
 #
 #  USAGE in a launcher
 #      source $HOME/GridapBALFEM.jl/run/balfem_env.sh
-#      export BALFEM_PX=8; export BALFEM_PY=4          # 8*4 = 32 ranks
+#      export BALFEM_PX=7; export BALFEM_PY=4          # 7*4 = 28 ranks = 4/8 of a rome node
 #      export BALFEM_REGIME=linear                   # case-specific overrides
 #      balfem_run 32 examples/distributed_small/run_periodic_plane_small.jl
 #

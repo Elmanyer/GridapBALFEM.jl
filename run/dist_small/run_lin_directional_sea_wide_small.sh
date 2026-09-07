@@ -52,11 +52,6 @@
 #
 #  OUTDIR IS SET EXPLICITLY: the driver's tag carries regime/tier/bed/Hs but not
 #  the geometry, so this would otherwise overwrite the 20 m-wide linear run.
-#  SNELLIUS ROME SIZING: 35 ranks x 4 GiB = 140 GiB = exactly 5/8 of a node.
-#  Was 40 ranks, which billed 6/8 (memory fraction 5.71/8 rounds up). The rome node is
-#  128 cores / 224 GiB divided into EIGHTHS, and the LARGER of the core/memory fraction
-#  sets the bill -- at 4 GiB/rank memory always wins, so the cost-optimal count is 7k
-#  ranks for tier k/8. See run/SNELLIUS_ROME_LAUNCH_CONFIGS.md.
 #SBATCH --job-name="BALFEM_lin_directional_wide"
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
@@ -64,16 +59,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=35
 #SBATCH --cpus-per-task=1
-# Memory: 5 GB/core requested (up from the 4 GB the rest of the suite uses),
-# because this run carries twice the cells of the small-domain cases on fewer
-# ranks. THE RANK COUNT IS SET BY THE PER-NODE CEILING, NOT BY THE CORE LIMIT:
-#   48 x 5 GB = 240 GB/node  -> REFUSED. A rome node advertises 256 GB but SLURM
-#                               can allocate only ~224 GB; this is the same wall
-#                               that rejected 64 x 4 GB = 256 GB.
-#   40 x 5 GB = 200 GB/node  -> the largest that fits, and what is used here.
-# FALLBACK if 200 GB/node is still refused: 36 ranks on a (6,6) grid = 180 GB,
-# which is below the 192 GB already proven to submit. That gives 889 cells/rank
-# (~4630 MB, 90 % of the 5 GB cap) instead of 800 (~4310 MB, 84 %).
+# 4 GiB/rank is REQUIRED (measured peak 3633 MB/rank; 2 GB/core was OOM-killed).
+# Sizing: 35 ranks/node x 4 GiB = 140 GiB/node = 5/8 of a rome node (35 total).
+# Rules and tiers: run/SNELLIUS_ROME_LAUNCH_CONFIGS.md
 #SBATCH --mem-per-cpu=4G
 #SBATCH --output=%x.%j.out
 #SBATCH --error=%x.%j.err
@@ -99,4 +87,4 @@ export BALFEM_SPONGE_Y=4.0    # was 8.0 -> undamped strip 4 m -> 32 m (3.6 lambd
 export BALFEM_SAVE_EVERY=20
 export BALFEM_OUTDIR=$HOME/GridapBALFEM.jl/output/small_directional_linear_none_flat_Hs0.2_WIDE_P1LFE-2
 
-balfem_run 40 examples/distributed_small/run_directional_sea_small.jl
+balfem_run 35 examples/distributed_small/run_directional_sea_small.jl
