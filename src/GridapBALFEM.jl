@@ -108,7 +108,6 @@ export nlp_gradH_frozen_contrib, nlp_P_frozen_contrib
 export build_nlp_ctx, update_nlp_state!
 export SigmaBasis, vopt_tensors, vopt_weight, polarization, profile_errors
 export raw_errors, vopt_medians, total_error, optimise_cbdy, vopt_selfcheck
-export VOPT_KAPPA, vopt_Omega, optimised_cbdy
 
 # Time integration
 export build_ode_solver, build_preconditioner
@@ -145,7 +144,7 @@ export find_wavenumber
 export dispersion_ratio, applicable_kd, dispersion_error, applicable_kd_first
 export model_R, airy_R, wave_properties, property_errors, applicable_range
 export make_sponge, make_wavemaker_line, make_wavemaker_point
-export DEFAULT_CBDY, DEFAULT_CBDY_P, resolve_cbdy
+export DEFAULT_CBDY, resolve_cbdy
 export setup_and_run
 
 # Dirichlet boundary wave generation (waveinput.jl) + WaveSpec re-export

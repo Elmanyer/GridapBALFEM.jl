@@ -9,6 +9,17 @@
 #  weight W(kd) = exp[(2^{-kd} − 2^{-π}) log 5], and the overbar is
 #  normalisation by that term's MEDIAN over the sampled design population.
 #
+#  ⚠ THE FIVE TERMS ARE NOT OF A COMMON FORM — Yang & Liu (2024) eq. (3.10):
+#      E_c     = ∫ |[C_m² − C_e²] W / C_e²| d(kd)        SQUARED celerity, |·|
+#      E_cg    = ∫ |[C_gm − C_ge] W / C_ge| d(kd)        FIRST power,     |·|
+#      E_shoal = exp[ ∫ (γ_e − γ_m) W / kd  d(kd) ] − 1  SIGNED, no |·|
+#      E_u     = ∫ [∫₀¹ |u_m−u_e| dσ / u_e(1)] W d(kd)   |·| inside dσ
+#      E_w     = ∫ [∫₀¹ |w_m−w_e| dσ / w_e(1)] W d(kd)   |·| inside dσ
+#  Squaring E_cg, or wrapping E_shoal in abs, are BOTH departures from the
+#  reference. They were present here until 2026-09-08 and are corrected; the
+#  measured effect on the optimum is small (≤0.003 in c at M=2) but the forms
+#  are the specification, not an approximation to it.
+#
 #  WHY A SELF-CONTAINED ANALYTIC BASIS, and not the Gridap assembly.
 #  Two of the five terms — E_u and E_w — compare VERTICAL PROFILES pointwise:
 #      E_u ~ ∫∫ |u_m(σ) − u_e(σ)| dσ W d(kd)
@@ -180,7 +191,7 @@ Yang & Liu's weighting `W = exp[(2^{-kd} − 2^{-π}) log 5]`.
 ⚠ It does NOT decay to zero: `W(0)=4.17`, `W(∞)→5^{-2^{-π}}=0.834`. So it
 re-weights shallow water by a factor ≈5 but does not make the kd-integral
 convergent on its own — the upper limit `Ω` is a genuine DESIGN BAND, not a
-numerical cutoff. That is why `vopt_Omega` exists.
+numerical cutoff. Ω must therefore be CHOSEN and stated, not derived here.
 """
 vopt_weight(kd::Float64) = exp((2.0^(-kd) - 2.0^(-pi)) * log(5.0))
 
@@ -245,6 +256,14 @@ suffices and the cost is dominated by the `N×N` solve per node.
 `kd → 0` is a removable singularity in every term (all relative errors vanish),
 but `sinh(kd)` and the `1/kd` scaling are numerically poor there, so the rule
 starts at `kd_min = 1e-3` rather than 0.
+
+⚠ `Esh` is returned as `exp(I) − 1` with `I` the SIGNED integral, so it is
+negative in practice — unlike the other four, which are absolute-valued per
+(3.10). That is intended and needs no repair: `exp(I) − 1` is SINGLE-SIGNED
+across the design population, so the median `vopt_medians` divides by carries
+the same sign and cancels it, making the normalised term positive and exactly
+equal to the `|exp(I) − 1|` form. The cancellation requires the median to be
+taken over the `exp(I) − 1` population — see the warning in `vopt_medians`.
 """
 function raw_errors(M::Int, p::Int, c_bdy::AbstractVector{<:Real};
                     Omega::Float64, nkd::Int = 48, kd_min::Float64 = 1e-3)
@@ -262,16 +281,34 @@ function raw_errors(M::Int, p::Int, c_bdy::AbstractVector{<:Real};
         Rm = model_R(T, mu)
         Re = airy_R(mu)
         (isfinite(Rm[1]) && Rm[1] > 0) || return (Ec=Inf,Ecg=Inf,Esh=Inf,Eu=Inf,Ew=Inf)
-        #  C² = g d R  ⇒  (C_m²−C_e²)/C_e² = (R_m−R_e)/R_e
+        #  C² = g d R  ⇒  (C_m²−C_e²)/C_e² = (R_m−R_e)/R_e.  E_c is the one term
+        #  (3.10) states in the SQUARED celerity, so this form is the paper's.
         Ec  += abs((Rm[1] - Re[1]) / Re[1]) * W * w
-        #  C_g² ∝ (R+μR')²/R
-        gm = (Rm[1] + mu*Rm[2])^2 / Rm[1]
-        ge = (Re[1] + mu*Re[2])^2 / Re[1]
-        Ecg += abs((gm - ge) / ge) * W * w
-        #  shoaling gradient, from the SAME routine for model and exact so the
-        #  finite-difference truncation is common and cancels (see wave_properties)
+        #  C_g, and γ below, come from the SAME routine for model and exact, so
+        #  the finite-difference truncation is common and cancels.
         wp   = wave_properties(T, kd)
-        Esh += abs((wp.gamma_e - wp.gamma) / kd) * W * w
+        #  ⚠ (3.10) takes C_g to the FIRST power — NOT squared like E_c. The
+        #  asymmetry is the paper's own; a C_g² form is ≈2× this to leading
+        #  order and does not survive the median normalisation unchanged.
+        Ecg += abs((wp.Cg - wp.Cge) / wp.Cge) * W * w
+        #  ⚠ (3.10) carries NO |·| on the shoaling term — verified at 400 dpi
+        #  against the PDF (the next line shows |u_m−u_e| with unmistakable
+        #  bars, so the omission is deliberate, not a rendering artefact). It is
+        #  SIGNED, and that is correct AND SELF-CONSISTENT, for a reason worth
+        #  stating because it is easy to "fix" wrongly:
+        #
+        #    exp(I)−1 is SINGLE-SIGNED across the design population (γ_m > γ_e
+        #    throughout), so its median is negative too — measured on the LFE-2
+        #    Ω=8 scan: median(exp(I)−1) = −0.19158, median(|exp(I)−1|) = +0.19158,
+        #    equal in magnitude. The normalised term E_sh/med is therefore
+        #    POSITIVE, and identical to the |·|-outside form: both give c₂=0.7310.
+        #    THE SIGN CANCELS AGAINST THE SAME-SIGNED MEDIAN.
+        #
+        #  ⚠ This holds ONLY if the median is taken over the exp(I)−1 population.
+        #  Normalising by median(exp(I)) ≈ +0.81 breaks the cancellation, inverts
+        #  the term's role, and drives the optimum to the scan edge (c₂→0). That
+        #  was a live defect here on 2026-09-08; see `vopt_medians`.
+        Esh += ((wp.gamma_e - wp.gamma) / kd) * W * w
         pu, pw = profile_errors(b, T, kd)
         Eu  += pu * W * w
         Ew  += pw * W * w
@@ -297,48 +334,93 @@ end
 _median(v) = (s = sort(v); n = length(s);
               isodd(n) ? s[(n+1)÷2] : 0.5*(s[n÷2] + s[n÷2+1]))
 
-"""
-    vopt_medians(M, p; Omega, nsample) → (med, samples)
+#  DEFAULT SCAN INCREMENT. Yang & Liu scan "c2 values ranging from 0 to 1 with
+#  an increment of 0.001" — exact for M=2 (999 designs). The scan is a product
+#  over M−1 ordered interfaces, so a fixed increment costs C(1/dc−1, M−1) and
+#  0.001 is unaffordable past M=2; these keep every M near ~5·10³ designs.
+_default_dc(M::Int) = M <= 2 ? 0.001 : (M == 3 ? 0.01 : 0.03)
 
-Medians of the five raw errors over a sampled design population — the `overbar`
-of `eq: total error definition`. The medians are per-term SCALES: they are what
+"""
+    _scan_designs(M, dc) → Vector{Vector{Float64}}
+
+Every design on the uniform SCAN of the ordered interface simplex
+`0 < c_1 < … < c_{M-1} < 1` at increment `dc`, each returned as a full
+`c_bdy = [0, c_1, …, c_{M-1}, 1]`. This is the population `vopt_medians`
+normalises over and the set `optimise_cbdy` searches — the same set, because
+that is what the reference does.
+"""
+function _scan_designs(M::Int, dc::Float64)
+    M == 1 && return [[0.0, 1.0]]
+    n = round(Int, 1.0/dc) - 1
+    n >= M-1 || error("_scan_designs: dc=$dc too coarse for M=$M")
+    g = [i*dc for i in 1:n]
+    out = Vector{Vector{Float64}}()
+    idx = collect(1:(M-1))                      # strictly increasing indices
+    while true
+        push!(out, vcat(0.0, g[idx], 1.0))
+        k = M-1
+        while k >= 1 && idx[k] == n - (M-1-k); k -= 1; end
+        k == 0 && break
+        idx[k] += 1
+        for j in (k+1):(M-1); idx[j] = idx[j-1] + 1; end
+    end
+    return out
+end
+
+#  Inverse of `_z_to_cbdy`, so a scan point can seed the local refinement.
+#  The softmax is shift-invariant, so z is pinned by z[1] = 0.
+function _cbdy_to_z(c::AbstractVector{<:Real})
+    h = diff(collect(Float64, c))
+    all(>(0.0), h) || error("_cbdy_to_z: non-increasing c_bdy $c")
+    z = log.(h); return z .- z[1]
+end
+
+"""
+    vopt_medians(M, p; Omega, dc, nkd) → (med, designs, raws, nsample)
+
+Medians of the five raw errors over the DESIGN SCAN — the `overbar` of
+`eq: total error definition`. The medians are per-term SCALES: they are what
 makes a 2 % celerity error and a 0.05 profile error commensurable, so the
-argmin genuinely depends on them and they must be computed over a population
-representative of the search, not over one design.
+argmin genuinely depends on them and they cannot be computed from one design.
 
-Sampling is a deterministic low-discrepancy sweep of the width simplex, so the
-result is reproducible without seeding an RNG.
+⚠ THE POPULATION IS THE SCAN ITSELF, not an auxiliary sample. Yang & Liu take
+the median over the sweep they optimise on ("c2 values ranging from 0 to 1 with
+an increment of 0.001"), so the normalisation and the search see the same set.
+Until 2026-09-08 this used a Kronecker low-discrepancy sweep of the WIDTH
+simplex over z ∈ [−3,3] — a different population, and since the medians are the
+trade-off weights, a different argmin. Measured against the published table 1
+(LFE-2, Ω=8): the scan gives c₂ = 0.731 against 0.728, the Kronecker sweep
+0.738. The gap grows with M, because the two populations diverge in shape as
+the dimension rises.
+
+The scan is deterministic — no RNG, and reproducible from `(M, dc)` alone.
 """
-function vopt_medians(M::Int, p::Int; Omega::Float64, nsample::Int = 64,
+function vopt_medians(M::Int, p::Int; Omega::Float64, dc::Float64 = 0.0,
                       nkd::Int = 32)
-    zs = Vector{Vector{Float64}}()
-    if M == 1
-        push!(zs, [0.0])
-    else
-        #  additive-recurrence (Kronecker) sequence in M−1 dims: low-discrepancy,
-        #  deterministic, no RNG state
-        g = 1.0 / (2.0^(1.0/M))
-        for i in 1:nsample
-            z = Float64[0.0]
-            for k in 1:(M-1)
-                frac = mod(i * g^k, 1.0)
-                push!(z, 6.0*(frac - 0.5))       # z ∈ [−3,3] ⇒ wide width ratios
-            end
-            push!(zs, z)
+    designs = _scan_designs(M, dc > 0 ? dc : _default_dc(M))
+    rows = NamedTuple[]; keep = Vector{Vector{Float64}}()
+    for c in designs
+        r = raw_errors(M, p, c; Omega = Omega, nkd = nkd)
+        if all(isfinite, (r.Ec, r.Ecg, r.Esh, r.Eu, r.Ew))
+            push!(rows, r); push!(keep, c)
         end
     end
-    rows = NamedTuple[]
-    for z in zs
-        r = raw_errors(M, p, _z_to_cbdy(z); Omega = Omega, nkd = nkd)
-        all(isfinite, (r.Ec, r.Ecg, r.Esh, r.Eu, r.Ew)) && push!(rows, r)
-    end
-    isempty(rows) && error("vopt_medians: no finite sample at M=$M p=$p Ω=$Omega")
+    isempty(rows) && error("vopt_medians: no finite design on the scan at M=$M p=$p Ω=$Omega")
+    #  ⚠ THE SHOALING MEDIAN IS TAKEN OVER THE ERROR POPULATION exp(I)−1, like
+    #  every other term — NOT over exp(I). The distinction is not cosmetic: I is
+    #  small, so median(exp(I)) is POSITIVE (0.80842 on the LFE-2 Ω=8 scan) while
+    #  the numerator exp(I)−1 is NEGATIVE (median −0.19158). Dividing by it flips
+    #  the term's sign and inverts its role in the minimisation — the optimum
+    #  then runs to the scan edge, c₂→0. Taking the median over the SAME
+    #  population as the numerator makes the shared sign cancel, leaving a
+    #  positive term of O(1) on the median design: commensurable with the other
+    #  four, which is the whole purpose of the overbar. Measured ratio 4.2×.
     med = (Ec  = _median([r.Ec  for r in rows]),
            Ecg = _median([r.Ecg for r in rows]),
            Esh = _median([r.Esh for r in rows]),
            Eu  = _median([r.Eu  for r in rows]),
            Ew  = _median([r.Ew  for r in rows]))
-    return (med = med, nsample = length(rows))
+    return (med = med, designs = keep, raws = rows, nsample = length(rows))
 end
 
 """
@@ -377,36 +459,38 @@ function _pattern_search(f, z0::Vector{Float64}; step0 = 0.8, tol = 1e-6,
 end
 
 """
-    optimise_cbdy(M, p; Omega, nsample, nkd, nrestart) → NamedTuple
+    optimise_cbdy(M, p; Omega, dc, nkd, nrestart, refine) → NamedTuple
 
 Minimise `E_total` over the element interfaces at fixed `(M,p)` and design band
 `Omega`. Returns `(c_bdy, E, med, raw)`.
 
-Two stages, and the first is not optional: the sampling pass supplies the
-MEDIANS, and the same samples then seed the local search. Multi-start from the
-best `nrestart` samples guards against the objective's local minima, which are
-real — the profile terms have kinks at element interfaces.
+ONE scan does both jobs, which is the reference's own procedure: it supplies the
+MEDIANS and it is the set the argmin is taken over. The `raw_errors` evaluations
+are therefore shared — following the reference here costs nothing over the
+previous auxiliary-sample scheme.
+
+`refine` then runs a local pattern search from the best `nrestart` scan points,
+which is NOT in the reference and is needed only because `_default_dc` coarsens
+with M (0.03 at M=4 against the published 3-decimal node sets). Multi-start
+guards against the objective's local minima, which are real — the profile terms
+have kinks at element interfaces. Set `refine=false` for the literal procedure.
 """
-function optimise_cbdy(M::Int, p::Int; Omega::Float64, nsample::Int = 64,
-                       nkd::Int = 32, nrestart::Int = 4, verbose::Bool = false)
+function optimise_cbdy(M::Int, p::Int; Omega::Float64, dc::Float64 = 0.0,
+                       nkd::Int = 32, nrestart::Int = 4, refine::Bool = true,
+                       verbose::Bool = false)
     M == 1 && return (c_bdy = [0.0, 1.0], E = NaN, med = nothing, raw = nothing)
-    mm  = vopt_medians(M, p; Omega = Omega, nsample = nsample, nkd = nkd)
+    mm  = vopt_medians(M, p; Omega = Omega, dc = dc, nkd = nkd)
     med = mm.med
-    obj(z) = total_error(M, p, _z_to_cbdy(z); Omega = Omega, med = med, nkd = nkd)
-
-    g = 1.0 / (2.0^(1.0/M))
-    cands = Vector{Tuple{Float64,Vector{Float64}}}()
-    for i in 1:nsample
-        z = Float64[0.0]
-        for k in 1:(M-1); push!(z, 6.0*(mod(i*g^k, 1.0) - 0.5)); end
-        push!(cands, (obj(z), z))
-    end
-    sort!(cands; by = first)
-
-    best = (Inf, cands[1][2])
-    for (_, z0) in cands[1:min(nrestart, length(cands))]
-        z, fz = _pattern_search(obj, z0)
-        fz < best[1] && (best = (fz, z))
+    Et  = [r.Ec/med.Ec + r.Ecg/med.Ecg + r.Esh/med.Esh + r.Eu/med.Eu + r.Ew/med.Ew
+           for r in mm.raws]
+    ord  = sortperm(Et)
+    best = (Et[ord[1]], _cbdy_to_z(mm.designs[ord[1]]))
+    if refine
+        obj(z) = total_error(M, p, _z_to_cbdy(z); Omega = Omega, med = med, nkd = nkd)
+        for i in ord[1:min(nrestart, length(ord))]
+            z, fz = _pattern_search(obj, _cbdy_to_z(mm.designs[i]); step0 = 0.25)
+            fz < best[1] && (best = (fz, z))
+        end
     end
     cb = _z_to_cbdy(best[2])
     verbose && @info "optimise_cbdy M=$M p=$p Ω=$Omega → $(round.(cb; digits=4))  E=$(best[1])"
@@ -430,88 +514,28 @@ function vopt_selfcheck(M::Int, p::Int, c_bdy::AbstractVector{<:Real};
 end
 
 # ------------------------------------------------------------------------------
-#  The design band Ω — a CALIBRATED FIXED POINT, not a free knob
+#  THE DESIGN BAND Ω IS AN INPUT, NOT SOMETHING THIS FILE DERIVES
 # ------------------------------------------------------------------------------
-
-"""
-    VOPT_KAPPA
-
-Surface-resolution constant `κ = Ω · h_top`, where `h_top = Δσ_top/p` is the
-NODE spacing in the top element of the optimised mesh.
-
-**Why this is the criterion.** `W` does not decay to zero (`vopt_weight`), so
-`Ω` is a genuine design band and the optimum migrates with it. A single `Ω`
-cannot serve every basis: calibrating on Yang & Liu Table 1 gives `Ω* = 7.60,
-29.0, 100.0` for `M = 2,3,4` — the richer basis earns a wider band. What IS
-invariant across those three is the product with the surface node spacing:
-
-    M=2: 7.60 × 0.2716 = 2.06     M=3: 29.0 × 0.0771 = 2.24
-    M=4: 100.0 × 0.0220 = 2.20                        mean 2.17 (±4 %)
-
-That is the variational statement of `subsec: design rule` made into a design
-rule: by (P2) the space must approximate `u_⋆ = cosh(kdσ)/cosh(kd)`, an
-exponential boundary layer of thickness `1/(kd)` pinned to `σ=1`. Requiring the
-surface node spacing to resolve that layer AT THE DESIGN BAND closes the loop —
-`Ω` is then whatever band the mesh it produces can actually resolve.
-
-Dividing by `p` rather than using `Δσ_top` directly is the basis-order-aware
-form: a `p=2` top element carries an interior node, so it resolves a layer twice
-as thick as a `p=1` element of the same size. ⚠ This generalisation is
-REASONED, not calibrated — there is no published `p≥2` optimum to check it
-against. It is stated here so a later measurement can refute it.
-"""
-const VOPT_KAPPA = 2.17
-
-"""
-    vopt_Omega(M, p; kappa=VOPT_KAPPA, …) → Ω
-
-The design band as the fixed point of `Ω · Δσ_top(Ω)/p = κ`, where `Δσ_top(Ω)`
-is the top-element thickness of the mesh `optimise_cbdy` returns at band `Ω`.
-
-Solved by bisection on `log Ω`: `Δσ_top` decreases with `Ω` (a wider band drives
-the interface towards the surface), so the residual `Ω·Δσ_top/p − κ` is
-increasing and the bracket is reliable. `M=1` has no free interface and returns
-its single-element band directly.
-"""
-function vopt_Omega(M::Int, p::Int; kappa::Float64 = VOPT_KAPPA,
-                    lo::Float64 = 1.5, hi::Float64 = 400.0, tol::Float64 = 0.02,
-                    nsample::Int = 48, nkd::Int = 24, maxit::Int = 24)
-    M == 1 && return kappa * p / 1.0          # Δσ_top ≡ 1
-    resid(Om) = (r = optimise_cbdy(M, p; Omega = Om, nsample = nsample,
-                                   nkd = nkd, nrestart = 2);
-                 Om * (1.0 - r.c_bdy[end-1]) / p - kappa)
-    a, b = lo, hi
-    fa, fb = resid(a), resid(b)
-    fa > 0 && return a
-    fb < 0 && return b
-    for _ in 1:maxit
-        m  = sqrt(a*b)                        # bisect in log Ω: the band spans 2 decades
-        fm = resid(m)
-        #  NOTE: written as an if/else, NOT `fm < 0 ? (a, fa = m, fm) : …`.
-        #  Julia parses `(a, fa = m, fm)` as a TUPLE with a named field, not as
-        #  the tuple assignment it looks like, so the bracket never moved and the
-        #  bisection silently returned its first midpoint for every input.
-        if fm < 0
-            a = m; fa = fm
-        else
-            b = m; fb = fm
-        end
-        (b/a - 1.0) < tol && break
-    end
-    return sqrt(a*b)
-end
-
-"""
-    optimised_cbdy(M, p; kappa=VOPT_KAPPA, …) → NamedTuple
-
-The full design pipeline: resolve the band `Ω` by `vopt_Omega`, then minimise
-`E_total` at that band. Returns `(c_bdy, Omega, E, raw)`.
-"""
-function optimised_cbdy(M::Int, p::Int; kappa::Float64 = VOPT_KAPPA,
-                        nsample::Int = 80, nkd::Int = 32, nrestart::Int = 4)
-    M == 1 && return (c_bdy = [0.0, 1.0], Omega = NaN, E = NaN, raw = nothing)
-    Om = vopt_Omega(M, p; kappa = kappa)
-    r  = optimise_cbdy(M, p; Omega = Om, nsample = nsample, nkd = nkd,
-                       nrestart = nrestart)
-    return (c_bdy = r.c_bdy, Omega = Om, E = r.E, raw = r.raw)
-end
+#  ⚠ REMOVED 2026-09-08: `VOPT_KAPPA`, `vopt_Omega` and `optimised_cbdy`.
+#
+#  They closed Ω for p ≥ 2 (where no published band exists) through the fixed
+#  point Ω·Δσ_top/p = κ ≈ 2.17. That constant was a FIT, not a result: Ω was
+#  first tuned to reproduce Yang & Liu table 1 (Ω* = 7.60, 29.0, 100.0), and the
+#  near-constancy of the product was noticed afterwards and promoted to a design
+#  rule. Three things make it unusable:
+#
+#    1. Those Ω* were fitted against the PRE-2026-09-08 objective, so κ is
+#       downstream of the very code that has since been corrected.
+#    2. The same boundary-layer argument, carried through analytically in
+#       `StokesWaveFourierAnalysis.tex`, gives Δσ_top ≈ 2.94/kd_max — a 35 %
+#       disagreement with the fitted 2.11-2.17. A physical constant should not
+#       differ from its own derivation by a third.
+#    3. The p-aware form (dividing by p) was, in its own words, "REASONED, not
+#       calibrated", with no published p ≥ 2 optimum to test it against.
+#
+#  ⚠ DO NOT REINTRODUCE IT. To design a mesh, call `optimise_cbdy(M, p; Omega)`
+#  with a band you can justify: it scans the parametric space, normalises each
+#  relative error by the median over that same sweep, and returns the minimum.
+#  It is κ-free. For p = 1 the bands are published (Ω = 8, 24, 80 for M = 2,3,4);
+#  for p ≥ 2 choosing Ω is an OPEN QUESTION and must not be closed by a fit.
+# ------------------------------------------------------------------------------

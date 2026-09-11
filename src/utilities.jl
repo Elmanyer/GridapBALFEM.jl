@@ -409,10 +409,10 @@ end
 # σ-NODES: for p ≥ 2 each element carries p+1 nodes.
 #
 # ⚠ KEPT AS THE PUBLISHED VALUES, NOT REPLACED by our own optimiser output.
-# `vopt.jl` reproduces them to ≤0.014 from the Yang & Liu total-relative-error
-# functional (see VOPT_KAPPA), which is the validation of that implementation —
-# but the published figures remain the reference for p = 1, so the table is not
-# perturbed by our quadrature and search tolerances.
+# `vopt.jl` reproduces them from the Yang & Liu total-relative-error functional
+# (M=2 to 0.004 at the published band Ω=8), which is the validation of that
+# implementation — but the published figures remain the reference for p = 1, so
+# the table is not perturbed by our quadrature and search tolerances.
 const DEFAULT_CBDY = Dict(
     1 => [0.0, 1.0],
     2 => [0.0, 0.728, 1.0],
@@ -420,15 +420,15 @@ const DEFAULT_CBDY = Dict(
     4 => [0.0, 0.745, 0.923, 0.977, 1.0],
 )
 
-# Optimised element boundaries for p ≥ 2, keyed (M, p). DERIVED HERE by the same
-# functional (`optimised_cbdy` in vopt.jl) — no published optimum exists for
-# p ≥ 2. The design band Ω is the calibrated fixed point Ω·Δσ_top/p = VOPT_KAPPA.
-# Regenerate with `optimised_cbdy(M, p)`; the values are recorded rather than
-# recomputed because the search costs minutes and every MMS study needs them.
-const DEFAULT_CBDY_P = Dict(
-    (1, 2) => [0.0, 1.0],                    # single element: no free interface
-    (2, 2) => [0.0, 0.8298, 1.0],
-)
+# ⚠ THERE IS NO p ≥ 2 DEFAULT TABLE, AND THAT IS DELIBERATE (2026-09-08).
+# `DEFAULT_CBDY_P` used to hold (2,2) => [0, 0.8298, 1], produced by running our
+# optimiser at a band Ω that was itself set by `VOPT_KAPPA` — a constant FITTED
+# to reproduce table 1 and then promoted to a design rule. Both the constant and
+# the machinery that used it are gone; see the note at the end of `vopt.jl`.
+# An optimised p ≥ 2 mesh needs a band Ω that can be justified, and no published
+# band exists above p = 1, so THAT IS AN OPEN QUESTION — not something to close
+# with a tabulated leftover. Design one explicitly with
+# `optimise_cbdy(M, p; Omega)` and pass the result as `c_bdy`.
 
 """
     resolve_cbdy(M, c_bdy) → Vector{Float64}
@@ -448,13 +448,18 @@ function resolve_cbdy(M::Int, c_bdy::Union{Nothing,AbstractVector{<:Real}} = not
                       p::Int = 1)
     M ≥ 1 || error("resolve_cbdy: M must be ≥ 1 (got $M)")
     #  p is a TRAILING POSITIONAL with a default, so every existing 2-argument
-    #  call site keeps its meaning (p = 1, the published table). For p ≥ 2 the
-    #  optimum is a different mesh — the p=1 table is a valid mesh at any p but
-    #  is NOT optimal there, which is exactly what DEFAULT_CBDY_P fixes.
+    #  call site keeps its meaning (p = 1, the published table).
+    #  ⚠ p ≥ 2 FALLS BACK TO A UNIFORM SPLIT, NOT to the p=1 table. The published
+    #  set is a VALID mesh at any p but is optimal only at p = 1, so returning it
+    #  for p ≥ 2 would hand back a mesh carrying an optimality it does not have —
+    #  silently, which is the worst version. A uniform split is obviously not
+    #  optimised, so it cannot be mistaken for a designed mesh. (For M = 1 the two
+    #  coincide at [0,1]: one element has no free interface.) To use a designed
+    #  p ≥ 2 mesh, build it with `optimise_cbdy(M, p; Omega)` at a band you can
+    #  justify and pass it explicitly as `c_bdy`.
     cb = c_bdy === nothing ?
          (p == 1 ? get(DEFAULT_CBDY, M, collect(LinRange(0.0, 1.0, M + 1))) :
-                   get(DEFAULT_CBDY_P, (M, p),
-                       get(DEFAULT_CBDY, M, collect(LinRange(0.0, 1.0, M + 1))))) :
+                   collect(LinRange(0.0, 1.0, M + 1))) :
          collect(Float64, c_bdy)
     length(cb) == M + 1 || error(
         "resolve_cbdy: c_bdy has $(length(cb)) entries but M=$M needs M+1 = $(M+1) " *
@@ -954,7 +959,7 @@ end
 
 # ==============================================================
 #  Standardised output-directory naming
-#  (building_files/OUTPUT_NAMING_PROPOSAL.md — the accepted spec)
+#  (markdown_files/OUTPUT_NAMING_PROPOSAL.md — the accepted spec)
 #
 #      <model>_<domain>_<wave>_<regime>_<nlp>_<bed>_<discr>_<amplitude>_<period>[_<extra>…]
 #      P1LFE-2_1d_bcplane_nl_full_flat_Q2Q1_A0.10_T1.6
