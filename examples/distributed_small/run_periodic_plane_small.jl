@@ -108,4 +108,4 @@ diags, vert, prob = setup_and_run_distributed(
     print_every=genv_i("BALFEM_PRINT_EVERY", 10))
 
 is_rank0() && @printf("periodic_plane [%s] done: %d steps, %d snapshots to %s\n",
-                      tag, length(diags), length(diags) ÷ max(save_ev,1), outdir)
+                      _name, length(diags), length(diags) ÷ max(save_ev,1), outdir)

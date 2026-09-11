@@ -108,9 +108,18 @@ krylov_m_val()   = genv_i("BALFEM_KRYLOV_M", 100)
 #      does an exact LU on each rank's own block. See build_preconditioner.
 precond_sym()    = Symbol(genv("BALFEM_PRECOND", "jacobi"))
 
+#  Extra output-name tokens (the trailing `[_<extra>...]` of the grammar in
+#  markdown_files/OUTPUT_NAMING_PROPOSAL.md). Use it whenever a launcher varies
+#  something the grammar has no field for -- dt, tolerances, rank count -- so the
+#  run does NOT land on its sibling's name and get silently suffixed _v2.
+#  Comma-separated, e.g.  BALFEM_NAME_EXTRA=dt0.01
+name_extra() = String[strip(t) for t in split(genv("BALFEM_NAME_EXTRA", ""), ",") if !isempty(strip(t))]
+
 # rank-0 detection BEFORE MPI.Init (OpenMPI / MPICH set these per rank).
 is_rank0() = get(ENV, "OMPI_COMM_WORLD_RANK",
                  get(ENV, "PMI_RANK", "0")) == "0"
+my_rank()  = parse(Int, get(ENV, "OMPI_COMM_WORLD_RANK",
+                            get(ENV, "PMI_RANK", "0")))
 
 # ---- Dirichlet boundary wave generation (WaveSpec.jl sea states) -------------
 #  Environment variables (used by run_irregular_sea_dist / run_directional_sea_dist):
@@ -147,6 +156,31 @@ relax_w_val()    = genv_f("BALFEM_RELAX_W", 0.0)
 Env-configured stochastic sea state: JONSWAP spectrum, uniform-frequency (or
 equal-energy) bins, optional cosine-power angular spreading, seeded phases.
 `directional=true` switches the default spreading on (`BALFEM_NTHETA` ≥ 2).
+
+⚠ **TWO SEEDS HAVE TO BE PINNED, NOT ONE, OR EVERY MPI RANK BUILDS A DIFFERENT
+SEA.** `AiryState` seeds the *phases*; `DiscreteAngularSpreading` separately
+seeds the *propagation directions* — `get_angles` is `sort(rand(rng(sm.seed),
+sm.distribution, sm.nθ))` (`WaveSpec/src/AngularSpreading/AngularSpreading.jl`
+:157), and both of its constructors default that seed to `abs(rand(Int64))`
+drawn from the PROCESS-GLOBAL RNG, which Julia seeds from system entropy per
+process. Under `mpiexec -n N` every rank runs this function independently, so
+each one drew its own θⱼ *and* its own Δθⱼ (hence its own component amplitudes,
+`A ∝ √(D·Δθ)`).
+
+Measured consequence, before this fix (2026-09-11, `output/snellius/
+dist_small_new`): on the 42-rank directional run, η on the Dirichlet inflow edge
+was smooth inside each rank block and jumped at exactly the six `cpu_grid=(7,6)`
+y-cuts — y = 3.5, 6.75, 10.0, 13.25, 16.5 — flipping sign at 16.5
+(+2.36e-02 → −2.61e-02). The domain carried six uncorrelated seas side by side.
+The long-crested path is hit too, weakly but not harmlessly: its
+`DiscreteAngularSpreading(θ::Real)` draws two angles from `Uniform(θ±0.001)`, so
+the per-rank central angle moved ±0.04° and Δθ by 3×, which is the 1e-3
+transverse asymmetry those runs carried from step 1 — the seed the transverse
+velocity instability then amplified to 0.89 before the run died.
+
+The spread must be re-seeded BEFORE the `AiryState` is built: its constructor
+calls `get_central_angles(spread)` to fill `state.θ`, and `get_amplitudes` later
+re-reads `get_weights`/`get_bandwidths` from the same seed.
 """
 function build_airy_state(h_val; directional::Bool=false)
     Hs, Tp = hs_val(), tp_val()
@@ -161,14 +195,58 @@ function build_airy_state(h_val; directional::Bool=false)
     dspec  = WaveSpec.SpectralSpreading.DiscreteSpectralSpreading(
                  spec, WaveSpec.SpectralSampling.UniformSampling(),
                  fmin, fmax, nf; domain=dom, mess=is_rank0())
+    seed = genv_i("BALFEM_SEED", 20260723)
     nθ = genv_i("BALFEM_NTHETA", directional ? 7 : 0)
-    spread = nθ <= 1 ? WaveSpec.AngularSpreading.DiscreteAngularSpreading(0.0) :
+    spread = nθ <= 1 ? WaveSpec.AngularSpreading.DiscreteAngularSpreading(0.0; seed=seed) :
              WaveSpec.AngularSpreading.DiscreteAngularSpreading(
                  :cosinepow, 0.0, genv_f("BALFEM_SPREAD_STD", 20.0)*pi/180,
                  -genv_f("BALFEM_THETA_MAX", 60.0)*pi/180,
                   genv_f("BALFEM_THETA_MAX", 60.0)*pi/180, nθ)
+    #  ⚠ LOAD-BEARING, NOT TIDYING (see the docstring): the :cosinepow branch has
+    #  no `seed` keyword, so its directions come from the process-global RNG until
+    #  this line replaces them. Re-seed BEFORE AiryState is constructed — that
+    #  constructor reads get_central_angles(spread) to fill state.θ.
+    spread = WaveSpec.AngularSpreading.change_seed!(spread, seed)
     state = WaveSpec.AiryWaves.AiryState(dspec, spread, h_val)
-    return WaveSpec.AiryWaves.change_seed!(state, genv_i("BALFEM_SEED", 20260723))
+    state = WaveSpec.AiryWaves.change_seed!(state, seed)
+    #  Rank-invariance is an INVARIANT of this function, so assert it rather than
+    #  trusting it: a silent regression here is invisible in a serial test and
+    #  cost a 42-rank cluster run last time. θ is what the partition corrupted.
+    @assert issorted(state.θ) "spread angles unsorted — WaveSpec contract changed"
+    #  ONE LINE PER RANK, deliberately. The whole failure mode was that a
+    #  per-rank difference is invisible from rank 0, so a rank-0-only print would
+    #  reproduce exactly the blind spot. Check a finished job with:
+    #      grep seastate job.out | awk '{print $NF}' | sort -u | wc -l    # must be 1
+    @printf("[seastate] rank %-4d nω=%-3d nθ=%-3d θ(deg)=[%s] fp=%s\n",
+            my_rank(), state.nω, state.nθ,
+            join((@sprintf("%.3f", rad2deg(t)) for t in state.θ), ","),
+            airy_state_fingerprint(state))
+    flush(stdout)
+    return state
+end
+
+"""
+    airy_state_fingerprint(state) → String
+
+Rank-comparable digest of the sea state actually built. Print it from every rank
+(not just rank 0) when a `:bc_gen` run starts: identical strings across ranks is
+the cheap proof that `build_airy_state` is partition-independent. Divergent
+strings mean the two-seed bug is back, and the run is generating one sea per
+rank — see `build_airy_state`.
+"""
+function airy_state_fingerprint(state)
+    #  Hash EXACTLY what the boundary evaluation consumes, not a proxy for it.
+    #  `WaveInput(vert, ::AiryState)` (src/waveinput.jl:192) reads precisely
+    #  get_amplitudes, get_random_phases, state.ω and state.θ, and nothing else
+    #  in src/ draws a random number. So these four arrays being equal across
+    #  ranks IS the statement that every rank evaluates the same η(y,t), u(y,t).
+    #  (state.k is deliberately absent: WaveInput DISCARDS it and re-solves the
+    #  wavenumbers with the solver's own g and the model dispersion.)
+    h = hash(round.(WaveSpec.AiryWaves.get_amplitudes(state),     digits=12))
+    h = hash(round.(WaveSpec.AiryWaves.get_random_phases(state),  digits=12), h)
+    h = hash(round.(state.ω, digits=12), h)
+    h = hash(round.(state.θ, digits=12), h)
+    return string(h, base=16, pad=16)
 end
 
 function banner(title, M, cpu_grid, partition, ncells, outdir)

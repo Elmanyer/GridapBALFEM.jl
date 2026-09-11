@@ -82,7 +82,8 @@ _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
                            wave_kind="irr", wave_gen=:bc,
                            regime=regime_sym(), nl_pressure=nl_pressure_sym(),
                            bed=bedtag, p_u=feord, p_eta=p_eta,
-                           amplitude=hs_val(), period=tp_val(), irregular=true)
+                           amplitude=hs_val(), period=tp_val(), irregular=true,
+                           extra=name_extra())
 #  Never overwrite an existing run (suffixes _v2, _v3 …).
 outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
          unique_output_dir(joinpath(ROOT, "output"), _name)
@@ -117,4 +118,4 @@ diags, vert, prob = setup_and_run_distributed(
     print_every=genv_i("BALFEM_PRINT_EVERY", 10))
 
 is_rank0() && @printf("irregular_sea [%s] done: %d steps, %d snapshots to %s\n",
-                      tag, length(diags), save_ev > 0 ? length(diags) ÷ save_ev : 0, outdir)
+                      _name, length(diags), save_ev > 0 ? length(diags) ÷ save_ev : 0, outdir)

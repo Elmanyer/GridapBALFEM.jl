@@ -1,12 +1,6 @@
 #!/bin/bash
-# SMALL run — nonlinear FULL irregular sea, flat, Hs=0.2 (BASELINE / control for the twins)
-#SBATCH --job-name="BALFEM_nl_irregular"
-#
-# ⚠ THE PRE-2026-09-11 OUTPUT OF THIS CASE IS INVALID, NOT A BASELINE. It ran
-# with the per-rank sea-state bug (build_airy_state seeded the phases but not the
-# angular spreading), so its Dirichlet inflow carried a different sea on every
-# rank. `unique_output_dir` will suffix this run _v2 rather than overwrite it;
-# that _v2 is the FIRST valid run of this configuration, not a second attempt.
+# SMALL run — nonlinear NATIVE irregular sea over a bar, Hs=0.2 (physics-tier control)
+#SBATCH --job-name="BALFEM_nl_native_irregular_varbed"
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
 #SBATCH --ntasks=56
@@ -37,12 +31,15 @@ export BALFEM_PX=14
 export BALFEM_PY=4            # 14*4 = 56 ranks
 
 # --- Case-specific overrides (only what differs from the script's base) ---
-#  WHAT TO READ WHEN IT FINISHES. Not eta — eta stayed bounded at 0.13-0.14 m
-#  through the entire 2026-09 failure. Read the TRANSVERSE symmetry of u3x: this
-#  case is exactly y-invariant (long-crested, y_wall_bc=:wall, y-uniform bed), so
-#  std_y(u3x)/|mean_y(u3x)| must stay at round-off. It previously sat at 1e-3
-#  from step 1 (that was the per-rank sea-state bug, now fixed) and then ran
-#  0.027 -> 0.057 -> 0.114 over t = 50, 51, 52 while Newton still converged in 6
-#  iterations. The run ENDED at t=52; it did not survive.
-# (base config — no overrides needed)
+#  ⚠ THE POINT OF THIS RUN. `:full` is the ONE physics tier the analytic MMS does
+#  not verify (models 7-8): its {{1,2,4,5}} blocks are assembled in the residual
+#  but ABSENT from jacobian_u, and its frozen projections are refreshed from the
+#  PREVIOUS step (update_nlp_state! runs after the step), i.e. an explicitly
+#  lagged term inside an otherwise implicit scheme. Every run in the 2026-09
+#  small-domain batch was `:full`, so the batch had NO control and could not say
+#  whether the transverse velocity instability belongs to the model or to that
+#  tier. `:native` is the production tier and IS verified. This is the control.
+#  Read: y-symmetry of u3x (see the note in the flat launcher).
+export BALFEM_NL_PRESSURE=native
+export BALFEM_FLAT_BED=0
 balfem_run 56 examples/distributed_small/run_irregular_sea_small.jl

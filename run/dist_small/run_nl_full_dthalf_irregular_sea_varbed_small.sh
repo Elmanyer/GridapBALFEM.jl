@@ -1,12 +1,6 @@
 #!/bin/bash
-# SMALL run — nonlinear FULL irregular sea, flat, Hs=0.2 (BASELINE / control for the twins)
-#SBATCH --job-name="BALFEM_nl_irregular"
-#
-# ⚠ THE PRE-2026-09-11 OUTPUT OF THIS CASE IS INVALID, NOT A BASELINE. It ran
-# with the per-rank sea-state bug (build_airy_state seeded the phases but not the
-# angular spreading), so its Dirichlet inflow carried a different sea on every
-# rank. `unique_output_dir` will suffix this run _v2 rather than overwrite it;
-# that _v2 is the FIRST valid run of this configuration, not a second attempt.
+# SMALL run — nonlinear FULL irregular sea over a bar, Hs=0.2, dt/2 (lagged-projection test)
+#SBATCH --job-name="BALFEM_nl_full_dthalf_irregular_varbed"
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
 #SBATCH --ntasks=56
@@ -37,12 +31,18 @@ export BALFEM_PX=14
 export BALFEM_PY=4            # 14*4 = 56 ranks
 
 # --- Case-specific overrides (only what differs from the script's base) ---
-#  WHAT TO READ WHEN IT FINISHES. Not eta — eta stayed bounded at 0.13-0.14 m
-#  through the entire 2026-09 failure. Read the TRANSVERSE symmetry of u3x: this
-#  case is exactly y-invariant (long-crested, y_wall_bc=:wall, y-uniform bed), so
-#  std_y(u3x)/|mean_y(u3x)| must stay at round-off. It previously sat at 1e-3
-#  from step 1 (that was the per-rank sea-state bug, now fixed) and then ran
-#  0.027 -> 0.057 -> 0.114 over t = 50, 51, 52 while Newton still converged in 6
-#  iterations. The run ENDED at t=52; it did not survive.
-# (base config — no overrides needed)
+#  ⚠ THE POINT OF THIS RUN. If the transverse mode is driven by the one-step
+#  lag in the `:full` frozen projections, its growth rate scales with dt; if it
+#  is in the residual, halving dt changes the rate very little. That is the
+#  discriminator, and it is only readable against the dt=0.02 sibling run at the
+#  SAME rank count and the SAME seed-fixed sea state.
+#  COST: 5200 steps instead of 2600. At ~65 s/step on 56 ranks that is ~94 h,
+#  inside the 119:59 wall but without much margin — if it is cut off, the flat
+#  case still needs to reach t~50 to be readable (its sibling's asymmetry only
+#  left the noise floor at t=48), so do NOT shorten T_final to save time.
+export BALFEM_DT=0.01
+#  dt is not a field of the output-name grammar, so without this token this run
+#  would land on its sibling's name and be silently suffixed _v2 (rule 2c).
+export BALFEM_NAME_EXTRA=dt0.01
+export BALFEM_FLAT_BED=0
 balfem_run 56 examples/distributed_small/run_irregular_sea_small.jl
