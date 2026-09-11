@@ -9,7 +9,7 @@
 #  build_fe_spaces, build_problem, build_ode_operator, build_ode_solver,
 #  run_time_loop), so the operator under test IS the production operator.
 #
-#  Plan: building_files/MMS_ANALYTIC_PLAN.md
+#  Plan: markdown_files/MMS_ANALYTIC_PLAN.md
 # ==============================================================
 
 """
@@ -54,7 +54,17 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         t0::Float64 = 0.0,
                         verbose::Bool = true,
                         use_ad::Bool = false,   # AD Jacobians (3-arg TransientFEOperator)
-                        output_dir::String = mktempdir())
+                        output_dir::String = mktempdir(),
+                        #  DIAGNOSTICS (added 2026-09-11, PLANNED_CAMPAIGNS.md §4b/§4c).
+                        #  Defaults reproduce the previous silent behaviour EXACTLY
+                        #  (diag_every=-1 ⇒ block off, no monitor), so every existing
+                        #  caller is unaffected; the campaign drivers opt in.
+                        #  ⚠ There is deliberately NO `save_every`: an MMS case is 100
+                        #  steps on a 1.7 m domain and the L² errors are the product,
+                        #  so VTK would be bulk without information. Diagnostics only.
+                        diag_every::Int = -1,      # −1 = off; N>0 = sample every N steps
+                        diag_csv::Bool  = false,   # write <output_dir>/diagnostics.csv
+                        monitor         = nothing) # SolverMonitor ⇒ real t_solve / nl_iters
     vert = vert_override === nothing ?
            assemble_vertical_tensors(M, p_vert, resolve_cbdy(M, c_bdy, p_vert)) : vert_override
     f    = field === nothing ?
@@ -87,8 +97,13 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
 
     op     = use_ad ? build_ode_operator_ad(prob, U, V, trian, dΩh) :
                       build_ode_operator(prob, U, V, trian, dΩh)
+    #  ⚠ The monitor must go to BOTH build_ode_solver and run_time_loop. It is the
+    #  solver that counts Newton iterations and solve time; passing it only to the
+    #  time loop leaves nl_iters at the −1 "not measured" sentinel — exactly what
+    #  every Phase-B log reported.
     solver = build_ode_solver(dt; solver_type=solver_type, tableau=tableau,
-                              theta=theta, nl_iter=nl_iter, nl_tol=nl_tol)
+                              theta=theta, nl_iter=nl_iter, nl_tol=nl_tol,
+                              monitor=monitor)
 
     #  nl_pressure=:full needs the frozen-projection context, built here exactly as
     #  the production driver builds it (utilities.jl, setup_and_run). WITHOUT IT the
@@ -106,6 +121,15 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                                  mms_exact_uy(f, t0)], U)
 
     final = Ref{Any}(nothing)
+    #  Field diagnostics, when asked for: max|η| and its location, the interior /
+    #  damped split, mass and energy invariants, RSS. `diag_csv` sends the rows to
+    #  <output_dir>/diagnostics.csv. Off by default (diag_every < 0), so this call
+    #  is byte-identical to the previous one for every existing caller.
+    rundiag = diag_every > 0 ?
+              (mkpath(output_dir);
+               build_run_diagnostics(prob, U, trian, dΩh;
+                                     output_dir=output_dir, diag_csv=diag_csv, u0=u0)) :
+              nothing
     diags = run_time_loop(op, solver, u0, t0, T_final;
                           output_dir=output_dir, save_every=0,
                           trian=trian, Nσ=vert.N_dof,
@@ -113,7 +137,8 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                           # so 0 raises DivideError. typemax never matches ⇒ silent run.
                           print_every=typemax(Int), dt=dt, final_uh=final,
                           nlp=nlp,                 # :full ⇒ frozen projections live
-                          diag_every=-1, check_every=0)
+                          monitor=monitor, rundiag=rundiag,
+                          diag_every=diag_every, check_every=0)
     final[] === nothing && error("run_mms_case: the time loop produced no solution")
 
     # --- L² errors against the EXACT field, on an elevated quadrature ------
@@ -294,7 +319,7 @@ end
 """
     run_conv_study(; pairing, domain, levels, mode, ...) → NamedTuple
 
-ONE convergence study of the campaign in `building_files/MMS_CONVERGENCE_CAMPAIGN.md`:
+ONE convergence study of the campaign in `markdown_files/MMS_CONVERGENCE_CAMPAIGN.md`:
 a mixed-order pairing `Q_p` velocity / `Q_{p-1}` surface, refined over `levels` meshes,
 reported against the OPTIMAL rates for that pairing.
 
@@ -318,7 +343,7 @@ linear regime makes the residual linear in `u`, so Newton hits round-off in one 
 `length(c_bdy) == M+1` assertion in `assemble_vertical_tensors` — while the signature advertised
 `M` as a degree of freedom. Fixed 2026-08-21; `c_bdy === nothing` now resolves through
 [`resolve_cbdy`](@ref). This is what makes the vertical-basis convergence study
-(`building_files/PENDING_TASKS.md` §1) runnable.
+(`markdown_files/COMPLETED_VBASIS_STUDY.md` §1) runnable.
 
 ⚠ **`c_bdy` changes the error CONSTANT, never the ORDER.** A rate study may use any reasonable node
 set (uniform is fine for `p ≥ 2`, where no published optimum exists); the optimised positions are a
@@ -360,6 +385,19 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
                           kbx::Float64 = 1.3, kby::Float64 = 0.0,
                           cpu_grid::Tuple{Int,Int} = (2,2),
                           ls_rtol::Float64 = 1e-13, ls_maxiter::Int = 5000,
+                          #  DIAGNOSTICS + PER-LEVEL OUTPUT (2026-09-11, PLANNED_CAMPAIGNS.md §4b).
+                          #  `output_dir` was previously a single mktempdir() for the
+                          #  WHOLE ladder and `save_every=0` was hard-coded, so no level
+                          #  ever wrote anything. Now each level gets
+                          #      <output_dir>/nx<N>/diagnostics.csv
+                          #  whenever diag_every > 0. Default is still off.
+                          #  ⚠ run_conv_study had NO output_dir at all before 2026-09-11 —
+                          #  every level went to run_mms_case's own mktempdir() and was
+                          #  discarded. This is where the campaign tree gets written.
+                          output_dir::String = "",
+                          diag_every::Int = -1,
+                          diag_csv::Bool  = true,
+                          monitor_factory = nothing,   # () -> SolverMonitor, one per level
                           verbose::Bool = true)
     domain in (:d1, :d2) || error("run_conv_study: domain must be :d1 or :d2")
     mode   in (:static, :transient) || error("run_conv_study: mode must be :static or :transient")
@@ -391,10 +429,20 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
                     p_u=p_u, p_eta=p_e, field=f,
                     regime=regime, nl_pressure=nl_pressure, flat_bed=flat_bed,
                     hfun=hfun, nl_tol=nl_tol, nl_iter=nl_iter, verbose=false)
+        #  One directory PER LEVEL, so the tree under
+        #  output/local_1d/mms_convergence_campaigns/<model>/<pair>/nx<N>/ is written
+        #  by the run itself rather than reconstructed afterwards.
+        diag_every > 0 && isempty(output_dir) &&
+            error("run_conv_study: diag_every>0 needs an output_dir (got \"\"). " *
+                  "Per-level diagnostics have nowhere to go.")
+        lvl_dir = diag_every > 0 ? joinpath(output_dir, "nx$(nx)") : mktempdir()
+        diag_every > 0 && mkpath(lvl_dir)
+        mon = monitor_factory === nothing ? nothing : monitor_factory()
         r = distributed ?
             run_mms_case_distributed(; common..., cpu_grid=cpu_grid,
                                        ls_rtol=ls_rtol, ls_maxiter=ls_maxiter) :
-            run_mms_case(; common...)
+            run_mms_case(; common..., output_dir=lvl_dir, diag_every=diag_every,
+                           diag_csv=diag_csv, monitor=mon)
         push!(hs, Lx/nx); push!(ee, r.e_eta); push!(eu, r.e_u); push!(nd, r.ndofs)
         verbose && @printf("    nx=%-4d ndofs=%-8d e_eta=%.6e  e_u=%.6e\n",
                            nx, r.ndofs, r.e_eta, r.e_u)
@@ -420,7 +468,7 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
             pw_eta=pw_eta, pw_u=pw_u, fit_eta=p_eta_fit, fit_u=p_u_fit,
             opt_eta=Float64(p_e+1), opt_u=Float64(p_u+1),
             #  Vertical configuration, carried out so an (M,p) sweep can tabulate
-            #  against Nσ directly (PENDING_TASKS.md §1 tier 3 asks exactly that).
+            #  against Nσ directly (COMPLETED_VBASIS_STUDY.md §1 tier 3 asks exactly that).
             M=M, p_vert=p_vert, c_bdy=cb, Nsigma=vert.N_dof,
             regime=regime, nl_pressure=nl_pressure, flat_bed=flat_bed,
             domain=domain, mode=mode, distributed=distributed)

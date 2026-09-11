@@ -229,7 +229,12 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                                               (t_n - t_last_print >= Float64(print_dt))
             # Field diagnostics (collective in the distributed twin): sampled on
             # the same steps that get reported, so every log line is complete.
-            fd = (rundiag !== nothing && diag_every > 0 && step % diag_every == 0) ?
+            #  ⚠ ALWAYS sample the FIRST and LAST step, as well as every diag_every'th.
+            #  `step % diag_every == 0` alone skips step 1 — the initial transient,
+            #  where a bad IC or a failing first Newton solve shows up — and skips the
+            #  final step whenever the step count is not a multiple of diag_every.
+            fd = (rundiag !== nothing && diag_every > 0 &&
+                  (step == 1 || step == steps_total || step % diag_every == 0)) ?
                  field_diagnostics(rundiag, u_n) : nothing
             fd === nothing || diag_csv_row(rundiag, step, t_n, fd, stats)
             if do_print
