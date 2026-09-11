@@ -6,7 +6,7 @@
 #  of solver physics the local campaign could NOT validate, and the reason is
 #  resolution, not suspicion: at A=1e-3 switching it off changes max|eta| by
 #  0.013 % (quasi-1D) / 0.094 % (2-D), which is below everything else's noise.
-#  See building_files/TEST_SUITE.md §7 — "a test validates a term only if the test
+#  See markdown_files/TEST_SUITE.md §7 — "a test validates a term only if the test
 #  can resolve that term's contribution".
 #
 #  THE EXPERIMENT. The block is O(A^3) against O(A) leading terms, so its
@@ -35,7 +35,7 @@
 #
 #  NOTE ON WHAT THIS IS NOT. This measures the block's MAGNITUDE and SCALING,
 #  not the correctness of its coefficients. Only the analytic MMS staged to this
-#  tier can do the latter (building_files/OPEN_ITEMS.md §6). Do not report a
+#  tier can do the latter (markdown_files/OPEN_ISSUES.md §6). Do not report a
 #  passing ratio as "nl_pressure=:full is validated".
 #
 #  CONFIGURATION. Flat bed + interior line source, deliberately: the flat case
@@ -99,7 +99,7 @@ for cfg in "${CONFIGS[@]}"; do
   echo "=== $label : A_wave=$aw  nl_pressure=$nlp  flat_bed=$BALFEM_FLAT_BED"
   echo "=================================================================="
   export BALFEM_AWAVE="$aw" BALFEM_NL_PRESSURE="$nlp"
-  export BALFEM_OUTDIR="output/local/sweep_nlp_${label}"
+  export BALFEM_OUTDIR="output/local/solver_features/nl_pressure_amplitude_sweep/sweep_nlp_${label}"
   log="$OUT/sweep_nlp_${label}.log"
   balfem_local_mpi "$RANKS" examples/local_2d/run_small_2d.jl > "$log" 2>&1
   rc=$?

@@ -1,7 +1,7 @@
 # ==============================================================
 #  run_vbasis_campaign.jl — THE VERTICAL-BASIS CONVERGENCE CAMPAIGN
 #
-#  Plan (read it first): building_files/MMS_VBASIS_CAMPAIGN.md
+#  Plan (read it first): markdown_files/MMS_VBASIS_CAMPAIGN.md
 #
 #  Phase 1  optimise the σ-mesh for each (M,p) by maximising the applicable kd,
 #           exactly as Yang & Liu (2024) did — and CALIBRATE the optimiser against
@@ -14,7 +14,7 @@
 #  DISPERSION-accuracy result, Phase 2 a DISCRETISATION-order result. Neither is
 #  evidence for the other.
 #
-#  Output: ONE file, output/local/mms_campaign/campaign_results.csv, one row per
+#  Output: ONE file, output/local/mms/vbasis_campaign_2026-08-30/campaign_results.csv, one row per
 #  mesh (phase=vmesh) or per refinement level (phase=space|time), plus a rendered
 #  campaign_report.md. Workers checkpoint into their own files as they go, so an
 #  interrupted campaign keeps everything already measured.
@@ -28,7 +28,7 @@
 #    VBC_NXT       fixed nx (temporal)                   36
 #    VBC_NSTEPS_S  steps per STATIC spatial level        20   (was 100; 15x, measured)
 #    VBC_MODELS    comma list of model numbers 1-8       1,2,3,4,5,6,7,8
-#    VBC_OUT       output directory                      output/local/mms_campaign
+#    VBC_OUT       output directory                      output/local/mms/vbasis_campaign_2026-08-30
 #
 #  RUN:  julia --project=. examples/local_mms/run_vbasis_campaign.jl
 # ==============================================================
@@ -44,7 +44,7 @@ const LEVELS_T= gi("VBC_LEVELS_T", 4)
 const NX0     = gi("VBC_NX0", 8)
 const NXT     = gi("VBC_NXT", 36)
 const NSTEPS_S= gi("VBC_NSTEPS_S", 20)   # static-study steps; see the note in run_one
-const OUT     = gs("VBC_OUT", "output/local/mms_campaign")
+const OUT     = gs("VBC_OUT", "output/local/mms/vbasis_campaign_2026-08-30")
 const MODELSEL= parse.(Int, split(gs("VBC_MODELS","1,2,3,4,5,6,7,8"), ","))
 mkpath(OUT)
 const CKPT = joinpath(OUT, "checkpoints"); mkpath(CKPT)
@@ -142,7 +142,7 @@ const HDR = join(COLS, ",")
 
 println("#"^92)
 println("#  VERTICAL-BASIS CONVERGENCE CAMPAIGN   started $(Dates.now())")
-println("#    plan: building_files/MMS_VBASIS_CAMPAIGN.md")
+println("#    plan: markdown_files/MMS_VBASIS_CAMPAIGN.md")
 println("#    bases: ", join(["P$(b.p)LFE-$(b.M)(Nσ=$(b.M*b.p+1))" for b in BASES], " "))
 println("#    models: $MODELSEL   workers: $NWORK   out: $OUT")
 println("#"^92); flush(stdout)

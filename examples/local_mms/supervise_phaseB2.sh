@@ -21,7 +21,7 @@ NSHARD=12
 MIN_FREE_MB=${MIN_FREE_MB:-6000}
 SWAP_MAX_MB=${SWAP_MAX_MB:-4500}
 export PHASEB_MAX_STUDIES=${PHASEB_MAX_STUDIES:-1}
-OUT=output/local/mms_phaseB
+OUT=output/local/mms/phaseB
 
 rows() { local t=0; for f in $OUT/shard_*.csv; do [ -f "$f" ] && t=$((t + $(wc -l < "$f") - 1)); done; echo $t; }
 ids()  { pgrep -af 'run_phaseB_shard[.]jl [0-9]' | sed 's/.*shard[.]jl //' | awk '{print $1}'; }

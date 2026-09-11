@@ -12,7 +12,7 @@ for RT in 1e-13 1e-15; do
   export BALFEM_CONV_LEVELS=1 BALFEM_CONV_NX0="${NX0:-128}" BALFEM_CONV_DIST=1
   export BALFEM_CONV_PX=4 BALFEM_CONV_PY=1 BALFEM_CONV_LSRTOL="$RT" BALFEM_CONV_NLTOL="$RT"
   export BALFEM_CONV_DT=1e-5 BALFEM_CONV_NSTEPS=100
-  export BALFEM_CONV_OUT="output/local/mms_conv_tol_$RT"
+  export BALFEM_CONV_OUT="output/outdated/superseded_mms_runs/mms_conv_tol_$RT"
   balfem_local_mpi 4 examples/local_mms/run_mms_matrix.jl 2>&1 | tee "output/local/logs/conv_tolgate_$RT.log"
 done
 echo "Compare e_eta / e_u between the two: >1% relative change ⇒ TOLERANCE-CAPPED."

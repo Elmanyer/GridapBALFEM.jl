@@ -1,7 +1,7 @@
 # ==============================================================
 #  run_vbasis_shard.jl — ONE SHARD of the Phase-2 convergence matrix
 #
-#  Plan: building_files/MMS_VBASIS_CAMPAIGN.md
+#  Plan: markdown_files/MMS_VBASIS_CAMPAIGN.md
 #
 #  WHY THIS EXISTS INSTEAD OF `pmap`. The `Distributed` version of this campaign
 #  (`run_vbasis_campaign.jl`) was launched three times and completed 1 study in
@@ -25,8 +25,8 @@
 #  ENV
 #    VBC_SHARD    0-based shard index                     (required)
 #    VBC_NSHARD   number of shards                        (required)
-#    VBC_MESHES   phase1_meshes.csv from Phase 1          output/local/mms_campaign/phase1_meshes.csv
-#    VBC_OUT      output directory                        output/local/mms_campaign
+#    VBC_MESHES   phase1_meshes.csv from Phase 1          output/local/mms/vbasis_campaign_2026-08-30/phase1_meshes.csv
+#    VBC_OUT      output directory                        output/local/mms/vbasis_campaign_2026-08-30
 #    VBC_LEVELS_S / VBC_LEVELS_T / VBC_NX0 / VBC_NXT / VBC_NSTEPS_S / VBC_MODELS
 #
 #  RUN (all shards, one per core):
@@ -41,7 +41,7 @@ const T_START = time()
 gs(k,d)=get(ENV,k,d); gi(k,d)=parse(Int,get(ENV,k,string(d)))
 const SHARD  = parse(Int, ENV["VBC_SHARD"])
 const NSHARD = parse(Int, ENV["VBC_NSHARD"])
-const OUT    = gs("VBC_OUT","output/local/mms_campaign")
+const OUT    = gs("VBC_OUT","output/local/mms/vbasis_campaign_2026-08-30")
 const MESHCSV= gs("VBC_MESHES", joinpath(OUT,"phase1_meshes.csv"))
 const LEVELS_S, LEVELS_T = gi("VBC_LEVELS_S",4), gi("VBC_LEVELS_T",4)
 const NX0, NXT, NSTEPS_S = gi("VBC_NX0",8), gi("VBC_NXT",36), gi("VBC_NSTEPS_S",20)
@@ -176,7 +176,7 @@ todo = filter(c -> !(key(c) in donekeys), cases)
 #  VBC_OUT directories otherwise cannot see each other's claims, and the tail of the
 #  campaign duly had one study running on three slots at once. VBC_CLAIMDIR defaults
 #  to a shared path so every batch arbitrates against the same set.
-const CLAIMDIR = gs("VBC_CLAIMDIR", "output/local/_claims"); mkpath(CLAIMDIR)
+const CLAIMDIR = gs("VBC_CLAIMDIR", "output/local/mms/_claims"); mkpath(CLAIMDIR)
 claimfile(c) = joinpath(CLAIMDIR, replace("$(c.kind)_P$(c.p)LFE-$(c.M)_M$(c.model)_$(c.integrator)", "/"=>"_") * ".claim")
 pid_alive(pid) = isdir("/proc/$pid")
 function claimed_by_other(c)

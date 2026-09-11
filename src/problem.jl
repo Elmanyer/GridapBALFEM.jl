@@ -70,7 +70,7 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
                                       #   VectorValue{Nσ}. Subtracted from the residual as
                                       #   F = ∫(q Sη + Wx⋅Sx + Wy⋅Sy), making u* the exact solution
                                       #   of the forced problem. Independent of u ⇒ NO Jacobian
-                                      #   contribution. See building_files/MMS_ANALYTIC_PLAN.md.
+                                      #   contribution. See markdown_files/VERIFIED_SCOPE.md (the analytic-MMS plan itself is gone).
 end
 
 """
@@ -248,7 +248,7 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
     #  LINEAR: h-WEIGHTED, per LinearModel.tex `eq: linearised system momentum`
     #  (Σⱼ h Mᵢⱼ u̇ⱼ). The h-DIVIDED form used previously is exact ONLY on a flat bed,
     #  where it is a mere rescaling; over variable bathymetry it is a different model.
-    #  See building_files/MMS_VARBED_PLAN.md §0.A (audit + derivation).
+    #  See markdown_files/VERIFIED_SCOPE.md (the varbed plan itself is gone) §0.A (audit + derivation).
     r = lin ? r + ∫( d_cf*((Wx ⋅ accx) + (Wy ⋅ accy)) ) * dΩh :
               r + ∫( H*(Wx ⋅ accx) + H*(Wy ⋅ accy) ) * dΩh
 
@@ -364,7 +364,7 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
     #  this guard must be the CONJUNCTION with `!lin`: `lin_pressure` alone is TRUE in
     #  the linear variable-bed case (lin_pressure = advection ∨ ¬flat_bed), which
     #  assembled the package twice — an O(ε) error invisible to every flat-bed test
-    #  because both forms vanish when ∇h ≡ 0. See building_files/RESIDUAL_TERM_AUDIT_PLAN.md.
+    #  because both forms vanish when ∇h ≡ 0. See markdown_files/MODEL.md §7 (the term-audit plan itself is gone).
     if !lin && prob.lin_pressure
         UgHt = dHx*Uxt + dHy*Uyt
         L1 = (-1.0)*(dhx*Uxt + dhy*Uyt)
@@ -427,7 +427,7 @@ end
 #  the time integrator form its per-stage system J = ∂R/∂u + (1/aΔt)∂R/∂u̇
 #  directly.
 #
-#  COVERAGE — differs by regime, deliberately (see building_files/RESIDUAL_TERM_AUDIT_PLAN.md):
+#  COVERAGE — differs by regime, deliberately (see markdown_files/MODEL.md §7 (the term-audit plan itself is gone)):
 #
 #   * LINEAR branch (`prob.linearised`): the Jacobians are EXACT. The residual is
 #     affine in (u,u̇) there, so every assembled row has its exact derivative here —

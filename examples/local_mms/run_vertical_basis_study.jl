@@ -10,7 +10,7 @@
 #  the `length(c_bdy) == M+1` assertion. The evidence for the property the project
 #  is named for was one data point. This script produces the rest.
 #
-#  Design: building_files/PENDING_TASKS.md §1 (tiers 1–3).
+#  Design: markdown_files/COMPLETED_VBASIS_STUDY.md §1 (tiers 1–3).
 #
 #  ⚠ THIS BELONGS LOCAL AND SEQUENTIAL. MMS measures the order of accuracy under
 #  MESH REFINEMENT; the domain size does not enter a rate at all (h = Lx/nx, so a
@@ -57,7 +57,7 @@
 #    VB_AB        bed amplitude (variable-bed)      0.2
 #    VB_NLTOL     Newton tolerance                  1e-12
 #    VB_NLITER    Newton budget                     50 linear / 400 nonlinear
-#    VB_OUT       output directory                  output/local/mms_vbasis
+#    VB_OUT       output directory                  output/local/mms/vbasis_study_2026-09-09
 #
 #  RUN
 #    julia --project=. examples/local_mms/run_vertical_basis_study.jl
@@ -97,7 +97,7 @@ p_u    = gi("VB_PU",3); dom = Symbol(gs("VB_DOMAIN","d1"))
 mode   = Symbol(gs("VB_MODE","static")); levels = gi("VB_LEVELS",4)
 nx0    = gi("VB_NX0",8); dval = gf("VB_D",2.5); ab = gf("VB_AB",0.2)
 nltol  = gf("VB_NLTOL",1e-12)
-outdir = gs("VB_OUT","output/local/mms_vbasis"); mkpath(outdir)
+outdir = gs("VB_OUT","output/local/mms/vbasis_study_2026-09-09"); mkpath(outdir)
 const TOLP = 0.3
 
 println("#"^84)

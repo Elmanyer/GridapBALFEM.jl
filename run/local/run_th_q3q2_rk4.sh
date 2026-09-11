@@ -46,5 +46,5 @@ export BALFEM_TABLEAU=EXRK_RungeKutta_4_4
 #  A CFL failure and the slow instability are DISTINGUISHABLE BY TIMESCALE: CFL blows up
 #  within a few steps, the instability takes tens of seconds.
 export BALFEM_DT=0.005
-export BALFEM_OUTDIR=output/local_1d/th_q3q2_rk4
+export BALFEM_OUTDIR=output/local_1d/nonlinear_stability_taylor_hood/integrators/th_q3q2_rk4
 balfem_local_run examples/local_1d/run_flume_1d.jl

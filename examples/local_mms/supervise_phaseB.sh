@@ -7,7 +7,7 @@
 cd "$(dirname "$0")/../.." || exit 1
 NW=${NW:-5}; NSHARD=12
 export PHASEB_MAX_STUDIES=${PHASEB_MAX_STUDIES:-2}
-OUT=output/local/mms_phaseB
+OUT=output/local/mms/phaseB
 rows() { local t=0; for f in $OUT/shard_*.csv; do [ -f "$f" ] && t=$((t + $(wc -l < "$f") - 1)); done; echo $t; }
 round=0
 while :; do

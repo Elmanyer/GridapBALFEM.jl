@@ -3,7 +3,7 @@
 #  analytic-MMS models (no FE solve — seconds, not minutes)
 #
 #  Specification: ValidationTests.tex §subsec: mms model3 / §subsec: mms model4.
-#  Plan:          building_files/MMS_NONLINEAR_PLAN.md §2.1.
+#  Plan:          markdown_files/VERIFIED_SCOPE.md (the nonlinear plan itself is gone) §2.1.
 #
 #  WHY GATE THE FORCING SEPARATELY FROM THE RATE.
 #  A convergence study conflates two things: a wrong FORCING and a wrong SOLVER

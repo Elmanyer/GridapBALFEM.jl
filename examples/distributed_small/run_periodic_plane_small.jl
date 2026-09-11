@@ -72,7 +72,7 @@ h_bathy = usebar ?
     (x -> d - 0.5*hbar*(tanh((x[1]-(xbar-wbar))/sramp) - tanh((x[1]-(xbar+wbar))/sramp))) : nothing
 
 bedtag  = usebar ? "bar" : "flat"
-#  Standardised name — building_files/OUTPUT_NAMING_PROPOSAL.md, generator in
+#  Standardised name — markdown_files/OUTPUT_NAMING_PROPOSAL.md, generator in
 #  src/utilities.jl. ⚠ y_wall_bc here MUST match the setup_and_run_distributed call
 #  below — it is what makes the <domain> token truthful.
 #  One grammar for every driver; the old per-script prefixes

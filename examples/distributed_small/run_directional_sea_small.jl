@@ -81,7 +81,7 @@ h_bathy = usebar ?
 
 state   = build_airy_state(d; directional=true)
 bedtag  = usebar ? "bar" : "flat"
-#  Standardised name — building_files/OUTPUT_NAMING_PROPOSAL.md, generator in
+#  Standardised name — markdown_files/OUTPUT_NAMING_PROPOSAL.md, generator in
 #  src/utilities.jl. ⚠ y_wall_bc here MUST match the setup_and_run_distributed call
 #  below — it is what makes the <domain> token truthful.
 #  One grammar for every driver; the old per-script prefixes

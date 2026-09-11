@@ -31,7 +31,7 @@
 #  run Q2/Q2 while asserting the theoretical 3 — a gate no correct solver could
 #  pass. It now runs the Taylor-Hood-like Q3/Q2 (velocity one order above the
 #  surface), the only pairing measured optimal in both fields across the 12-study
-#  campaign (building_files/MMS_CONVERGENCE_CAMPAIGN.md):
+#  campaign (markdown_files/MMS_VBASIS_CAMPAIGN.md):
 #      η ∈ Q2 ⇒ optimal 3        u ∈ Q3 ⇒ optimal 4        (DIFFERENT optima)
 #  If you lower the pairing back to equal order, lower these expectations to p,
 #  or the test measures the FE spaces rather than the residual.
@@ -75,7 +75,7 @@ const P_ETA  = 2                     # surface  order  ⇒ optimal η rate P_ETA
 #  HORIZONTAL discretisation, so every rate asserted below must hold for ANY
 #  vertical basis; overriding these is how that claim gets tested. `c_bdy` is left
 #  to `resolve_cbdy`, which is what makes M ≠ 2 legal at all (it used to throw).
-#  See building_files/PENDING_TASKS.md §1.
+#  See markdown_files/COMPLETED_VBASIS_STUDY.md §1.
 const M_VERT = parse(Int, get(ENV, "MMS_M",     "2"))
 const P_VERT = parse(Int, get(ENV, "MMS_PVERT", "1"))
 const CASE   = (Lx=LX, Ly=LY, d=DEPTH, M=M_VERT, p_vert=P_VERT,

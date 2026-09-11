@@ -101,7 +101,7 @@ for cfg in "${CONFIGS[@]}"; do
   set -- $cfg; pc=$1; rt=$2; label=$3
   echo "=== $label : precond=$pc ls_rtol=$rt ==="
   export BALFEM_PRECOND="$pc" BALFEM_LS_RTOL="$rt"
-  export BALFEM_OUTDIR="output/local/bench_${pc}_${rt}"
+  export BALFEM_OUTDIR="output/local/performance/preconditioner_benchmarks/bench_${pc}_${rt}"
   log="$OUT/bench_${pc}_${rt}.log"
   balfem_local_mpi "$RANKS" examples/local_2d/run_small_2d.jl > "$log" 2>&1
   rc=$?

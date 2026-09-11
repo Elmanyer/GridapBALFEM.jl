@@ -63,7 +63,7 @@ dt       = genv_f("BALFEM_DT", 0.02)
 periods  = genv_f("BALFEM_PERIODS", 40.0)
 Tfinal   = haskey(ENV, "BALFEM_TFINAL") ? genv_f("BALFEM_TFINAL", 0.0) : periods * Twave
 save_ev  = genv_i("BALFEM_SAVE_EVERY", 25)
-#  Standardised name — building_files/OUTPUT_NAMING_PROPOSAL.md; generator in
+#  Standardised name — markdown_files/OUTPUT_NAMING_PROPOSAL.md; generator in
 #  src/utilities.jl. ⚠ y_wall_bc must match the setup_and_run_distributed call
 #  below: it is what makes the <domain> token truthful.
 _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,

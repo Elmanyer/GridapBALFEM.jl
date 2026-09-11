@@ -41,5 +41,5 @@ export BALFEM_P_ETA=1
 export BALFEM_SOLVER=sdirk
 export BALFEM_TABLEAU=SDIRK_2_2
 export BALFEM_NX=480
-export BALFEM_OUTDIR=output/local_1d/thref_dx0125
+export BALFEM_OUTDIR=output/local_1d/nonlinear_stability_taylor_hood/dx_refinement/thref_dx0125
 balfem_local_run examples/local_1d/run_flume_1d.jl

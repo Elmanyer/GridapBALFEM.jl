@@ -243,7 +243,7 @@ end
 
 # ==============================================================
 #  Field diagnostics (M1/E1/E2/I1/D1) — see
-#  building_files/LOCAL_VALIDATION_PLAN.md §3
+#  markdown_files/TEST_SUITE.md (the local-validation plan itself is gone) §3
 #
 #  Everything here answers a question the archived cluster logs could not:
 #    * M1  how much memory is this rank using, and is it growing?

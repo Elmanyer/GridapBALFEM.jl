@@ -1,7 +1,7 @@
 # SNELLIUS_ROME_LAUNCH_CONFIGS.md — how the `rome` partition charges, and how to size a job
 
 > **Tracked deliberately.** This governs what every cluster job *costs*, so it lives beside the
-> launchers in `run/` rather than in the gitignored `building_files/`.
+> launchers in `run/` rather than in the gitignored `markdown_files/`.
 >
 > Cluster: **SURF Snellius**, partition **`rome`**. Enforced by Slurm **cgroups**: what you request
 > is exactly what you get, and exactly what you are billed for.

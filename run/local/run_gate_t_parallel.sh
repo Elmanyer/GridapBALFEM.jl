@@ -12,7 +12,7 @@ run_tol() {
     BALFEM_CONV_DIST=1 BALFEM_CONV_PX=4 BALFEM_CONV_PY=1 \
     BALFEM_CONV_LSRTOL="$rt" BALFEM_CONV_NLTOL="$rt" \
     BALFEM_CONV_DT=1e-5 BALFEM_CONV_NSTEPS=100 \
-    BALFEM_CONV_OUT="output/local/mms_conv_tol_$rt" \
+    BALFEM_CONV_OUT="output/outdated/superseded_mms_runs/mms_conv_tol_$rt" \
     OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 \
         stdbuf -oL -eL "$HOME/.julia/bin/mpiexecjl" --project=. -n 4 \
         julia --project=. examples/local_mms/run_mms_matrix.jl > "$OUT/gateT_$rt.log" 2>&1

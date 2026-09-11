@@ -3,7 +3,7 @@
 #
 #  Runs a set of convergence studies (pairing × domain × exec × time-mode) and
 #  writes one CSV row per mesh level plus a summary table.
-#  Plan: building_files/MMS_CONVERGENCE_CAMPAIGN.md
+#  Plan: markdown_files/MMS_VBASIS_CAMPAIGN.md
 #
 #  GATES (note the two fields have DIFFERENT optima):
 #      u  in Q_p      ⇒ optimal L² rate p+1
@@ -22,7 +22,7 @@
 #    BALFEM_CONV_PX/PY   MPI grid (distributed)           2 / 2
 #    BALFEM_CONV_LSRTOL  GMRES rtol (distributed)         1e-13
 #    BALFEM_CONV_NLTOL   Newton tol                       1e-14
-#    BALFEM_CONV_OUT     output dir                       output/local/mms_conv
+#    BALFEM_CONV_OUT     output dir                       output/local/mms/convergence_matrix
 #    BALFEM_CONV_REGIME  linear | nonlinear                linear
 #    BALFEM_CONV_NLP     none | native | full              none  (≠none available since 2026-08-18)
 #    BALFEM_CONV_FLATBED 1 flat bed | 0 variable bed       1
@@ -45,7 +45,7 @@ dt     = genv_f("BALFEM_CONV_DT",1e-4); nsteps = genv_i("BALFEM_CONV_NSTEPS",100
 dist   = genv_b("BALFEM_CONV_DIST",0)
 px,py  = genv_i("BALFEM_CONV_PX",2), genv_i("BALFEM_CONV_PY",2)
 lsrtol = genv_f("BALFEM_CONV_LSRTOL",1e-13); nltol = genv_f("BALFEM_CONV_NLTOL",1e-14)
-outdir = genv("BALFEM_CONV_OUT","output/local/mms_conv"); mkpath(outdir)
+outdir = genv("BALFEM_CONV_OUT","output/local/mms/convergence_matrix"); mkpath(outdir)
 #  MODEL selection. The campaign's original question was the FE PAIRING, which is
 #  orthogonal to the model — so the same sweep can now be run for any of the four
 #  MMS models instead of only the linear flat-bed one. The three symbols drive the

@@ -6,7 +6,7 @@
 #  process, so they are embarrassingly parallel. This replaces the single-process
 #  serial sweep, which used 1 of 16 cores.
 #
-#  CONCURRENCY. Not 12. `building_files/CONFIGURATION.md` §7 measured three concurrent
+#  CONCURRENCY. Not 12. `markdown_files/CONFIGURATION.md` §7 measured three concurrent
 #  Julia processes each running at ~1/3 solo speed — MEMORY BANDWIDTH is the
 #  binding constraint, not core count, so throughput saturates early. These
 #  studies are smaller (1.2k-5k DOFs coarse) and should scale further, but
@@ -22,7 +22,7 @@
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 JOBS="${JOBS:-6}"
-OUT=output/local/logs; mkdir -p "$OUT" output/local/mms_conv
+OUT=output/local/logs; mkdir -p "$OUT" output/local/mms/convergence_matrix
 
 # Default: everything NOT already done by the serial Suite-A run
 # (Q2/Q1 and Q3/Q2 in 1-D, static+transient, are complete).
@@ -36,7 +36,7 @@ run_one() {
     BALFEM_CONV_PU="$pu" BALFEM_CONV_DOMAIN="$dom" BALFEM_CONV_MODE="$mode" \
     BALFEM_CONV_LEVELS="$lv" BALFEM_CONV_NX0="$nx0" BALFEM_CONV_NY0="$ny0" \
     BALFEM_CONV_DIST=0 BALFEM_CONV_DT=1e-5 BALFEM_CONV_NSTEPS=100 \
-    BALFEM_CONV_OUT="output/local/mms_conv/$tag" \
+    BALFEM_CONV_OUT="output/local/mms/convergence_matrix/$tag" \
     OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 \
         stdbuf -oL -eL julia --project=. examples/local_mms/run_mms_matrix.jl \
         > "$OUT/conv_$tag.log" 2>&1

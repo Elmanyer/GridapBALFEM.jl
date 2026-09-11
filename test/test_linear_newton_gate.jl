@@ -19,7 +19,7 @@
 #  whole suite: the 𝓐/𝓚 slope-pressure package was assembled TWICE under
 #  `regime=:linear, flat_bed=false` (once in its linearised form M14, once in
 #  its nonlinear form M14–M18), which stalled Newton at 50 iterations.
-#  See building_files/RESIDUAL_TERM_AUDIT_PLAN.md.
+#  See markdown_files/MODEL.md §7 (the term-audit plan itself is gone).
 #
 #  Expected: nl_iters == n_stages per step (θ: 1 stage, SDIRK_2_2: 2 stages),
 #  with the final nonlinear residual at round-off (~1e-15).

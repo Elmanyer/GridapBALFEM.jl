@@ -4,7 +4,7 @@ Validation runs for the solver **at scale** (multi-node, distributed memory) and
 integration times** — the production regime. Where the `test/` suite proves correctness on small,
 fast problems, these scripts prove the solver stays correct on **big meshes** run for **many time
 steps** on many ranks. The full derivation and the small-scale suite are documented in
-`../../building_files/ValidationTests.md` / `.tex`.
+`../../latex_docs/BALFEM_models/NumericalImplementation/ValidationTests.tex` / `.tex`.
 
 Every metric here is a **global reduction** (`sum(∫·dΩ)` reduces across ranks in GridapDistributed) or
 the built-in **in-run residual check**, so nothing depends on point gauges (which are sequential-only)

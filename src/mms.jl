@@ -2,7 +2,7 @@
 #  mms.jl — ANALYTIC (verification) MMS, Stage 1: linear core on a flat bed
 #
 #  Implements ValidationTests.tex §"Analytic (verification) MMS". Plan and full
-#  rationale: building_files/MMS_ANALYTIC_PLAN.md.
+#  rationale: markdown_files/VERIFIED_SCOPE.md (the analytic-MMS plan itself is gone).
 #
 #  ############################################################################
 #  #  INDEPENDENCE IS THE WHOLE POINT.                                        #
@@ -180,7 +180,7 @@ function mms_forcing_stage1(f::MMSField, vert, d::Float64, g::Float64)
     #  forcing rescales by d. Continuity is unaffected (it was never h-divided).
     #  A constant rescaling cannot change a convergence ORDER — the Stage-1 rates are
     #  unchanged — but omitting it would make u* stop being the exact solution.
-    #  See building_files/MMS_VARBED_PLAN.md §0.A.
+    #  See markdown_files/VERIFIED_SCOPE.md (the varbed plan itself is gone) §0.A.
     function Sx(x, t)
         Π = Pi(t); s = sin(kx*x[1])*cos(ky*x[2])
         return VectorValue(ntuple(i ->

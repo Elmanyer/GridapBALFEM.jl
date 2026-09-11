@@ -7,7 +7,7 @@
 #  rate breaks rather than just that it did.
 #
 #  SEQUENTIAL BY DESIGN. These are small problems, and a direct LU beats every
-#  MPI split 2-3x at this size (measured, building_files/CONFIGURATION.md §6); the
+#  MPI split 2-3x at this size (measured, markdown_files/CONFIGURATION.md §6); the
 #  driver also needs the final FE solution to form the L² error.
 #
 #  CONFIG (env)
@@ -37,7 +37,7 @@
 #  Stokes system and EQUAL-ORDER spaces are inf-sup deficient: Q_p/Q_p converges
 #  at p in both fields, not p+1. The default here is the Taylor-Hood-like
 #  Q_p/Q_{p−1}, the only pairing measured optimal in both fields
-#  (building_files/MMS_CONVERGENCE_CAMPAIGN.md). Reading a rate without knowing
+#  (markdown_files/MMS_VBASIS_CAMPAIGN.md). Reading a rate without knowing
 #  the pairing is how a healthy solver gets mistaken for a broken one.
 #
 #  ⚠ NONLINEAR MODELS NEED ITERATION BUDGET, NOT LOOSER TOLERANCES. The

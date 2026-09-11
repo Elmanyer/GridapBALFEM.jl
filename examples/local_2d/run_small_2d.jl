@@ -4,7 +4,7 @@
 #  Scaled-down siblings of the cluster suite in run/dist_small/, sized so a
 #  case finishes in minutes on this workstation instead of hours on 32 ranks.
 #  The point is a fast feedback loop: run it, read diagnostics.csv, decide.
-#  See building_files/LOCAL_VALIDATION_PLAN.md §6.
+#  See markdown_files/TEST_SUITE.md (the local-validation plan itself is gone) §6.
 #
 #  Each case maps onto a cluster sibling so a local result is predictive:
 #    line/linear/flat      ↔ run_lin_periodic_plane_small.sh
@@ -136,7 +136,7 @@ else                                        # sea
 end
 spR = genv_f("BALFEM_SPONGE_R", 10.0)
 
-#  Standardised name — building_files/OUTPUT_NAMING_PROPOSAL.md; generator in
+#  Standardised name — markdown_files/OUTPUT_NAMING_PROPOSAL.md; generator in
 #  src/utilities.jl. `kind` names the GENERATION here ("line"/"point"/"bc"/"sea"),
 #  so it is translated into the spec's <wave> token: mechanism as a prefix on the
 #  wave type (bcplane), never a separate field.

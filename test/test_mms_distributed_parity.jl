@@ -36,7 +36,7 @@
 #
 #  ⚠ THE REFERENCE IS COMPUTED IN-PROCESS, NEVER PINNED AS A CONSTANT. Three
 #  stale reference constants in this suite were found the first time their tests
-#  were re-run in a session (OPEN_ITEMS.md §3); a reference that recomputes cannot
+#  were re-run in a session (OPEN_ISSUES.md §3); a reference that recomputes cannot
 #  go stale. Every rank computes it redundantly — cheap at this size, and it keeps
 #  the comparison exact rather than to printed precision.
 #

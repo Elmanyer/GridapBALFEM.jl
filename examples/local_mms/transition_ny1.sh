@@ -10,7 +10,7 @@
 #  The 6 :d2 studies are NOT affected by ny_1d and are the expensive ones, so their
 #  rows are PRESERVED and they are not recomputed.
 cd "$(dirname "$0")/../.." || exit 1
-OUT=output/local/mms_phaseB
+OUT=output/local/mms/phaseB
 
 # 1. wait for the supervisor to exit (it breaks on COMPLETE or on a 3-round stall)
 while pgrep -f 'supervise_phaseB2[.]sh' >/dev/null; do sleep 60; done

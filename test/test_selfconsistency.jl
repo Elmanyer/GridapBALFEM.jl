@@ -30,7 +30,7 @@
 #  The genuine verification of the discretised operator is the ANALYTIC MMS,
 #  whose forcing is derived from the governing equations independently of this
 #  code and which measures an ORDER OF ACCURACY.  It is specified in
-#  building_files/LFEM_discretisation/NumericalImplementation/ValidationTests.tex
+#  latex_docs/LFEM_discretisation/NumericalImplementation/ValidationTests.tex
 #  (section "Analytic (verification) MMS") and is not yet implemented.
 #
 #  Method. Pick a smooth space-time field u*(x,t) — degree-2 in space (exactly

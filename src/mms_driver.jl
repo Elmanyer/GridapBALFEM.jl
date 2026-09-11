@@ -9,7 +9,7 @@
 #  build_fe_spaces, build_problem, build_ode_operator, build_ode_solver,
 #  run_time_loop), so the operator under test IS the production operator.
 #
-#  Plan: markdown_files/MMS_ANALYTIC_PLAN.md
+#  Plan: markdown_files/VERIFIED_SCOPE.md (the analytic-MMS plan itself is gone)
 # ==============================================================
 
 """
@@ -319,7 +319,7 @@ end
 """
     run_conv_study(; pairing, domain, levels, mode, ...) → NamedTuple
 
-ONE convergence study of the campaign in `markdown_files/MMS_CONVERGENCE_CAMPAIGN.md`:
+ONE convergence study of the campaign in `markdown_files/MMS_VBASIS_CAMPAIGN.md`:
 a mixed-order pairing `Q_p` velocity / `Q_{p-1}` surface, refined over `levels` meshes,
 reported against the OPTIMAL rates for that pairing.
 

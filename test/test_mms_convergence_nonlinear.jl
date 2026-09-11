@@ -4,7 +4,7 @@
 #
 #  Specification: ValidationTests.tex §subsec: mms model3 / §subsec: mms model4
 #                 and §subsubsec: mms measure.
-#  Plan:          building_files/MMS_NONLINEAR_PLAN.md §2.3.
+#  Plan:          markdown_files/VERIFIED_SCOPE.md (the nonlinear plan itself is gone) §2.3.
 #
 #  WHAT THIS CERTIFIES, AND WHY IT IS DIFFERENT FROM test_selfconsistency.jl.
 #  The forcing is derived from the GOVERNING EQUATIONS (src/mms.jl), never from
@@ -46,7 +46,7 @@
 #  defaulting to the P1LFE-2 every study in this repository has ever run. The
 #  rates asserted below are properties of the HORIZONTAL discretisation, so they
 #  must hold for ANY vertical basis — overriding these is how the basis-agnosticism
-#  the model is named for gets tested (building_files/PENDING_TASKS.md §1).
+#  the model is named for gets tested (markdown_files/COMPLETED_VBASIS_STUDY.md §1).
 #  ⚠ The forcing cost scales as Nσ²; P1LFE-4 or P2LFE-3 is several times the
 #  default. Prune with MMS_NL_LEVELS before sweeping.
 #
@@ -145,12 +145,12 @@ studies = [
 #      construction: the solver evaluates the irreducible ∂²η of components
 #      {1,2,4,5} from frozen L² projections lagged one step while the forcing
 #      computes them exactly, so the two encode DIFFERENT operators and no mesh
-#      refinement closes the gap (VERIFICATION.md §4). `e_η` keeps its rate and IS
+#      refinement closes the gap (VERIFIED_SCOPE.md §4). `e_η` keeps its rate and IS
 #      gated. The `e_u` floor is REPORTED, labelled as a floor.
 #
 #  ⚠ DO NOT "fix" this by gating p_u — that would assert something false — and do
 #  NOT pin a floor CONSTANT here either: the floor is a property of (M, p_vert,
-#  domain, depth, levels), and PENDING_TASKS.md §1 tier 3 exists precisely to ask
+#  domain, depth, levels), and COMPLETED_VBASIS_STUDY.md §1 tier 3 exists precisely to ask
 #  whether it depends on Nσ. Pinning the P1LFE-2 number would break every other
 #  vertical basis the moment someone swept one.
 if RUN_FULL
@@ -214,7 +214,7 @@ for s in studies
         @printf("  REPORT  %s: e_u FLOOR = %.6e  (p_u = %.3f over %d levels, %s, Nσ=%d)\n",
                 s.name, r.e_u[end], r.fit_u, length(r.h), r.tag, r.Nsigma)
         println("          not gated: :full's u-error is capped by the frozen L² projections,")
-        println("          not by the mesh — VERIFICATION.md §4. p_η above IS gated.")
+        println("          not by the mesh — VERIFIED_SCOPE.md §4. p_η above IS gated.")
     end
     flush(stdout)
 end

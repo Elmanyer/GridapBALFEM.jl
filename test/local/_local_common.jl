@@ -5,7 +5,7 @@
 #  sponge, relaxation zone, boundary behaviour — on quasi-1D flumes small
 #  enough to run in minutes on this machine, so the diagnosis loop no longer
 #  goes through multi-hour cluster jobs. See
-#  building_files/LOCAL_VALIDATION_PLAN.md §4.
+#  markdown_files/TEST_SUITE.md (the local-validation plan itself is gone) §4.
 #
 #  Quasi-1D flume: a narrow 2-D domain (Ly=3 m, ny=3 — Gridap's minimum in a
 #  periodic direction) with y-periodic laterals. The solver is structurally
@@ -18,7 +18,7 @@
 #  (timeloop_dist.jl:21-22) and every measurement here is gauge-based. Cores are
 #  used for process-level concurrency ACROSS test files (run_local_tests.sh),
 #  not for MPI within one — measured, a direct LU beats a 2-12 rank GMRES split
-#  of this mesh by 2-3x (see building_files/SOLVER_ASSESSMENT_2026-08.md §3).
+#  of this mesh by 2-3x (see markdown_files/SOLVER_ASSESSMENT_2026-08.md §3).
 # ==============================================================
 
 using GridapBALFEM

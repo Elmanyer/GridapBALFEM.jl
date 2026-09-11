@@ -12,7 +12,7 @@
 #
 #  It is also a check the existing suite cannot make: `test_equivalence.jl`
 #  compares against an external oracle (and is currently failing, see
-#  building_files/SOLVER_ASSESSMENT_2026-08.md §2), while every other gate
+#  markdown_files/SOLVER_ASSESSMENT_2026-08.md §2), while every other gate
 #  compares the solver against theory using its own residual. This one compares
 #  the solver against ITSELF along a symmetry the model must respect.
 #

@@ -9,7 +9,7 @@
 #
 #  Specification: LinearModel.tex eq: linearised system momentum (linear) and
 #  the term classification in GridapImplementation.tex (all four models).
-#  Plan: building_files/MMS_VARBED_PLAN.md, building_files/MMS_NONLINEAR_PLAN.md
+#  Plan: markdown_files/VERIFIED_SCOPE.md (the varbed plan itself is gone), markdown_files/VERIFIED_SCOPE.md (the nonlinear plan itself is gone)
 #
 #  MODELS REACHABLE FROM HERE (REGIME × the fixed variable bed):
 #    REGIME=linear     -> Model 2  (VERIFIED 2026-08-15: p_eta 3.000 / p_u 4.000)

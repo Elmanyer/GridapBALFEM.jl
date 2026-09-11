@@ -2,7 +2,7 @@
 #  report_vbasis_campaign.jl — merge the campaign into ONE results file
 #  and render the summary tables.
 #
-#  Plan: building_files/MMS_VBASIS_CAMPAIGN.md
+#  Plan: markdown_files/MMS_VBASIS_CAMPAIGN.md
 #
 #  Merges: the Phase-1 mesh rows, the models 1-6 shard checkpoints, and the
 #  models 7-8 `:full` batch (a separate output dir, run concurrently) into a single
@@ -21,9 +21,9 @@
 # ==============================================================
 using Printf
 
-const MAIN = get(ENV,"VBC_OUT","output/local/mms_campaign")
-const FULL = get(ENV,"VBC_OUT_FULL","output/local/mms_campaign_full")
-const SPAT = get(ENV,"VBC_OUT_SPATIAL","output/local/mms_campaign_spatial")
+const MAIN = get(ENV,"VBC_OUT","output/local/mms/vbasis_campaign_2026-08-30")
+const FULL = get(ENV,"VBC_OUT_FULL","output/outdated/superseded_mms_runs/mms_campaign_full")
+const SPAT = get(ENV,"VBC_OUT_SPATIAL","output/outdated/superseded_mms_runs/mms_campaign_spatial")
 const HDR  = "phase,basis,M,p_vert,Nsigma,c_bdy,kd_app,kd_per_prop,model,regime,flat_bed," *
              "nl_pressure,integrator,p_u,p_eta,level,h,dt,ndofs,e_eta,e_u,pw_eta,pw_u," *
              "fit_eta,fit_u,opt_eta,opt_u,rate_gated_u,verdict,note"

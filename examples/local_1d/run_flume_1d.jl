@@ -4,7 +4,7 @@
 #  ONE script for every 1-D-horizontal case. The physics, the wave-generation
 #  mechanism and the geometry are all selected by environment variables (set in
 #  the launcher); nothing is hard-coded per case. See
-#  building_files/LOCAL_VALIDATION_PLAN.md §5.
+#  markdown_files/TEST_SUITE.md (the local-validation plan itself is gone) §5.
 #
 #  WHAT "1-D horizontal" MEANS HERE. The solver is structurally 2-D
 #  (CartesianDiscreteModel on a rectangle, Ex/Ey throughout the residual), so a
@@ -245,7 +245,7 @@ gauges = use_mpi ? Tuple{Float64,Float64}[] :
          [(0.2Lx, y_c), (0.4Lx, y_c), (0.5Lx, y_c), (0.5Lx + 1.0, y_c),
           (0.6Lx, y_c), (0.8Lx, y_c)]
 
-#  STANDARDISED OUTPUT NAME — building_files/OUTPUT_NAMING_PROPOSAL.md
+#  STANDARDISED OUTPUT NAME — markdown_files/OUTPUT_NAMING_PROPOSAL.md
 #      <model>_<domain>_<wave>_<regime>_<nlp>_<bed>_<discr>_<amplitude>_<period>[_extra]
 #      P1LFE-2_1d_bcplane_nl_full_flat_Q2Q1_A0.1_T1.6
 #  One generator for every driver (output_dir_name in src/utilities.jl); the old

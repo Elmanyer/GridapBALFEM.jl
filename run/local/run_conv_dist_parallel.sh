@@ -37,7 +37,7 @@ run_one_dist() {
         BALFEM_CONV_DIST=1 BALFEM_CONV_PX="$px" BALFEM_CONV_PY="$py" \
         BALFEM_CONV_LSRTOL=1e-13 BALFEM_CONV_NLTOL=1e-13 \
         BALFEM_CONV_DT=1e-5 BALFEM_CONV_NSTEPS=100 \
-        BALFEM_CONV_OUT="output/local/mms_conv/$tag" \
+        BALFEM_CONV_OUT="output/local/mms/convergence_matrix/$tag" \
         OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 \
         stdbuf -oL -eL "$HOME/.julia/bin/mpiexecjl" --project=. -n $((px*py)) \
         julia --project=. examples/local_mms/run_mms_matrix.jl \

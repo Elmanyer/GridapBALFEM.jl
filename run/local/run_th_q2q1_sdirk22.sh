@@ -41,5 +41,5 @@ export BALFEM_FE_ORDER=2
 export BALFEM_P_ETA=1
 export BALFEM_SOLVER=sdirk
 export BALFEM_TABLEAU=SDIRK_2_2
-export BALFEM_OUTDIR=output/local_1d/th_q2q1_sdirk22
+export BALFEM_OUTDIR=output/local_1d/nonlinear_stability_taylor_hood/integrators/th_q2q1_sdirk22
 balfem_local_run examples/local_1d/run_flume_1d.jl

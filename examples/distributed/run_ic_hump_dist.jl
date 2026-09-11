@@ -51,7 +51,7 @@ sig0     = genv_f("BALFEM_SIGMA0", 4.0)
 dt       = genv_f("BALFEM_DT", 0.02)
 Tfinal   = genv_f("BALFEM_TFINAL", 40.0)
 save_ev  = genv_i("BALFEM_SAVE_EVERY", 25)
-#  Standardised name — building_files/OUTPUT_NAMING_PROPOSAL.md; generator in
+#  Standardised name — markdown_files/OUTPUT_NAMING_PROPOSAL.md; generator in
 #  src/utilities.jl. ⚠ y_wall_bc must match the setup_and_run_distributed call
 #  below: it is what makes the <domain> token truthful.
 _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
