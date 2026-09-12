@@ -88,7 +88,17 @@ The 1-D short ladder (`T9b_tier2_1d_short`) already demonstrated that the re-spe
 long ladder's meaningless 1.08 / 2.51. Re-running from `nx0 = 4` adds the coarse level and the
 fall-back rate pair.
 
-**2-D Q4/Q3 has no data at all, and remains the largest single gap** — but it is **deferred**
+⚠ **SUPERSEDED 2026-09-12: the short 1-D re-run is DONE (§2) and a short 2-D tier is RUNNING.**
+`C3_tier2_2d` (`levels=4, nx0=4`, `ny0 = round(nx0·Ly/Lx)` so cells stay at 1.16:1) covers models
+1–6 at Q4/Q3 in 2-D — the gap this paragraph describes. First two results, both linear:
+`p_η = 3.999` (optimal 4) and `p_u = 4.19/4.15` (optimal 5, pre-asymptotic), at 195 and 332 min.
+⚠ The LONG-ladder `T9_tier2_2d` at `p_u=4` is **cancelled in place** in `run_phaseB_shard.jl`
+(a `cancelled(j)` predicate applied after the round-robin, with the Job left in the list so no index
+moves). It had briefly relaunched itself when the stale `exhausted` markers were cleared — **a
+stale marker is not a cancellation**, and at cost 90 it sorted ahead of Campaign C's 96/97 and took
+two workers with it, one reaching 12.1 GB RSS.
+
+*Original text:* **2-D Q4/Q3 has no data at all, and remains the largest single gap** — but it is **deferred**
 (2026-09-11): the 2-D matrix is 12 solver runs per model and too expensive to take on now. Recorded
 here so it is not mistaken for covered. Its original specification carried the *long* ladder
 (`levels = 4, nx0 = 8` → `nx` to 64), which would have saturated for the same reason 1-D did, at
@@ -97,7 +107,45 @@ re-specified short; never launch it as it stands.**
 
 ---
 
-## 2. THE CAMPAIGN TO RUN — 1-D only, four models, `:full` excluded
+## 2. ✅ THE 1-D CAMPAIGN — RUN AND COMPLETE (2026-09-12)
+
+> **18/18 studies, 84/84 solver runs, 18 OK, 0 errors, 44.1 core-hours.**
+> Data: `output/local/mms/phaseB/shard_NN_v2.csv` (schema v2, 27 fields, per-level sequences
+> persisted); per-level diagnostics under
+> `output/local_1d/mms_convergence_campaigns/<model>/<pair>/nx<N>/`.
+>
+> | pairing | `p_η` (optimal) | `p_u` (optimal) | verdict |
+> |---|---|---|---|
+> | **Q2/Q1**, all 6 models | 2.000 (2) ✅ | **2.003–2.012** (3) ⛔ | one-order velocity shortfall, universal |
+> | **Q3/Q2**, linear | 3.000 (3) ✅ | 3.99 (4) ✅ | optimal |
+> | **Q3/Q2**, nonlinear | **2.45** (3) ⚠ | 3.69–3.71 (4) ⚠ | order reduction — `OPEN_ISSUES.md` §0b |
+> | **Q4/Q3**, all 6 | 4.000–4.002 (4) ✅ | 4.30–4.68 (5), rising | `p_η` exact, `p_u` pre-asymptotic |
+>
+> **The two results this campaign was run to get:**
+>
+> 1. **The Q2/Q1 one-order velocity shortfall is UNIVERSAL.** Tier 2 had established it on models 1
+>    and 3 only — both flat-bed, both `:none` — so by rule 4 it was blind to `∇h` and to the `𝓝`
+>    blocks. It now reproduces on **variable bathymetry** (models 2, 4, 6) and on **`:native`, the
+>    production tier** (5, 6), with `e_u ≈ 1.6–3.3e-05`, five orders above the algebraic floor, and
+>    pairwise sequences *descending* onto 2.00 (2.35 → 2.08 → 2.01 → 2.00). It is a converged rate,
+>    not saturation. **Q3/Q2 is the cheapest pairing that is optimal in both fields.**
+> 2. **`:native` costs nothing in accuracy and nothing in rate.** `:none` vs `:native` differ by
+>    ~1e-4 in `p_η` on every matched pair — independent confirmation that the `{1,2,4,5}` hierarchy
+>    is dynamically negligible, now measured on a convergence ladder rather than on a single run.
+>
+> ⚠ **And one the campaign was NOT run to get**: the nonlinear `p_η` order reduction, which is
+> sharper than the ≈2.17–2.27 previously recorded and is now the most serious open defect. Full
+> account, including five eliminations and the quadrature refutation: **`OPEN_ISSUES.md` §0b**.
+
+### What was run, for the record
+
+The campaign as specified below was executed unchanged: C1 (models 2, 4, 5, 6 × three pairings) and
+C2 (the models 1, 3 re-runs whose per-level errors had never been persisted). Appended at costs
+96/97 so no existing shard ownership moved. The original specification follows.
+
+---
+
+## 2b. THE CAMPAIGN AS SPECIFIED — 1-D only, four models, `:full` excluded
 
 **`:full` is excluded by decision, not by omission.** Models 7 and 8 can never reach optimal order:
 the `{1,2,4,5}` blocks are assembled in the residual but frozen (projected) in `jacobian_u`, so
@@ -367,7 +415,15 @@ exactly the gap C2 exists to repair.
 
 Measured from the 38 Phase-B studies: **310.8 core-hours**, i.e. ~8 h/study averaged, but the
 spread is wide. This campaign is **1-D only**, which is the cheap end: comparable 1-D studies in
-Phase-B ran from minutes to ~1 h. Run under `supervise_phaseB2.sh`, which bounds worker lifetime
+Phase-B ran from minutes to ~1 h.
+⚠ **SUPERSEDED BY MEASUREMENT (2026-09-12): that estimate was wrong by an order of magnitude.**
+Actual: Q2/Q1 mean 96 min, Q3/Q2 mean 181 min (max 347), Q4/Q3 mean 165 min (max 342); 44.1
+core-hours for the 18 studies. The driver is the **regime, not the dimension** — a LINEAR Q3/Q2
+study takes 30 min and the NONLINEAR one on the same ladder takes 183–347 min, because every step
+is a full Newton solve. Never size a nonlinear campaign from a linear timing.
+Memory: Q4/Q3 peaks at **4 970 MB** per worker against ~1.6 GB for the lower pairings, so ~5
+concurrent Q4/Q3 studies is the limit on a 31 GB box regardless of core count. Full bands:
+`CAMPAIGN_COST.md` §2. Run under `supervise_phaseB2.sh`, which bounds worker lifetime
 (rule 41) and watches swap.
 
 ⚠ **Read the pairwise sequence, not the fitted slope** (rule 33), and check `e_u` magnitude against

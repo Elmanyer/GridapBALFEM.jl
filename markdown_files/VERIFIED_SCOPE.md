@@ -58,6 +58,21 @@ Measured `Q3/Q2`, 1-D static unless noted.
 
 Model 2 additionally confirmed **transient** (`2.999`/`3.998`) and in **2-D** (`3.000`/`3.963`).
 
+> ⚠ **SCOPE QUALIFIER ADDED 2026-09-12 — THE NONLINEAR ROWS ABOVE WERE MEASURED TO `nx = 32` ONLY.**
+> Campaign C extended the same configuration to `nx = 64` at Q3/Q2 and found `p_η` **degrading with
+> refinement**: pairwise 2.971 → 2.922 → 2.757 → **2.450**, while the linear models on the identical
+> basis and ladder hold 3.000. The `2.996` figures in rows 3–6 are the *coarse-ladder* values and are
+> reproduced exactly by the new runs at the same levels — nothing here is contradicted, but the
+> nonlinear models are **not** optimal-order beyond `nx = 32`, and a four-level ladder to 32 cannot
+> see it.
+>
+> This does not touch the `p_u` columns (which improve with refinement, 2.77 → 3.69) nor the linear
+> models, and it is not the `𝓝` blocks, `∇h`, the algebra or quadrature — all eliminated by
+> measurement. Cause and next step: **`OPEN_ISSUES.md` §0b**.
+>
+> **Say "verified at optimal order on the measured ladder (`nx ≤ 32`)"** rather than "verified at
+> optimal order", for the nonlinear models only.
+
 **So the verified scope is the complete `:none` model over arbitrary bathymetry, PLUS the whole
 `:native` nonlinear-pressure tier (`𝓝` components `{3,6,7,8}`) on both flat and variable beds** —
 `H`-weighting, advection, the full three-component leading pressure, the `O(ε²)` surface-slope

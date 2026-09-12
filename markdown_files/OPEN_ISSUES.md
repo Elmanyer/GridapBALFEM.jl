@@ -48,6 +48,111 @@ longer in use.
 
 ---
 
+## 0b. 🔴 THE NONLINEAR MODELS LOSE AN ORDER IN `p_η` — narrowed to the advection block
+
+> Found 2026-09-11 by Campaign C, cause narrowed 2026-09-12. Letter-suffixed so the ten
+> sections below keep their numbers (the §4 renumbering hazard, in miniature).
+
+**THE OBSERVATION.** Campaign C, 1-D, Q3/Q2, `a_eta = 0.8`, five-level ladder `nx = 4…64`,
+`nl_tol = 1e-14`. Same basis, same ladder, same mesh; only `regime` differs:
+
+| | pairwise `p_η` | `e_η` ratios (8.00 = optimal 3rd order) |
+|---|---|---|
+| **linear** (models 1, 2) | 2.990, 2.997, 2.999, **3.000** | 7.95  7.99  8.00  8.00 |
+| **nonlinear** (models 3, 4, 5, 6) | 2.971, 2.922, 2.757, **2.450** | 7.84  7.58  6.76  5.46 |
+
+⚠ **This is an ORDER REDUCTION, not a floor.** `e_η` keeps falling — it is the *rate* that decays,
+from 3 toward 2, and it decays MONOTONICALLY WITH REFINEMENT. That is the signature of a fixed
+lower-order error component overtaking the third-order one (rule 33), and it means the problem gets
+worse on better meshes, not better.
+
+⚠ **`p_u` moves the OTHER WAY on the same runs** — 2.77 → 3.19 → 3.58 → 3.69, rising toward its
+optimal 4 while `p_η` falls. Any explanation has to account for both signs at once; several
+otherwise-plausible ones do not.
+
+**WHERE IT DOES AND DOES NOT SHOW, and why that is consistent.**
+
+| pairing | optimal `p_η` | measured | reading |
+|---|---|---|---|
+| Q2/Q1 | 2 | 2.000 exactly | a lower-order component at order 2 CANNOT be seen — it is degenerate with the optimal rate |
+| Q3/Q2 | 3 | 2.450 and falling | visible, because the third-order part decays past it |
+| Q4/Q3 | 4 | 4.000–4.002 | ladder stops at `nx=32`; discretisation error still dominates |
+
+So the absence at Q2/Q1 and Q4/Q3 is expected under the same explanation, not evidence against it.
+
+**WHAT IT IS NOT — five eliminations, each with its own measurement.**
+
+| ruled out | evidence |
+|---|---|
+| algebraic contamination (rule 32) | Newton reaches **~1e-15 at every level of every model** (`nl_tol=1e-14`); from the per-level `diagnostics.csv` the §4b work added |
+| the `𝓝` pressure blocks | `:none` vs `:native` agree to **4 digits** — m3 2.4498 vs m5 2.4499, m4 2.4494 vs m6 2.4496 |
+| bed-slope (`∇h`) code | flat vs variable bed agree to 4 digits; reproduced on an independent process (m4 control, 2.4494) |
+| the linear core | linear models are textbook 3.000 on the identical basis, ladder and mesh |
+| **quadrature under-integration** | refuted quantitatively — see below |
+| the test harness generally | the `quad_extra` control reproduced Campaign C to **5 significant figures**, so the driver edit perturbed nothing |
+
+**THE QUADRATURE HYPOTHESIS, AND WHY IT FAILED — worth keeping, because the shape of the refutation
+is the lesson.** The default MMS quadrature is `2·max(p_u,p_η)+2` = degree 8 at Q3/Q2, which in
+Gridap is a 5-point Gauss rule **exact to degree 9** (measured; do not read exactness off the
+`Measure` argument). Counting from `problem.jl`, per direction: the linear core is ≤ 8 and exact,
+while the nonlinear advection `H·(𝓜₃:(U⊗∇U))·W` (line 149) and the nonlinear pressure `H²·(sP·DW)`
+(line 110) are **degree 10** — genuinely under-integrated. `src/mms_driver.jl` hard-coded the degree,
+so no MMS study had ever been able to vary it; `quad_extra` is now threaded through
+`run_conv_study → run_mms_case → Measure`.
+
+Assembling the residual directly at degrees 8/10/12/16 (`output/local/mms/quadrature_test/
+knob_liveness.log`):
+
+```
+LINEAR    core  ‖R‖ changes 4e-14 across ALL degrees        -> exact at the default
+NONLINEAR core  ‖R‖ changes 3.49e-08 from degree 8 -> 10,
+                then 4e-14 for 10 -> 12 -> 16               -> under-integrated, exact from 10
+```
+
+So the knob is **live** and the crime is **real**. It is also **six orders of magnitude too small**:
+
+| | |
+|---|---|
+| quadrature error in the residual | 3.5e-08 relative |
+| its effect on converged `e_η` | ≤ 4.7e-07 relative ≈ **4.6e-13 absolute** at `nx=64` |
+| change needed to restore 3rd order at `nx=64` | `e_η` 9.77e-07 → 6.67e-07 = **3.1e-07 absolute** |
+
+And directly: model 4 at `quad_extra=4`, integrand integrated exactly, returns `p_η = 2.4494` and
+ratios `7.840 / 7.577 / 6.756 / 5.462` — **identical to its own control**. Model 3 at `quad_extra=2`
+likewise.
+
+⚠ **Two method traps fired during this probe and both are worth remembering.** (a) The first
+liveness check integrated `x⁹`, which a degree-8 rule already does exactly — a check that *could not
+fail*, and it passed a knob whose reach was still unproven. (b) The `e_η` columns came back BITWISE
+identical, which reads as "dead knob, result void" — I called it that — when it was really a live
+knob whose effect fell below the CSV's 7-significant-digit print precision. **Neither a liveness
+check nor a null result means anything until the effect size is measured against the effect being
+explained** (rule 12b's standing lesson, and the same shape as the skew-advection refutation).
+
+**WHAT REMAINS, AND THE DECISIVE NEXT STEP.** By elimination the error sits in the **nonlinear
+advection block** (`problem.jl` §"nonlinear advection (𝓜/𝓖 block)", lines 139–149) — a second-order
+consistency error in `𝓜₃/𝓖` as discretised. The next step is **derivation, not another run**: check
+that block term-by-term against `BALFEM_models/` (`GlobalResidual`, and the `𝓖` identity recorded in
+`CLAUDE.md` under the reverted skew-advection work), since the LaTeX is the single source of
+mathematical truth and a residual term it does not contain is one nobody can check. Two cheap
+discriminators exist if a run is wanted later:
+
+* **amplitude scaling** — a consistency error in the advection block scales with the manufactured
+  amplitude. Re-run model 3 at `a_eta = 0.4` and `0.2`: if the crossover moves to finer mesh, the
+  offending term is quadratic in the solution; if the rate degrades identically, it is not.
+* **extend Q4/Q3 to `nx = 64`** — it should then show the same decay once its fourth-order part has
+  decayed past the second-order component. ⚠ Check `e_u` against the ~1e-10 algebraic floor first
+  (`PLANNED_CAMPAIGNS.md` §0); at Q4/Q3 that level may be unmeasurable.
+
+**Scope of the damage.** This affects *measured convergence rates of the nonlinear models*, not the
+verified scope as stated: `VERIFIED_SCOPE.md` records 30/30 spatial studies at optimal order, and
+those were run at Q3/Q2 with **four levels to `nx=32`**, where `p_η` still reads 2.76–3.00. The
+degradation is a **fine-mesh** effect that the shorter ladder never reached. The claim "the `:none`
+and `:native` models are verified" therefore stands *as far as it was measured*, but it should now
+carry the qualifier that nonlinear `p_η` degrades beyond `nx = 32` at Q3/Q2.
+
+---
+
 ## 1. 🔴 Cluster memory attribution
 
 `--mem-per-cpu=4G` is in every launcher and is **required**: a `rome` job at the node-default

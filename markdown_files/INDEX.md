@@ -16,7 +16,7 @@ must not contain:
 | [`VERIFIED_SCOPE.md`](VERIFIED_SCOPE.md) | **Is it correct, and how far does the claim reach?** | "six of eight models verified at theoretical order on five vertical bases" |
 | [`TEST_SUITE.md`](TEST_SUITE.md) | **What is checked, and what would slip through?** | "this gate is a bounds check, so it passes while the quantity moves 58 %" |
 | [`OPEN_ISSUES.md`](OPEN_ISSUES.md) | **What is known wrong, missing, or unexplained?** | "the `:sdirk` linear-model temporal deficit is unexplained" |
-| [`PLANNED_CAMPAIGNS.md`](PLANNED_CAMPAIGNS.md) | **What runs next, and what must be true first?** | "18 studies, 84 solver runs, and the driver changes they need" |
+| [`PLANNED_CAMPAIGNS.md`](PLANNED_CAMPAIGNS.md) | **What runs next, and what must be true first?** | "the 2-D pairing tier, its short ladder, and the code it needs" |
 
 **The boundary that was being crossed:** a run nobody has launched is a **plan**, not a gap. It
 belongs in `PLANNED_CAMPAIGNS.md`. On 2026-09-11 the "Runs not yet made" list moved out of
@@ -41,6 +41,7 @@ belongs in `PLANNED_CAMPAIGNS.md`. On 2026-09-11 the "Runs not yet made" list mo
 | [`CONFIGURATION.md`](CONFIGURATION.md) | the settings, the evidence behind each, measured performance |
 | [`WAVE_GENERATION.md`](WAVE_GENERATION.md) | sources, Dirichlet generation, sponge, WaveSpec coupling |
 | [`RUNNING.md`](RUNNING.md) | how to launch: local, cluster, sysimage, env vars |
+| [`HORIZONTAL_CONVERGENCE_1D.md`](HORIZONTAL_CONVERGENCE_1D.md) | the 1-D horizontal pairing × physics convergence matrix (18 studies), and why it does not localise a failure |
 | [`MMS_VBASIS_CAMPAIGN.md`](MMS_VBASIS_CAMPAIGN.md) | results of the `(M,p)` × 8-model convergence matrix |
 | [`CAMPAIGN_COST.md`](CAMPAIGN_COST.md) | measured run costs, memory bands, queue limits, scheduling lessons |
 | [`OUTPUT_NAMING_PROPOSAL.md`](OUTPUT_NAMING_PROPOSAL.md) | the output-directory grammar — accepted and implemented |
@@ -53,7 +54,10 @@ Several topics appear in many files. To avoid contradictory copies, each has **o
 |---|---|---|
 | the Taylor-Hood requirement and the equal-order instability | `CLAUDE.md` rules 2b / 12b | |
 | what the MMS proves, and its boundaries | `VERIFIED_SCOPE.md` | |
-| the `Q2/Q1` one-order velocity shortfall | `PLANNED_CAMPAIGNS.md` §2 (it is what the next campaign tests) | |
+| the `Q2/Q1` one-order velocity shortfall | `PLANNED_CAMPAIGNS.md` §2 — **measured on all six models 2026-09-12** | |
+| the nonlinear `p_η` order reduction | `OPEN_ISSUES.md` §0b | |
+| the 1-D pairing × physics convergence matrix, and the "optimal in one field or the other" pattern | `HORIZONTAL_CONVERGENCE_1D.md` | |
+| measured study cost and memory bands per pairing | `CAMPAIGN_COST.md` §2 | |
 | why `:full` cannot reach optimal order | `PLANNED_CAMPAIGNS.md` §3 | |
 | the vopt correction and the deleted κ | `CLAUDE.md` rule 46 | |
 | the algebraic error floor (~1e-10) | `PLANNED_CAMPAIGNS.md` §0 | |

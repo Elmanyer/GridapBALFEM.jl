@@ -21,6 +21,7 @@
 > | [`CONFIGURATION.md`](markdown_files/CONFIGURATION.md) | the settings, the evidence behind each, measured performance |
 > | [`WAVE_GENERATION.md`](markdown_files/WAVE_GENERATION.md) | sources, Dirichlet generation, sponge, WaveSpec coupling |
 > | [`RUNNING.md`](markdown_files/RUNNING.md) | how to launch: local, cluster, sysimage, env vars |
+> | [`HORIZONTAL_CONVERGENCE_1D.md`](markdown_files/HORIZONTAL_CONVERGENCE_1D.md) | **the 1-D horizontal pairing × physics convergence matrix** — 18 studies, and why no pairing is deficient in both fields |
 > | [`MMS_VBASIS_CAMPAIGN.md`](markdown_files/MMS_VBASIS_CAMPAIGN.md) | results of the `(M,p)` × 8-model convergence matrix |
 > | [`CAMPAIGN_COST.md`](markdown_files/CAMPAIGN_COST.md) | measured run costs, memory bands, queue limits, scheduling lessons |
 > | [`OUTPUT_NAMING_PROPOSAL.md`](markdown_files/OUTPUT_NAMING_PROPOSAL.md) | the output-directory grammar — implemented in `output_dir_name` |
@@ -410,6 +411,21 @@ was this paragraph — a file that looks launchable, in the launcher directory, 
 Their physics is preserved case-for-case in `run/local/`; git history holds their cluster sizing
 (200 m / `nx=800` / 60 periods at 32 ranks) if it is ever wanted.
 
+**✅ CAMPAIGN C IS COMPLETE (2026-09-12) — 18/18 1-D studies, 84/84 solver runs, 0 errors, 44.1
+core-hours** (`PLANNED_CAMPAIGNS.md` §2; data `output/local/mms/phaseB/shard_NN_v2.csv`). Two
+results settle long-standing questions and one opens a defect:
+
+* **The Q2/Q1 one-order velocity shortfall is UNIVERSAL** — `p_u = 2.003–2.012` against an optimal 3
+  on all six models, with `p_η` exactly optimal. Tier 2 had it on flat-bed `:none` only, which by
+  rule 4 could not exercise `∇h`; it now holds on **variable bathymetry** and on **`:native`, the
+  production tier**. **Q3/Q2 is the cheapest pairing optimal in both fields.**
+* **`:native` is free** — `:none` vs `:native` differ by ~1e-4 in `p_η` on every matched pair.
+* ⛔ **NONLINEAR `p_η` LOSES AN ORDER on fine meshes** — 2.971 → 2.922 → 2.757 → **2.450** at Q3/Q2
+  while linear models on the identical ladder hold 3.000. Not algebraic, not `𝓝`, not `∇h`, not
+  quadrature (each eliminated by measurement), so it sits in the **advection block**. It is a
+  fine-mesh effect beyond `nx=32`, which is why the 30/30 verified spatial studies never saw it.
+  Full account and next step: **`OPEN_ISSUES.md` §0b**.
+
 **Open work** — nothing is half-built in the solver; the open items are verification gaps,
 performance, and follow-through. Full list with decisive next steps: `OPEN_ISSUES.md`; studies
 designed but not begun: `COMPLETED_VBASIS_STUDY.md`.
@@ -495,10 +511,19 @@ are never incremented. Wall time is real.
   account: **rule 46**. Data: `output/local/vopt/`. ⚠ Consequence: `DEFAULT_CBDY_P` no longer exists,
   so **`p ≥ 2` has no default mesh** — that is deliberate, and a `p ≥ 2` design needs a justified `Ω`
   first.
-* 🟢 **`quad_extra` added** (`setup_and_run` kwarg, `BALFEM_QUAD_EXTRA` in the 1-D driver). The default
-  degree `2·max(p_h,p_η)+2` is **one short** of the degree-7 nonlinear advection integrand at `Q2/Q2`.
-  Real but **dynamically irrelevant** — raising it does not affect the instability. Default left at 0;
-  raising it changes no MMS rate, since it alters only how exactly the residual is integrated.
+* 🟢 **`quad_extra`** (`setup_and_run` kwarg, `BALFEM_QUAD_EXTRA` in the 1-D driver; **threaded
+  through `run_conv_study → run_mms_case → Measure` on 2026-09-12** — the MMS path had hard-coded the
+  degree, so the claim below had never been testable there). The default `2·max(p_u,p_η)+2` is
+  genuinely **one short** of the nonlinear integrands.
+  ⚠ **"Raising it changes no MMS rate" is now MEASURED, and the reason is effect size, not deadness.**
+  Assembling the residual at degrees 8/10/12/16 (`output/local/mms/quadrature_test/knob_liveness.log`):
+  the LINEAR core moves 4e-14 across all degrees (exact at the default), the NONLINEAR core moves
+  **3.49e-08** from degree 8→10 and 4e-14 thereafter — so the crime is real and the knob is live. Its
+  effect on converged `e_η` is ≤4.7e-07 relative (~4.6e-13 absolute), against the **3.1e-07 absolute**
+  change needed to restore third order: **six orders too small**. Default stays 0.
+  ⚠ **Gridap's `Measure(trian, d)` is exact to degree `d+1`, not `d`** (measured: 8→x⁹, 10→x¹¹,
+  12→x¹³). Read exactness from a probe, never off the argument — a liveness check built on `x⁹`
+  cannot fail at either degree and silently certifies nothing.
 * ✅ **the two `src/mms_driver.jl` defects are FIXED** (found 2026-08-19, fixed 2026-08-21).
   **A1** — `run_conv_study` hard-coded `assemble_vertical_tensors(M, 1, [0,0.728,1])`, so `p_vert`
   was not a parameter and any `M≠2` threw. It now takes `p_vert` and `c_bdy`, resolving through the
@@ -990,6 +1015,18 @@ supporting measurement is in the linked document.
 38e. **A REVERSAL TOO LARGE TO BE THE EFFECT UNDER TEST IS A BUG SIGNAL, NOT A FINDING.** Extra
     quadrature turning a 0.11 plateau into 1.60 is not a plausible quadrature effect; that
     implausibility is what prompted the check that found the real cause.
+
+38g. **A NULL RESULT IS NOT A FINDING UNTIL THE EFFECT SIZE IS MEASURED AGAINST THE EFFECT BEING
+    EXPLAINED.** Rule 38d says verify the knob is LIVE; this is the other half. The 2026-09-12
+    quadrature probe returned `e_η` columns that were **bitwise identical** between treatment and
+    control at every level — which reads as "dead knob, result void" (I called it that) and equally
+    as "refuted". Both readings were wrong: the knob was live, and its effect simply fell below the
+    CSV's 7-significant-digit print precision. **Identical printed output distinguishes nothing**;
+    only assembling the quantity under test at both settings does. When it was assembled, the crime
+    was real (3.5e-08 in the residual) and six orders too small to explain a 3.1e-07 rate deficit —
+    which IS the finding, and is the same shape as the skew-advection refutation in rule 12b.
+    **Corollary: print precision is part of the experiment.** A comparison whose resolution is set by
+    `%.6e` cannot detect anything below 1e-7 relative, however carefully the runs were controlled.
 
 39. **Test a diagnosis against a case it cannot explain, rather than looking harder where it points.**
 40. **Diagnostics interpretation:** never read `growth` without `x_at_max`; `dmp/int` means "≫1 is

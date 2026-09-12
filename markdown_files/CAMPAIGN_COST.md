@@ -43,6 +43,44 @@ completed rows:
 | `T7_extladder` (P1LFE-4, 5 levels to nx=128) | 4 | 17 748 s (4.9 h) | 30 605 s (8.5 h) | 41 088 s (11.4 h) |
 | `T8_full_projection` (`:full`, 4 levels) | 6 | 28 723 s (8.0 h) | 55 530 s (15.4 h) | **115 387 s (32.0 h)** |
 
+### Campaign C + C3 (2026-09-11/12, workstation, 16 cores / 31 GB)
+
+Per *study*, `nx0=4`, `a_eta=0.8`, all P1LFE-2. 18 × 1-D (5 levels for Q2Q1/Q3Q2, 4 for Q4Q3) and
+the 2-D Q4/Q3 tier (4 levels):
+
+| family | n | mean | max | peak RSS |
+|---|---|---|---|---|
+| Q2/Q1, 1-D | 6 | 96 min | 164 min | ~1.6 GB |
+| Q3/Q2, 1-D | 6 | 181 min | 347 min | ~1.7 GB |
+| **Q4/Q3, 1-D** | 6 | 165 min | 342 min | **4 970 MB** |
+| **Q4/Q3, 2-D** (short ladder `nx≤32`) | 2 so far | 263 min | 332 min | ~3.6 GB |
+| Q4/Q3, 2-D, **LONG** ladder `nx≤64` | — | *never completed* | — | **12 100 MB** |
+
+⚠ **`PLANNED_CAMPAIGNS.md` §5.4 said "1-D is the cheap end … minutes to ~1 h". That is wrong and it
+mattered.** The true 1-D figure is **1.5–6 h per study**, and it is the *regime*, not the dimension,
+that drives it: a LINEAR Q3/Q2 study runs in 30 min while the NONLINEAR one on the same ladder takes
+183–347 min — a 6–11× factor, because every step costs a full Newton solve instead of one iteration.
+Estimating a nonlinear campaign from a linear timing under-predicts by an order of magnitude.
+
+⚠ **Q4/Q3 IS THE MEMORY CLIFF, AND ITS COST IS NOT IN THE DOF COUNT.** A 1-D Q4/Q3 study peaks at
+**4 970 MB** on a mesh with ~4 000 DOFs — three times the Q3/Q2 figure on a problem of comparable
+size. The cost is the assembly/specialisation machinery for high-order elements with the
+`ThirdOrderTensorValue` contractions, which scales with element order and quadrature points, not
+with the mesh. Consequences for sizing:
+
+* **budget ~5 GB per concurrent Q4/Q3 worker, 1.6–1.7 GB for Q2/Q1 and Q3/Q2.** On a 31 GB box that
+  is ~5 concurrent Q4/Q3 studies, not 8, whatever the core count says.
+* **the 2-D LONG ladder (`nx0=8`, to `nx=64`) reached 12.1 GB** before it was killed — a further
+  reason it is cancelled in place (`PLANNED_CAMPAIGNS.md` §1), independent of its saturation problem.
+
+⚠ **FIRST-STEP JIT DOMINATES THE COARSE LEVELS AND LOOKS EXACTLY LIKE A HANG.** Measured: step 1 of
+the first level costs **175 s** of `t_solve` on a *linear* Q3/Q2 case against 0.28–0.32 s for every
+subsequent step; on the nonlinear residual with hand Jacobians at Q3/Q2 it is **10–15 minutes**, and
+the only external sign of life is that `diagnostics.csv` sits at header-only. Four probes launched
+together all showed empty diagnostics for 10–15 min at 100 % CPU. Before diagnosing a stall, check
+`cputime ≈ elapsed` (compiling counts as work) and whether `src/*.jl` was edited recently — an edit
+invalidates the precompile cache and every worker then pays its own rebuild.
+
 ### The cost drivers, in order of importance
 
 1. **Pressure tier.** `:full` is the dearest family by a wide margin — mean 15.4 h against 3.4 h
