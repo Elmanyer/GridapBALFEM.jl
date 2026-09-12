@@ -41,7 +41,7 @@ belongs in `PLANNED_CAMPAIGNS.md`. On 2026-09-11 the "Runs not yet made" list mo
 | [`CONFIGURATION.md`](CONFIGURATION.md) | the settings, the evidence behind each, measured performance |
 | [`WAVE_GENERATION.md`](WAVE_GENERATION.md) | sources, Dirichlet generation, sponge, WaveSpec coupling |
 | [`RUNNING.md`](RUNNING.md) | how to launch: local, cluster, sysimage, env vars |
-| [`HORIZONTAL_CONVERGENCE_1D.md`](HORIZONTAL_CONVERGENCE_1D.md) | the 1-D horizontal pairing × physics convergence matrix (18 studies), and why it does not localise a failure |
+| [`HORIZONTAL_CONVERGENCE.md`](HORIZONTAL_CONVERGENCE.md) | the horizontal pairing × physics convergence matrix, 1-D (18 studies, complete) and 2-D (partial), and why it does not localise a failure |
 | [`MMS_VBASIS_CAMPAIGN.md`](MMS_VBASIS_CAMPAIGN.md) | results of the `(M,p)` × 8-model convergence matrix |
 | [`CAMPAIGN_COST.md`](CAMPAIGN_COST.md) | measured run costs, memory bands, queue limits, scheduling lessons |
 | [`OUTPUT_NAMING_PROPOSAL.md`](OUTPUT_NAMING_PROPOSAL.md) | the output-directory grammar — accepted and implemented |
@@ -56,7 +56,7 @@ Several topics appear in many files. To avoid contradictory copies, each has **o
 | what the MMS proves, and its boundaries | `VERIFIED_SCOPE.md` | |
 | the `Q2/Q1` one-order velocity shortfall | `PLANNED_CAMPAIGNS.md` §2 — **measured on all six models 2026-09-12** | |
 | the nonlinear `p_η` order reduction | `OPEN_ISSUES.md` §0b | |
-| the 1-D pairing × physics convergence matrix, and the "optimal in one field or the other" pattern | `HORIZONTAL_CONVERGENCE_1D.md` | |
+| the pairing × physics convergence matrix (1-D and 2-D), and the "optimal in one field or the other" pattern | `HORIZONTAL_CONVERGENCE.md` | |
 | measured study cost and memory bands per pairing | `CAMPAIGN_COST.md` §2 | |
 | why `:full` cannot reach optimal order | `PLANNED_CAMPAIGNS.md` §3 | |
 | the vopt correction and the deleted κ | `CLAUDE.md` rule 46 | |

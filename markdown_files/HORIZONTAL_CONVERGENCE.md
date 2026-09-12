@@ -1,4 +1,4 @@
-# HORIZONTAL_CONVERGENCE_1D.md — the 1-D horizontal convergence matrix
+# HORIZONTAL_CONVERGENCE.md — the horizontal convergence matrix (1-D and 2-D)
 
 > **What this file is.** The complete result of the 1-D spatial convergence campaign (Campaign C,
 > 2026-09-11/12): **18 studies, 84 solver runs, 18 OK, 0 errors, 44.1 core-hours**, sweeping the
@@ -16,9 +16,11 @@
 
 ---
 
-## 1. Configuration
+## 1. Configuration (1-D campaign)
 
-Identical across all 18 studies; only `p_u`, `regime`, `flat_bed` and `nl_pressure` vary.
+Identical across all 18 1-D studies; only `p_u`, `regime`, `flat_bed` and `nl_pressure` vary.
+**The 2-D studies in §2b use different ladders and are described there** — they come from three
+separate campaigns and are not directly comparable with each other, let alone with this block.
 
 | | |
 |---|---|
@@ -34,7 +36,7 @@ Identical across all 18 studies; only `p_u`, `regime`, `flat_bed` and `nl_pressu
 
 ---
 
-## 2. The matrix
+## 2. The 1-D matrix
 
 ### Q2/Q1
 
@@ -76,7 +78,114 @@ table and they mean different things.
 
 ---
 
-## 3. The three features, pairing by pairing
+## 2b. The 2-D matrix — PARTIAL (6 of 18 cells)
+
+⚠ **This matrix is NOT complete and must not be read as one.** Six of the eighteen cells carry data,
+from **three different campaigns on three different ladders**, so cells are comparable *down a
+column* only with the ladder in mind. Empty cells are marked `— no data` (never run) or `RUNNING`.
+
+**Ladders in play** — the single biggest obstacle to reading this table:
+
+| source | ladder | `ny0` / cell aspect | when |
+|---|---|---|---|
+| `T9_tier2_2d` | `nx = 8, 16, 32, 64` (4 levels) | default `ny0=8` → **1.55 : 1** | Phase B, pre-2026-09 |
+| `C3_tier2_2d` | `nx = 4, 8, 16, 32` (4 levels) | `ny0 = round(nx0·Ly/Lx) = 3` → **1.16 : 1** | 2026-09-12, running |
+| `convergence_matrix_all.csv` | 3 levels, `h = 0.283 → 0.071` | — | earlier still |
+
+### Q2/Q1 — 2-D
+
+| model | physics | `p_η` | opt | `p_u` | opt | `e_η`(fine) | `e_u`(fine) | source |
+|---|---|---|---|---|---|---|---|---|
+| m1 | linear / flat / `none` | **1.9992** | 2 | **1.9998** | 3 | 2.3000e-04 | 7.6968e-05 | T9, nx≤64 |
+| m2 | linear / var / `none` | — no data | 2 | — no data | 3 | — | — | |
+| m3 | nonlinear / flat / `none` | **1.9992** | 2 | **1.9998** | 3 | 2.3021e-04 | 3.6283e-05 | T9, nx≤64 |
+| m4 | nonlinear / var / `none` | — no data | 2 | — no data | 3 | — | — | |
+| m5 | nonlinear / flat / `native` | — no data | 2 | — no data | 3 | — | — | |
+| m6 | nonlinear / var / `native` | — no data | 2 | — no data | 3 | — | — | |
+
+### Q3/Q2 — 2-D
+
+| model | physics | `p_η` | opt | `p_u` | opt | `e_η`(fine) | `e_u`(fine) | source |
+|---|---|---|---|---|---|---|---|---|
+| m1 | linear / flat / `none` | **3.0000** | 3 | 3.3863 | 4 | 5.2616e-07 | 5.5397e-08 | T9, nx≤64 |
+| m2 | linear / var / `none` | — no data | 3 | — no data | 4 | — | — | |
+| m3 | nonlinear / flat / `none` | **2.5565** | 3 | 2.8817 | 4 | 8.4355e-07 | 3.3934e-07 | T9, nx≤64 |
+| m4 | nonlinear / var / `none` | — no data | 3 | — no data | 4 | — | — | |
+| m5 | nonlinear / flat / `native` | — no data | 3 | — no data | 4 | — | — | |
+| m6 | nonlinear / var / `native` | — no data | 3 | — no data | 4 | — | — | |
+
+### Q4/Q3 — 2-D  (`C3_tier2_2d`, short ladder `nx ≤ 32`)
+
+| model | physics | `p_η` pairwise | `p_η` | opt | `p_u` pairwise | `p_u` | opt | `e_η`(fine) | `e_u`(fine) |
+|---|---|---|---|---|---|---|---|---|---|
+| m1 | linear / flat / `none` | `3.983;3.996;3.999` | **3.9990** | 4 | `4.295;4.371;4.193` | 4.1934 | 5 | 5.7179e-08 | 1.4205e-08 |
+| m2 | linear / var / `none` | `3.983;3.996;3.999` | **3.9989** | 4 | `4.306;4.316;4.146` | 4.1455 | 5 | 5.7215e-08 | 1.3555e-08 |
+| m3 | nonlinear / flat / `none` | RUNNING | | 4 | RUNNING | | 5 | | |
+| m4 | nonlinear / var / `none` | RUNNING | | 4 | RUNNING | | 5 | | |
+| m5 | nonlinear / flat / `native` | RUNNING | | 4 | RUNNING | | 5 | | |
+| m6 | nonlinear / var / `native` | RUNNING | | 4 | RUNNING | | 5 | | |
+
+### Reference: the earlier 3-level 2-D matrix
+
+`output/local/mms/convergence_matrix/convergence_matrix_all.csv`, coarse
+(`h = 0.283, 0.142, 0.071`), pairwise rates recomputed from its per-level errors:
+
+| pairing | `p_η` pairwise | `p_u` pairwise |
+|---|---|---|
+| Q2/Q1 | 1.967; 1.992 | 2.758; 2.445 |
+| Q3/Q2 | 2.995; 2.999 | 3.916; 3.944 |
+| Q4/Q3 | 3.991; 3.998 | 4.821; 4.648 |
+
+⚠ **Physics is INFERRED, not recorded.** The file encodes only pairing / domain / static-transient /
+seq-dist — no model or regime. Sequential and distributed rows agree to 3–4 significant figures, and
+`run_mms_case_distributed` **hard-coded Model 1** until the A2 fix (`CLAUDE.md`), so both sides were
+almost certainly linear/flat/`:none`. Treat these rows as Model 1 with that caveat, never as evidence
+about the nonlinear models.
+
+✅ Two incidental checks fall out of it: **static and transient agree to 3–4 digits**, so these are
+clean *spatial* rates uncontaminated by the time discretisation; and **sequential and distributed
+agree**, which is the parity the A2 fix exists to deliver.
+
+---
+
+## 2c. What the 2-D data says about §4 — the anomalies are NOT 1-D artefacts
+
+The obvious objection to the whole 1-D matrix is that a "1-D" case here is a narrow strip: `ny=1`,
+`y_wall_bc=:wall`, `ky=0`, `u*ʸ ≡ 0` identically (rule 12). If either anomaly were an artefact of
+that posing, it would vanish in a genuine 2-D problem with transverse structure (`ky = π/Ly ≠ 0`).
+**Neither does.**
+
+| | 1-D | 2-D | |
+|---|---|---|---|
+| `p_η`, Q2/Q1 | 2.000 | 1.9992 | ✅ same |
+| `p_η`, Q3/Q2 linear | 3.000 | 3.0000 | ✅ same |
+| `p_η`, Q4/Q3 linear | 4.000 | 3.9990 | ✅ same |
+| **`p_u`, Q2/Q1 (the shortfall)** | 2.003 | **1.9998** | ✅ **reproduces** — and identical to 4 digits for linear AND nonlinear |
+| **`p_η`, Q3/Q2 nonlinear (the degradation)** | 2.450 | **2.5565** | ✅ **reproduces** |
+
+⚠ **The nonlinear `p_η` degradation was ALREADY IN THE 2-D DATA, months before Campaign C.**
+`T9_tier2_2d` model 3 measured 2.5565 on the `nx = 8…64` ladder under the old 22-field schema. It was
+not noticed because only the fitted slope and the finest error were persisted — the per-level
+sequence that makes a *decaying* rate visible was discarded (`PLANNED_CAMPAIGNS.md` §2B, the defect
+that forced the C2 re-runs). **The instrument, not the physics, is why this is a 2026-09 finding.**
+
+So `OPEN_ISSUES.md` §0b's elimination list gains one more entry: **not a 1-D posing artefact**, on
+independent 2-D data from a separate campaign.
+
+## 2d. ⚠ One 1-D/2-D difference, NOT a finding
+
+In 1-D the `p_u` sequences **rise** toward optimal (Q3/Q2 linear: 3.497 → 3.859 → 3.965 → 3.991).
+In 2-D they **peak and fall**: Q3/Q2 linear 3.944 (coarse 3-level) → 3.386 (T9 at nx=64); Q4/Q3
+4.648 (coarse) → 4.193, and C3 does it *within one study* (`4.295 → 4.371 → 4.193`).
+
+**This is not a one-variable comparison and must not be reported as one.** The three 2-D sources
+differ in `nx0` (8 vs 4), level count (3 vs 4), and `ny0` convention (1.55:1 vs 1.16:1 cells) — any
+of which could produce it, and the 1-D ladder matches none of them. Settling it needs a 2-D ladder
+matched to the 1-D one (`nx0=4`, 5 levels, same cell aspect), which is **not currently queued**.
+
+---
+
+## 3. The three features, pairing by pairing (1-D)
 
 ### 3.1 Q2/Q1 — `p_u` is a FULL ORDER below optimal, on every model
 

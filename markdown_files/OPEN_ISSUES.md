@@ -90,6 +90,7 @@ So the absence at Q2/Q1 and Q4/Q3 is expected under the same explanation, not ev
 | the linear core | linear models are textbook 3.000 on the identical basis, ladder and mesh |
 | **quadrature under-integration** | refuted quantitatively — see below |
 | the test harness generally | the `quad_extra` control reproduced Campaign C to **5 significant figures**, so the driver edit perturbed nothing |
+| **a 1-D posing artefact** (`ny=1`, `:wall`, `ky=0`) | **reproduces in full 2-D**: `T9_tier2_2d` model 3 measured `p_η = 2.5565` on the `nx = 8…64` ladder, a separate campaign months earlier, against 2.450 in 1-D. `HORIZONTAL_CONVERGENCE.md` §2c |
 
 **THE QUADRATURE HYPOTHESIS, AND WHY IT FAILED — worth keeping, because the shape of the refutation
 is the lesson.** The default MMS quadrature is `2·max(p_u,p_η)+2` = degree 8 at Q3/Q2, which in
@@ -143,6 +144,13 @@ discriminators exist if a run is wanted later:
 * **extend Q4/Q3 to `nx = 64`** — it should then show the same decay once its fourth-order part has
   decayed past the second-order component. ⚠ Check `e_u` against the ~1e-10 algebraic floor first
   (`PLANNED_CAMPAIGNS.md` §0); at Q4/Q3 that level may be unmeasurable.
+
+⚠ **IT WAS ALREADY IN THE 2-D DATA AND WENT UNSEEN.** The 2-D measurement above predates Campaign C
+by months. It was not noticed because the old CSV schema persisted only the fitted slope and the
+finest error — and a *fitted* 2.78 reads as "slightly low", where the pairwise sequence
+`2.971 → 2.922 → 2.756 → 2.450` reads as a rate collapsing under refinement. The per-level sequence
+was added in `fdc4774`. **The instrument, not the physics, is why this is a 2026-09 finding**, which
+is the concrete cost of rules 32/33 having been unenforceable in the data format.
 
 **Scope of the damage.** This affects *measured convergence rates of the nonlinear models*, not the
 verified scope as stated: `VERIFIED_SCOPE.md` records 30/30 spatial studies at optimal order, and

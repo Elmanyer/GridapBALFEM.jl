@@ -21,7 +21,7 @@
 > | [`CONFIGURATION.md`](markdown_files/CONFIGURATION.md) | the settings, the evidence behind each, measured performance |
 > | [`WAVE_GENERATION.md`](markdown_files/WAVE_GENERATION.md) | sources, Dirichlet generation, sponge, WaveSpec coupling |
 > | [`RUNNING.md`](markdown_files/RUNNING.md) | how to launch: local, cluster, sysimage, env vars |
-> | [`HORIZONTAL_CONVERGENCE_1D.md`](markdown_files/HORIZONTAL_CONVERGENCE_1D.md) | **the 1-D horizontal pairing × physics convergence matrix** — 18 studies, and why no pairing is deficient in both fields |
+> | [`HORIZONTAL_CONVERGENCE.md`](markdown_files/HORIZONTAL_CONVERGENCE.md) | **the horizontal pairing × physics convergence matrix** — 1-D complete (18 studies), 2-D partial; why no pairing is deficient in both fields |
 > | [`MMS_VBASIS_CAMPAIGN.md`](markdown_files/MMS_VBASIS_CAMPAIGN.md) | results of the `(M,p)` × 8-model convergence matrix |
 > | [`CAMPAIGN_COST.md`](markdown_files/CAMPAIGN_COST.md) | measured run costs, memory bands, queue limits, scheduling lessons |
 > | [`OUTPUT_NAMING_PROPOSAL.md`](markdown_files/OUTPUT_NAMING_PROPOSAL.md) | the output-directory grammar — implemented in `output_dir_name` |
