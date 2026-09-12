@@ -52,6 +52,23 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         theta::Float64 = 0.5,
                         nl_tol::Float64 = 1e-12, nl_iter::Int = 50,
                         t0::Float64 = 0.0,
+                        #  EXTRA quadrature degree on top of the default
+                        #  2*max(p_u,p_eta)+2 (2026-09-12). `setup_and_run` has had
+                        #  this since the nonlinear-instability work
+                        #  (utilities.jl:569) but the MMS path HARD-CODED the
+                        #  degree, so no MMS study could ever vary it — which means
+                        #  the claim "raising quad_extra changes no MMS rate" was
+                        #  never testable through this path. It is now.
+                        #  WHY IT MATTERS at Q3/Q2 (degree 8): the linear core
+                        #  H*u*grad(phi) with H=d is degree ~8 and integrated
+                        #  exactly, but the nonlinear advection H*(u.grad u)*phi
+                        #  with H=d+eta is degree ~10 and is NOT — a variational
+                        #  crime contributing a FIXED lower-order consistency
+                        #  error, invisible until the discretisation error decays
+                        #  below it. That is the shape of the measured nonlinear
+                        #  degradation (e_eta ratios 7.84 -> 5.46 while linear
+                        #  holds 8.00). This kwarg is what tests it.
+                        quad_extra::Int = 0,
                         verbose::Bool = true,
                         use_ad::Bool = false,   # AD Jacobians (3-arg TransientFEOperator)
                         output_dir::String = mktempdir(),
@@ -76,7 +93,10 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
     pe           = p_eta
     U, V         = build_fe_spaces(model, p_u, vert.N_dof;
                                    y_wall_bc = :wall, x_wall_bc = true, p_eta = pe)
-    dΩh          = Measure(trian, 2*max(p_u, pe) + 2)
+    dΩh          = Measure(trian, 2*max(p_u, pe) + 2 + quad_extra)
+    verbose && quad_extra > 0 &&
+        @printf("    [quad] degree %d (default %d + quad_extra %d)\n",
+                2*max(p_u,pe)+2+quad_extra, 2*max(p_u,pe)+2, quad_extra)
 
     # --- the forcing, derived independently of the residual code ----------
     #  ONE bathymetry object feeds BOTH the forcing and the solver, and the SAME
@@ -368,6 +388,8 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
                           M::Int = 2, p_vert::Int = 1, c_bdy = nothing,
                           dt::Float64 = 1e-4, nsteps::Int = 100,
                           nl_tol::Float64 = 1e-14,
+                          #  Forwarded to run_mms_case's Measure — see there.
+                          quad_extra::Int = 0,
                           #  The NONLINEAR Jacobians are quasi-Newton by design (the
                           #  pressure blocks' η-dependence is frozen — see problem.jl),
                           #  so Newton converges LINEARLY there and needs far more than
@@ -428,7 +450,8 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
                     M=M, p_vert=p_vert, c_bdy=cb, vert_override=vert,
                     p_u=p_u, p_eta=p_e, field=f,
                     regime=regime, nl_pressure=nl_pressure, flat_bed=flat_bed,
-                    hfun=hfun, nl_tol=nl_tol, nl_iter=nl_iter, verbose=false)
+                    hfun=hfun, nl_tol=nl_tol, nl_iter=nl_iter,
+                    quad_extra=quad_extra, verbose=false)
         #  One directory PER LEVEL, so the tree under
         #  output/local_1d/mms_convergence_campaigns/<model>/<pair>/nx<N>/ is written
         #  by the run itself rather than reconstructed afterwards.
@@ -452,7 +475,7 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
     #  The vertical configuration is PART OF THE LABEL. Without it an (M,p) sweep
     #  reports every study under the same tag — which is precisely how the
     #  hard-coded-Model-1 defect stayed invisible for a whole campaign.
-    tag = "P$(p_vert)LFE-$(M) Q$(p_u)/Q$(p_e) $(domain == :d1 ? "1D" : "2D") " *
+    tag = "P$(p_vert)LFE-$(M) Q$(p_u)/Q$(p_e) $(quad_extra > 0 ? "q+$(quad_extra) " : "")$(domain == :d1 ? "1D" : "2D") " *
           "$(distributed ? "dist" : "seq") $(mode) $(flat_bed ? "flat" : "varbed") " *
           "$(regime === :linear ? "lin" : "nl")" *
           "$(nl_pressure === :none ? "" : "/" * String(nl_pressure))"

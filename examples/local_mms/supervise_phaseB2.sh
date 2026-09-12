@@ -20,8 +20,14 @@ NW=${NW:-8}
 NSHARD=12
 MIN_FREE_MB=${MIN_FREE_MB:-6000}
 SWAP_MAX_MB=${SWAP_MAX_MB:-4500}
+#  Kill only when free RAM is genuinely low AS WELL (see the watchdog comment).
+WD_FREE_MB=${WD_FREE_MB:-2500}
 export PHASEB_MAX_STUDIES=${PHASEB_MAX_STUDIES:-1}
 OUT=output/local/mms/phaseB
+#  Completion target = rows already on disk + the studies this batch adds.
+#  It was hard-coded at 42 for the original Phase-B queue; Campaign C takes the
+#  queue from 34 to 52 jobs and the CSVs from 38 to 56 rows.
+TARGET=${TARGET:-56}
 
 rows() { local t=0; for f in $OUT/shard_*.csv; do [ -f "$f" ] && t=$((t + $(wc -l < "$f") - 1)); done; echo $t; }
 ids()  { pgrep -af 'run_phaseB_shard[.]jl [0-9]' | sed 's/.*shard[.]jl //' | awk '{print $1}'; }
@@ -29,10 +35,16 @@ freemb() { free -m | awk 'NR==2{print $7}'; }
 swapmb() { free -m | awk 'NR==3{print $3}'; }
 
 ( while :; do
-    if [ "$(swapmb)" -gt "$SWAP_MAX_MB" ]; then
+    #  ⚠ SWAP USAGE ALONE IS THE WRONG TRIGGER, and it cost three long-running
+    #  Q4/Q3 studies on 2026-09-11 (~6 h of compute). Swap is CUMULATIVE: once
+    #  pages are evicted they stay counted long after the pressure ends, so this
+    #  watchdog kept firing — killing the fattest worker three times — while
+    #  18.6 GB of RAM sat free. Swapping only matters when memory is ACTUALLY
+    #  scarce, so both conditions must hold. WD_FREE_MB is the real guard.
+    if [ "$(swapmb)" -gt "$SWAP_MAX_MB" ] && [ "$(freemb)" -lt "$WD_FREE_MB" ]; then
       v=$(for p in $(pgrep -f 'run_phaseB_shard[.]jl [0-9]'); do
             echo "$(awk '/VmRSS/{print $2}' /proc/$p/status 2>/dev/null) $p"; done | sort -rn | head -1 | awk '{print $2}')
-      if [ -n "$v" ]; then echo "[wd] swap $(swapmb)MB > $SWAP_MAX_MB -- killing fattest worker $v"; kill -9 "$v"; fi
+      if [ -n "$v" ]; then echo "[wd] swap $(swapmb)MB > $SWAP_MAX_MB AND free $(freemb)MB < $WD_FREE_MB -- killing fattest worker $v"; kill -9 "$v"; fi
       sleep 120
     fi
     sleep 30
@@ -41,9 +53,9 @@ trap 'kill $WD 2>/dev/null' EXIT
 
 while :; do
   r=$(rows)
-  if [ "$r" -ge 42 ]; then echo "[sup] COMPLETE rows=$r/42"; break; fi
+  if [ "$r" -ge "$TARGET" ]; then echo "[sup] COMPLETE rows=$r/$TARGET"; break; fi
   cur=$(ids | wc -l)
-  echo "[sup] $(date +%H:%M:%S) rows=$r/42 workers=$cur free=$(freemb)MB swap=$(swapmb)MB"
+  echo "[sup] $(date +%H:%M:%S) rows=$r/$TARGET workers=$cur free=$(freemb)MB swap=$(swapmb)MB"
   if [ "$cur" -lt "$NW" ] && [ "$(freemb)" -gt "$MIN_FREE_MB" ]; then
     busy=" $(ids | tr '\n' ' ')"
     for s in $(seq 0 $((NSHARD-1))); do

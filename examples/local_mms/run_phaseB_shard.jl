@@ -19,9 +19,25 @@ using GridapBALFEM, Printf, Dates
 
 const SHARD  = parse(Int, ARGS[1])
 const NSHARD = parse(Int, ARGS[2])
-const OUT    = joinpath(@__DIR__, "..", "..", "output", "local", "mms_phaseB")
+#  ⚠ THIS MUST MATCH `OUT` IN supervise_phaseB2.sh. The 2026-09-11 output
+#  reorganisation moved the batch to output/local/mms/phaseB and updated the
+#  supervisor but not this line, so the runner was pointing at a directory that
+#  no longer exists. Consequences, had it been launched: the resume scan below
+#  reads CSVs from OUT, so `done` would have been EMPTY and all 34 finished
+#  Phase-B studies would have re-run; and `exhausted_NN` would have been written
+#  where the supervisor never looks, so it would spin forever.
+const OUT    = joinpath(@__DIR__, "..", "..", "output", "local", "mms", "phaseB")
 mkpath(OUT)
-const CSV = joinpath(OUT, @sprintf("shard_%02d.csv", SHARD))
+#  ⚠ SCHEMA v2 GETS ITS OWN FILE. The 2026-09-11 widening added five per-level
+#  columns (nx_list, e_eta_list, e_u_list, pw_eta_list, pw_u_list), taking a row
+#  from 22 to 27 fields — but the header is only written when the file is NEW
+#  (`newfile` below), so appending to a pre-existing Phase-B csv would file
+#  27-field rows under a 22-field header: a file whose header lies about its own
+#  contents. Versioning the NAME leaves every historical row untouched and gives
+#  the new batch a correct header. `shard_*.csv` still globs both (the
+#  supervisor's row count), and the resume scan reads every .csv in OUT, so the
+#  38 finished studies are still recognised as done.
+const CSV = joinpath(OUT, @sprintf("shard_%02d_v2.csv", SHARD))
 
 MODELS = Dict(
  1=>(regime=:linear,    flat_bed=true,  nlp=:none),
@@ -115,6 +131,58 @@ for (nm,M,p) in (("P2LFE-1",1,2),), m in 1:6
     push!(jobs, Job("T10_highorder_newnodes",nm,M,p,m,3,:d1,4,8,0.8, 35))
 end
 
+#  ---- CAMPAIGN C (2026-09-11, PLANNED_CAMPAIGNS.md §5.1) ---------------------
+#  APPENDED AT THE END, AT THE HIGHEST COST, DELIBERATELY. The queue is
+#  cost-sorted then dealt round-robin, so an insertion in the MIDDLE renumbers
+#  every later job and reassigns its owning shard — which is how the two 2-D
+#  Q4/Q3 jobs ended up owned by shards whose `exhausted` markers predated the
+#  edit and were never launched (§4). Costs 96/97 exceed every existing cost
+#  (max 95), and `sort!` is stable, so indices 1..34 are untouched.
+#
+#  Ladder is PAIRING-DEPENDENT (§0):
+#      Q2Q1, Q3Q2 -> levels=5, nx0=4  ->  nx = 4, 8, 16, 32, 64
+#      Q4Q3       -> levels=4, nx0=4  ->  nx = 4, 8, 16, 32   (64 sits on the
+#                                         ~1e-10 algebraic floor and saturates)
+levels_for(pu) = pu == 4 ? 4 : 5
+
+#  C1 — the four models tier 2 never covered. T9/T9b swept only models 1 and 3,
+#  both flat-bed and both :none, so every existing pairing result is blind to
+#  bathymetry and to the 𝓝 blocks (rule 4: a flat-bed study CANNOT exercise ∇h
+#  code). Models 5 and 6 are :native, the production tier.
+for pu in (2,3,4), m in (2,4,5,6)
+    push!(jobs, Job("C1_pairings_1d","P1LFE-2",2,1,m,pu,:d1,levels_for(pu),4,0.8, 96))
+end
+
+#  C2 — RE-RUN the two models tier 2 did cover. Their per-level errors were never
+#  persisted (verbose=false + save_every=0) and are NOT recoverable; they must not
+#  be reconstructed from the recorded rate either, since e(nx/2)=e(nx)·2^p assumes
+#  the very quantity being measured (§2B).
+for pu in (2,3,4), m in (1,3)
+    push!(jobs, Job("C2_rerun_1d","P1LFE-2",2,1,m,pu,:d1,levels_for(pu),4,0.8, 97))
+end
+
+#  ⚠ NO 2-D (decided 2026-09-11): 12 solver runs per model per domain is too
+#  expensive to take on now. 2-D Q4/Q3 has never been run and remains the largest
+#  single gap; when it is picked up it MUST be re-specified short (levels=4,
+#  nx0=4) and never launched on the original nx0=8 spec (~20 h/study, saturates).
+
+#  ---- CAMPAIGN C3 (2026-09-11) — the 2-D Q4/Q3 tier ---------------------------
+#  2-D Q4/Q3 HAS NEVER BEEN RUN and is the largest single gap in the pairing
+#  study (PLANNED_CAMPAIGNS.md §1). Taken up now because Campaign C's queue is
+#  fully in flight and the machine is otherwise idle.
+#
+#  ⚠ SHORT LADDER, MANDATORY. The original 2-D spec carried levels=4 from nx0=8
+#  (nx to 64) at ~20 h per study, and it SATURATES for the same reason the 1-D
+#  long ladder did — Q4/Q3's fifth-order convergence puts the fine end on the
+#  ~1e-10 algebraic floor, where a saturated error and a genuine low rate are
+#  indistinguishable (§0). nx0=4 with levels=4 gives nx = 4,8,16,32.
+#
+#  Appended at cost 98 — above Campaign C's 96/97 — so indices 1..52 and every
+#  existing shard ownership are untouched (the §4 renumbering hazard).
+for m in 1:6
+    push!(jobs, Job("C3_tier2_2d","P1LFE-2",2,1,m,4,:d2,4,4,0.8, 98))
+end
+
 sort!(jobs; by = j -> j.cost)                    # SJF
 mine = [j for (i,j) in enumerate(jobs) if (i-1) % NSHARD == SHARD]   # round-robin
 
@@ -132,7 +200,22 @@ for f in readdir(OUT; join=true)
         push!(done, (c[1], c[2], parse(Int,c[5]), parse(Int,c[9]), c[10]))
     end
 end
-todo = [j for j in mine if !(jobkey(j) in done)]
+#  ---- CANCELLED IN PLACE, NOT DELETED (2026-09-11) ---------------------------
+#  T9_tier2_2d at p_u=4 is the 2-D Q4/Q3 LONG ladder (levels=4, nx0=8 -> nx to
+#  64). PLANNED_CAMPAIGNS.md §1: "when it is picked up it must be re-specified
+#  short; NEVER launch it as it stands" — ~20 h/study, and the fine end sits on
+#  the ~1e-10 algebraic floor where a saturated error and a genuine low rate are
+#  indistinguishable. C3_tier2_2d (nx0=4) IS that re-specification and supersedes
+#  it. Measured while it briefly ran: 12.1 GB RSS on one worker at 3h21m.
+#
+#  ⚠ FILTERED HERE, AFTER the round-robin assignment, and the Job is LEFT IN THE
+#  LIST — deleting it would renumber every later job and reassign its owning
+#  shard, which is the §4 hazard that stranded these very jobs the first time.
+#  This is also why they came back: clearing every `exhausted` marker (needed so
+#  C3 could launch) un-stranded them, and at cost 90 they sort AHEAD of Campaign
+#  C's 96/97. A marker is not a cancellation; this is.
+cancelled(j) = j.task == "T9_tier2_2d" && j.p_u == 4
+todo = [j for j in mine if !(jobkey(j) in done) && !cancelled(j)]
 @printf("[shard %02d] %d assigned, %d already done, %d to run\n",
         SHARD, length(mine), length(mine)-length(todo), length(todo)); flush(stdout)
 
@@ -170,8 +253,15 @@ open(CSV, "a") do io
         t0 = time(); status="OK"; note=""
         local r
         try
+            #  ⚠ ny0 FOLLOWS THE DOMAIN ASPECT, it does not default to 8.
+            #  The MMS domain is Lx=1.7, Ly=1.1, so ny0=8 against nx0=4 would give
+            #  3.1:1 cells and 2.7x the DOFs at the fine end — real money for a
+            #  pairing already measured at >5 GB/worker. ny0 = round(nx0*Ly/Lx)
+            #  keeps cells at 1.16:1 across the whole ladder (rule 22).
+            #  Unused for :d1, where ny is pinned at ny_1d=1 (rule 12).
+            ny0_j = j.domain === :d2 ? max(2, round(Int, j.nx0 * 1.1/1.7)) : 8
             r = run_conv_study(p_u=j.p_u, domain=j.domain, mode=:static,
-                               levels=j.levels, nx0=j.nx0,
+                               levels=j.levels, nx0=j.nx0, ny0=ny0_j,
                                M=j.M, p_vert=j.p, a_eta=j.a_eta,
                                regime=mo.regime, flat_bed=mo.flat_bed,
                                nl_pressure=mo.nlp,
