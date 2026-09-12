@@ -53,7 +53,8 @@ the 2-D Q4/Q3 tier (4 levels):
 | Q2/Q1, 1-D | 6 | 96 min | 164 min | ~1.6 GB |
 | Q3/Q2, 1-D | 6 | 181 min | 347 min | ~1.7 GB |
 | **Q4/Q3, 1-D** | 6 | 165 min | 342 min | **4 970 MB** |
-| **Q4/Q3, 2-D** (short ladder `nx≤32`) | 2 so far | 263 min | 332 min | ~3.6 GB |
+| **Q4/Q3, 2-D** (short ladder `nx≤32`), linear | 2 | 263 min | 332 min | ~3.6 GB |
+| **Q4/Q3, 2-D**, **nonlinear** | 4 | **1 032 min (17.2 h)** | **1 225 min (20.4 h)** | ~3.6 GB |
 | Q4/Q3, 2-D, **LONG** ladder `nx≤64` | — | *never completed* | — | **12 100 MB** |
 
 ⚠ **`PLANNED_CAMPAIGNS.md` §5.4 said "1-D is the cheap end … minutes to ~1 h". That is wrong and it
@@ -61,6 +62,10 @@ mattered.** The true 1-D figure is **1.5–6 h per study**, and it is the *regim
 that drives it: a LINEAR Q3/Q2 study runs in 30 min while the NONLINEAR one on the same ladder takes
 183–347 min — a 6–11× factor, because every step costs a full Newton solve instead of one iteration.
 Estimating a nonlinear campaign from a linear timing under-predicts by an order of magnitude.
+⚠ **In 2-D the absolute cost is far worse.** Q4/Q3 2-D linear runs 195–332 min; its **nonlinear**
+members take **826–1 225 min (13.8–20.4 h) each**. The six-study 2-D Q4/Q3 tier cost **77.6
+core-hours** against **44.1 for all eighteen 1-D studies**. Budget a nonlinear 2-D Q4/Q3 study at
+**~17 h**, and never infer it from its linear twin.
 
 ⚠ **Q4/Q3 IS THE MEMORY CLIFF, AND ITS COST IS NOT IN THE DOF COUNT.** A 1-D Q4/Q3 study peaks at
 **4 970 MB** on a mesh with ~4 000 DOFs — three times the Q3/Q2 figure on a problem of comparable

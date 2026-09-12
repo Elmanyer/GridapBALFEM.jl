@@ -91,6 +91,7 @@ So the absence at Q2/Q1 and Q4/Q3 is expected under the same explanation, not ev
 | **quadrature under-integration** | refuted quantitatively — see below |
 | the test harness generally | the `quad_extra` control reproduced Campaign C to **5 significant figures**, so the driver edit perturbed nothing |
 | **a 1-D posing artefact** (`ny=1`, `:wall`, `ky=0`) | **reproduces in full 2-D**: `T9_tier2_2d` model 3 measured `p_η = 2.5565` on the `nx = 8…64` ladder, a separate campaign months earlier, against 2.450 in 1-D. `HORIZONTAL_CONVERGENCE.md` §2c |
+| a 2-D-only or dimension-dependent effect | the **absence** reproduces too: at Q4/Q3 the nonlinear models are optimal in BOTH dimensions (2-D 3.9997–4.0004, 1-D 4.000–4.002, 6/6 studies). The defect is present at Q3/Q2 and absent at Q4/Q3 **in 1-D and 2-D alike** |
 
 **THE QUADRATURE HYPOTHESIS, AND WHY IT FAILED — worth keeping, because the shape of the refutation
 is the lesson.** The default MMS quadrature is `2·max(p_u,p_η)+2` = degree 8 at Q3/Q2, which in

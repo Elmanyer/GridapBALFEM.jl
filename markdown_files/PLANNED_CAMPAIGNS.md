@@ -90,8 +90,11 @@ fall-back rate pair.
 
 ⚠ **SUPERSEDED 2026-09-12: the short 1-D re-run is DONE (§2) and a short 2-D tier is RUNNING.**
 `C3_tier2_2d` (`levels=4, nx0=4`, `ny0 = round(nx0·Ly/Lx)` so cells stay at 1.16:1) covers models
-1–6 at Q4/Q3 in 2-D — the gap this paragraph describes. First two results, both linear:
-`p_η = 3.999` (optimal 4) and `p_u = 4.19/4.15` (optimal 5, pre-asymptotic), at 195 and 332 min.
+1–6 at Q4/Q3 in 2-D — the gap this paragraph describes. ✅ **COMPLETE 2026-09-12, 6/6 OK, 77.6 core-hours.** All six at optimal `p_η` (3.9997–4.0004),
+**including the nonlinear models** — so the Q3/Q2 `η` degradation is absent at Q4/Q3 in 2-D exactly
+as it is in 1-D. `p_u` lands at 4.11–4.19 against an optimal 5, still rising on the nonlinear
+members. Full matrix: `HORIZONTAL_CONVERGENCE.md` §2b. **The largest single gap in the pairing study
+is now closed.**
 ⚠ The LONG-ladder `T9_tier2_2d` at `p_u=4` is **cancelled in place** in `run_phaseB_shard.jl`
 (a `cancelled(j)` predicate applied after the round-robin, with the Job left in the list so no index
 moves). It had briefly relaunched itself when the stale `exhausted` markers were cleared — **a

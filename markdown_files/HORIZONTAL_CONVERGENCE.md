@@ -78,9 +78,10 @@ table and they mean different things.
 
 ---
 
-## 2b. The 2-D matrix — PARTIAL (6 of 18 cells)
+## 2b. The 2-D matrix — PARTIAL (10 of 18 cells)
 
-⚠ **This matrix is NOT complete and must not be read as one.** Six of the eighteen cells carry data,
+⚠ **This matrix is NOT complete and must not be read as one.** Ten of the eighteen cells carry data
+(Q4/Q3 is complete; Q2/Q1 and Q3/Q2 have models 1 and 3 only),
 from **three different campaigns on three different ladders**, so cells are comparable *down a
 column* only with the ladder in mind. Empty cells are marked `— no data` (never run) or `RUNNING`.
 
@@ -114,16 +115,35 @@ column* only with the ladder in mind. Empty cells are marked `— no data` (neve
 | m5 | nonlinear / flat / `native` | — no data | 3 | — no data | 4 | — | — | |
 | m6 | nonlinear / var / `native` | — no data | 3 | — no data | 4 | — | — | |
 
-### Q4/Q3 — 2-D  (`C3_tier2_2d`, short ladder `nx ≤ 32`)
+### Q4/Q3 — 2-D  ✅ COMPLETE (`C3_tier2_2d`, short ladder `nx ≤ 32`, 2026-09-12)
 
 | model | physics | `p_η` pairwise | `p_η` | opt | `p_u` pairwise | `p_u` | opt | `e_η`(fine) | `e_u`(fine) |
 |---|---|---|---|---|---|---|---|---|---|
 | m1 | linear / flat / `none` | `3.983;3.996;3.999` | **3.9990** | 4 | `4.295;4.371;4.193` | 4.1934 | 5 | 5.7179e-08 | 1.4205e-08 |
-| m2 | linear / var / `none` | `3.983;3.996;3.999` | **3.9989** | 4 | `4.306;4.316;4.146` | 4.1455 | 5 | 5.7215e-08 | 1.3555e-08 |
-| m3 | nonlinear / flat / `none` | RUNNING | | 4 | RUNNING | | 5 | | |
-| m4 | nonlinear / var / `none` | RUNNING | | 4 | RUNNING | | 5 | | |
-| m5 | nonlinear / flat / `native` | RUNNING | | 4 | RUNNING | | 5 | | |
-| m6 | nonlinear / var / `native` | RUNNING | | 4 | RUNNING | | 5 | | |
+| m2 | linear / var / `none` | `3.982;3.996;3.999` | **3.9989** | 4 | `4.306;4.316;4.146` | 4.1455 | 5 | 5.7215e-08 | 1.3555e-08 |
+| m3 | nonlinear / flat / `none` | `3.984;3.998;4.000` | **4.0004** | 4 | `3.546;3.827;4.111` | 4.1106 | 5 | 5.7007e-08 | 5.6275e-08 |
+| m4 | nonlinear / var / `none` | `3.984;3.997;4.000` | **3.9997** | 4 | `3.664;3.944;4.133` | 4.1332 | 5 | 5.7092e-08 | 4.2079e-08 |
+| m5 | nonlinear / flat / `native` | `3.984;3.998;4.000` | **4.0004** | 4 | `3.545;3.828;4.110` | 4.1100 | 5 | 5.7008e-08 | 5.6154e-08 |
+| m6 | nonlinear / var / `native` | `3.983;3.997;4.000` | **3.9997** | 4 | `3.668;3.946;4.130` | 4.1304 | 5 | 5.7094e-08 | 4.1832e-08 |
+
+✅ **All six at optimal `p_η` (3.9997–4.0004), INCLUDING THE NONLINEAR MODELS.** The Q3/Q2 `η`
+degradation does **not** appear here — exactly as in 1-D, where Q4/Q3 also holds 4.000–4.002 while
+Q3/Q2 nonlinear falls to 2.450. The pairing-dependence of the degradation is therefore reproduced in
+**both dimensions**, which is a much stronger statement than either alone.
+
+⚠ **Two readings remain open and the data cannot separate them**: either the degradation is specific
+to Q3/Q2, or it is a fine-mesh effect that `nx ≤ 32` has not reached (the 1-D Q3/Q2 sequence only
+breaks down between `nx = 32` and `64`). Extending Q4/Q3 to `nx = 64` is the discriminator — §7,
+item 1 — with the caveat that `e_η` is already 5.7e-08 and `e_u` 1.4e-08 here, so the finer level
+may sit on the algebraic floor.
+
+📌 **`p_u` splits by regime in a way it does not in 1-D.** The LINEAR sequences peak and fall
+(`4.295 → 4.371 → 4.193`), while the NONLINEAR ones rise monotonically (`3.546 → 3.827 → 4.111`),
+converging from below toward the same ~4.1. Both end short of the optimal 5. See §2d before reading
+anything into it.
+
+📌 **`:native` is free in 2-D as well**: m3 vs m5 and m4 vs m6 agree to **4 decimal places** in
+`p_η` and to ~5e-4 in `p_u` — the same result the 1-D matrix gives, now on a genuinely 2-D problem.
 
 ### Reference: the earlier 3-level 2-D matrix
 
@@ -172,11 +192,23 @@ that forced the C2 re-runs). **The instrument, not the physics, is why this is a
 So `OPEN_ISSUES.md` §0b's elimination list gains one more entry: **not a 1-D posing artefact**, on
 independent 2-D data from a separate campaign.
 
+✅ **And the ABSENCE reproduces too, which is the stronger half.** At Q4/Q3 the nonlinear models are
+optimal in *both* dimensions — 4.0004/3.9997 in 2-D against 4.002/4.000 in 1-D. So it is not merely
+that the degradation appears in 2-D; the **pairing-dependence** appears in 2-D. Any explanation has
+to reproduce a defect that is present at Q3/Q2 and absent at Q4/Q3, in 1-D and 2-D alike, while the
+underlying operator is identical in all four cases.
+
 ## 2d. ⚠ One 1-D/2-D difference, NOT a finding
 
 In 1-D the `p_u` sequences **rise** toward optimal (Q3/Q2 linear: 3.497 → 3.859 → 3.965 → 3.991).
 In 2-D they **peak and fall**: Q3/Q2 linear 3.944 (coarse 3-level) → 3.386 (T9 at nx=64); Q4/Q3
 4.648 (coarse) → 4.193, and C3 does it *within one study* (`4.295 → 4.371 → 4.193`).
+
+⚠ **The completed Q4/Q3 tier complicates this further, not less.** Within one study and one ladder,
+the LINEAR models peak and fall (`4.295 → 4.371 → 4.193`) while the NONLINEAR ones rise
+monotonically (`3.546 → 3.827 → 4.111`) — opposite trends, same mesh, same pairing, converging on
+the same ~4.1. Whatever sets the 2-D `p_u` trend is therefore regime-sensitive, which the
+ladder-confound below cannot explain on its own.
 
 **This is not a one-variable comparison and must not be reported as one.** The three 2-D sources
 differ in `nx0` (8 vs 4), level count (3 vs 4), and `ny0` convention (1.55:1 vs 1.16:1 cells) — any
