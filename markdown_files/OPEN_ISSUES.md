@@ -119,9 +119,21 @@ So the knob is **live** and the crime is **real**. It is also **six orders of ma
 | its effect on converged `e_η` | ≤ 4.7e-07 relative ≈ **4.6e-13 absolute** at `nx=64` |
 | change needed to restore 3rd order at `nx=64` | `e_η` 9.77e-07 → 6.67e-07 = **3.1e-07 absolute** |
 
-And directly: model 4 at `quad_extra=4`, integrand integrated exactly, returns `p_η = 2.4494` and
-ratios `7.840 / 7.577 / 6.756 / 5.462` — **identical to its own control**. Model 3 at `quad_extra=2`
-likewise.
+✅ **COMPLETED 2026-09-13 — the full dose-response, both bed types, all identical:**
+
+| case | `quad_extra` | exact to | `p_η` | `e_η` ratios |
+|---|---|---|---|---|
+| m3 flat, control | 0 | x⁹ | 2.450 | 7.84 7.58 6.76 5.46 |
+| m3 flat | **2** | x¹¹ | 2.4498 | 7.840 7.578 6.758 5.463 |
+| m3 flat | **4** | x¹³ | **2.450** | 7.84 7.58 6.76 5.46 |
+| m4 varbed, control | 0 | x⁹ | 2.4494 | 7.840 7.577 6.756 5.462 |
+| m4 varbed | **4** | x¹³ | **2.4494** | 7.840 7.577 6.756 5.462 |
+
+The control reproduced the Campaign C baseline to 5 significant figures, so the driver edit
+perturbed nothing. Max relative change in `e_η` between `q=0` and `q=4`: **1.422e-08** — the knob is
+live and moves the answer, by **seven orders less** than the 3.1e-07 the rate deficit requires.
+`quad_extra=2` already covers the degree-10 integrand and changes nothing, which is the shape a
+genuine quadrature cause could not produce.
 
 ⚠ **Two method traps fired during this probe and both are worth remembering.** (a) The first
 liveness check integrated `x⁹`, which a degree-8 rule already does exactly — a check that *could not

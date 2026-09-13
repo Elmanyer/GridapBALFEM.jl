@@ -279,303 +279,141 @@ carries a mesh-independent velocity-error floor (`VERIFIED_SCOPE.md` §4).
 
 ## 5. Current Implementation Stage
 
-**Working.** Feature-complete in both serial and distributed forms: the stacked loop-free residual +
-hand Jacobians, the full nonlinear physics, the SDIRK/θ integrators, all boundary treatments, and
-Dirichlet boundary wave generation with WaveSpec coupling.
+*Rewritten 2026-09-13, after Campaign C, the 2-D Q4/Q3 tier and the quadrature probe.*
 
-**✅ NEW (2026-09-06) — long fully-nonlinear runs are now stable, and that is the headline change.**
-The grid-scale instability that made every long nonlinear run unusable was the **equal-order element
-pairing** (rules 2b, 12b). On Taylor-Hood the 1-D flume runs **50 wave periods at `A=0.10`
-(`κa ≈ 0.16`, `kd = 5.5`)** with a mean `η` flat to the fourth decimal over t=30–80 and Newton at
-3.99 iterations/step — and sitting **+5.2 % above the linear control**, i.e. reproducing the
-second-order Stokes crest elevation. This is the regime the model was built for and it was
-unreachable until now. It cost **no residual change and no re-verification**.
+### 5.0 Status in one paragraph
 
-**✅ THE SUITE IS RE-BASELINED ON TAYLOR-HOOD (2026-09-07).** The whole sequential suite plus the
-local tier was re-run after the pairing change. ⚠ **The predicted mass re-baselining did NOT
-happen** — of the 17 physics/smoke tests that silently moved `Q2/Q2 → Q2/Q1`, **every one passed
-without touching a threshold.**
+The solver is **feature-complete in serial and distributed form** and has been so since 2026-09-02:
+stacked loop-free residual, hand Jacobians, the full nonlinear physics, SDIRK/θ integrators, every
+boundary treatment, Dirichlet generation with WaveSpec coupling. **The LINEAR models are in excellent
+shape** — optimal order in both fields, on five vertical bases, in 1-D and 2-D, sequential and
+distributed. **The NONLINEAR models are correct but carry one unexplained order reduction** in the
+surface elevation at fine mesh, isolated as of 2026-09-13 to the advection block and *not* explained
+by any of the six candidate causes tested. Production wave runs are stable at realistic amplitude
+since the Taylor-Hood fix, with the exception of boundary-generation failures that are a separate,
+configuration-level problem.
 
-| result | |
+### 5.1 LINEAR models (1, 2) — verified, no open defects
+
+| property | evidence |
 |---|---|
-| 19 of 21 completed sequential files | ✅ pass |
-| `test_linear_newton_gate` | 10/10 — exactly 1 Newton iter/stage, residual 3.9e-15 |
-| `test_conservation` | mass drift **9.8e-16** |
-| `test_energy` | energy drift **6.0e-14**, envelope −0.01 % |
-| `test_taylor_hood` (new) | 13/13 |
-| local tier: `reststate` / `sponge` / `relaxation` | 8/0, 18/0, 9/0 |
-| MMS spatial, linear (`G6`) | `p_η` 2.995, `p_u` 3.770 → 4 |
-| MMS nonlinear, Models 3 and 4 | `p_η` 2.996, `p_u` 3.995 / 3.997 |
+| `p_η` optimal | **3.000** at Q3/Q2, **4.000** at Q4/Q3, **2.000** at Q2/Q1 — all six 1-D studies |
+| `p_u` optimal | **3.99** at Q3/Q2 (rising 3.50→3.86→3.96→3.99) |
+| 2-D agreement | `p_η` 3.0000 (Q3/Q2), 3.9990 (Q4/Q3) — matches 1-D to 3–4 digits |
+| transient ≡ static | agree to 3–4 digits, so the measured rates are clean *spatial* rates |
+| seq ≡ distributed | agree to 3–4 digits (the parity `test_mms_distributed_parity` gates) |
+| one Newton iteration | `test_linear_newton_gate` 10/10 — exactly 1 iteration/stage on a **sloping** bed, residual 3.9e-15 |
+| five vertical bases | `MMS_VBASIS_CAMPAIGN.md`: 30/30 spatial at optimal order, `Nσ` = 3, 4, 5 |
 
-⚠ **Why the thresholds absorbed a discretisation change is itself the finding**: these tests run at
-tiny amplitude over short durations, the one regime where the equal-order deficiency never
-expressed itself. **The suite could not distinguish the two discretisations at all** — the same
-blind spot that let the instability reach production. The coverage gap is real and still open even
-though the re-baselining was not needed.
+⚠ **The one blemish is shared with the nonlinear models and is not a linear defect:** at **Q2/Q1**
+`p_u` converges to **2.003** against an optimal 3 — a full order short, on every model, linear
+included. See §5.3.
 
-**Three failures, all understood, none a solver defect:**
-* `test_mms_convergence` **G7** — the *pre-existing, documented* gate-window defect. The pairwise
-  rates read 2.008 then 0.757: the temporal ladder's finest `dt` has sunk to the spatial floor, and
-  `G10` confirms it (a 1.5× mesh refinement moves `e_eta` by 0.5 %). Rules 32/33 — the fitted 1.382
-  averages a good rate with a saturated one. `G6`, `G8`, `G9`, `G10` all pass.
-* `test_nlpressure` **G1/G3** — test-side. G1 compares an analytic evaluation against an
-  FE-*interpolated* one, which is an identity only if the space represents the manufactured field
-  exactly; `eta_f` is quadratic, so under `Q2/Q1` the Q1 surface cannot hold it and the 2.05e-03 gap
-  **was the interpolation error, not a broken identity**. Fixed by raising that test to `Q3/Q2`.
-  G3 is a stale constant (0.00286 measured at equal order vs 0.00316) — **re-measure, not
-  re-threshold**.
-* `test_bc_generation` **case C** — delivered amplitude 10.1 % against a 10 % gate, linear regime.
-  Threshold untouched pending a refinement check; `test_relaxation_1d` passing 9/0 argues it is
-  marginal rather than structural.
+### 5.2 NONLINEAR models (3–6) — correct, stable, one order-reduction defect
 
-**Verified scope — six of eight models** (`Q3/Q2`, 1-D static unless noted). ⚠ **The table below is
-the ORIGINAL single-basis (P1LFE-2) campaign.** Every one of these rows has since been reproduced on
-four further vertical bases — see `MMS_VBASIS_CAMPAIGN.md` — so "verified" now means verified across
-`Nσ` = 3, 4 and 5, not at one basis:
+**What is established.**
 
-| model | `regime` / `flat_bed` / `nl_pressure` | `p_η` (opt 3) | `p_u` (opt 4) | |
-|---|---|---|---|---|
-| 1 | `:linear` / flat / `:none` | `p_e+1` exactly | `p_u+1` exactly | ✅ |
-| 2 | `:linear` / **variable** / `:none` | 3.000 | 4.000 | ✅ |
-| 3 | `:nonlinear` / flat / `:none` | 2.996 | 3.995 | ✅ |
-| 4 | `:nonlinear` / **variable** / `:none` | 2.996 | 3.997 | ✅ |
-| 5 | `:nonlinear` / flat / **`:native`** | 2.996 | 3.997 | ✅ |
-| 6 | `:nonlinear` / **variable** / **`:native`** | 2.996 | 3.998 | ✅ |
-| 7–8 | `:nonlinear` / any / **`:full`** | 2.99 → 2.59 | **−0.00** | ⛔ not MMS-verifiable **by construction** |
+| property | evidence |
+|---|---|
+| residual correctness | analytic MMS verifies models 3–6 (`:none` and `:native`) at theoretical order on the measured ladder |
+| Jacobians | `test_jacobians_ad` 17/17 over all 8 models; `∂R/∂u̇` exact, nonlinear `∂R/∂u` quasi-Newton by choice with the gap vanishing at order 1.11–1.16 in amplitude |
+| `:native` is free | `:none` vs `:native` agree to **~1e-4 in `p_η`** at every pairing, 1-D and 2-D — the `{1,2,4,5}` hierarchy is dynamically negligible |
+| bathymetry is free | flat vs variable bed agree to ~4e-4 in rate |
+| long-run stability | 50 wave periods at `A = 0.10` m (`κa ≈ 0.16`, `kd = 5.5`), mean `η` flat to the 4th decimal over t = 30–80, Newton **3.99 it/step**, **+5.2 %** above the linear control — the 2nd-order Stokes crest |
+| Q4/Q3 clean | `p_η` **4.000–4.002** in 1-D and **3.9997–4.0004** in 2-D, all six models |
 
-Model 2 additionally confirmed transient (2.999/3.998) and 2-D (3.000/3.963).
+**⛔ THE OPEN DEFECT: `p_η` loses an order at Q3/Q2 on fine meshes.**
 
-> **Say "the `:none` and `:native` models are verified."** Never bare *"the residual is verified"*
-> (which would wrongly include `:full`), and never *"the `𝓝` tiers are verified"* (same error).
+```
+nonlinear  pairwise p_eta   2.971 -> 2.922 -> 2.757 -> 2.450     (nx = 4..64, optimal 3)
+linear     same ladder      2.990 -> 2.997 -> 2.999 -> 3.000
+```
 
-**Vertical-basis campaign — COMPLETE 2026-08-30** (`MMS_VBASIS_CAMPAIGN.md`; data in
-`output/local/mms_campaign/campaign_results.csv`). 83 studies over five bases × the eight models.
+The error still falls; the *rate* decays, monotonically, **worsening with refinement**. Reproduced
+in 2-D (2.5565). `p_u` on the same runs moves the opposite way (2.77 → 3.69, rising). Six causes
+eliminated by measurement — algebra, `𝓝`, `∇h`, the linear core, 1-D posing, quadrature — leaving
+the advection block. **Full account and next step: `OPEN_ISSUES.md` §0b.**
 
-*Phase 1 — optimised σ-meshes*, by the multi-property minimax of `StokesWaveFourierAnalysis.tex`
-§sec: vertical grid optimisation (inner Chebyshev problem + outer bisection, over `C`, `C_g`, `γ`).
-Calibrated on two independent standards: Table 4.1's nine ranges (<1 %) and the published
-band-dependent optima `c₁ = 0.702/0.802/0.860` at `K = 5/10/20` (to 2e-4).
+### 5.3 The Q2/Q1 velocity shortfall — universal, cause unattributed
 
-| basis | `Nσ` | optimised `c_bdy` | `kd_app` (multi-property; **γ binds throughout**) |
-|---|---|---|---|
-| P1LFE-2 | 3 | `[0, 0.8064, 1]` | 8.60 |
-| P2LFE-1 | 3 | `[0, 1]` (no free parameter) | 3.01 |
-| P1LFE-3 | 4 | `[0, 0.7597, 0.9339, 1]` | 24.95 |
-| P1LFE-4 | 5 | `[0, 0.7809, 0.9335, 0.9820, 1]` | 92.22 |
-| P2LFE-2 | 5 | `[0, 0.8794, 1]` | 21.84 |
+`p_u = 2.003–2.012` against an optimal 3 on **all six models**, while `p_η` is exactly 2.000. The
+sequence *descends* onto 2.00 and `e_u ≈ 1.6–3.3e-05` sits five orders above the algebraic floor, so
+it is a converged rate, not saturation. Identical in 2-D (**1.9998**, and to four digits for linear
+and nonlinear alike).
 
-*Phase 2 — the convergence matrix.* **SPATIAL: 30/30, `η` → 2.999-3.000 and `u` → 4.000 on EVERY
-basis and EVERY model.** The order of accuracy is **independent of the vertical basis** — the direct
-quantitative evidence for the property the model family is named for, previously resting on P1LFE-2
-alone. TEMPORAL: clean second order at `Nσ` = 3 and 4; `Nσ = 5` nonlinear is a scope limit (below).
-Tier 3 (`:full` floor) 10/10.
+⚠ **It is not established that this is a defect.** The "optimum" is the Taylor-Hood L² pattern
+(`u → p_u+1`, `η → p_u`) inherited by analogy because `η` plays the pressure role; **those estimates
+have never been derived for this dispersive depth-integrated system.** `HORIZONTAL_CONVERGENCE.md`
+§4 sets out why the matrix as a whole does not localise a failure — every pairing is optimal in at
+least one field, none is deficient in both, and the deficiency *moves* between fields as `p_u`
+increments. **Practical consequence: use Q3/Q2, the cheapest pairing optimal in both fields.**
 
-**Three results worth quoting, and one scope limit:**
-1. **At fixed `Nσ`, grading beats raising the order** — 8.60 vs 3.01 at `Nσ=3`, 92.22 vs 21.84 at
-   `Nσ=5` (2.9× and 4.2×). Independently confirms `main.tex`'s statement, with the margin *widening*.
-2. **P1LFE-4's apparent `u`-shortfall is PRE-ASYMPTOTIC**, not suboptimal: `pw_u` runs
-   3.33 → 3.45 → 3.78 → **3.94** to `nx=128` on three models. Answers `OPEN_ISSUES.md` §6 for this case.
-3. **The `:full` floor GROWS with `Nσ`** (1.2 → 2.0 → 2.9e-03 in the `p=1` family) **and depends on
-   basis shape at high `Nσ`** (1.6× gap at `Nσ=5`). ⚠ It is an **omission** floor, not a
-   frozen-projection one — see the `:full` open item.
-4. ⛔ **`Nσ = 5` nonlinear TEMPORAL is not measurable on this machine.** The degradation is monotone
-   in model complexity: linear ✅ → nonlinear/flat ⚠ (rate falls to a floor) → nonlinear/∇h ⛔
-   (saturates or never converges) → `:native` ⛔ (NaN). **That ordering is the evidence it is a
-   nonlinear-SOLVE limit, not an operator defect** — the linear models on the identical basis and
-   mesh stay textbook.
+### 5.4 Verification campaigns — everything run, with results
 
-**Suite** (all measured 2026-08-18/19, not carried over): sequential **20/20 files**, distributed
-**13/13 gates** on 4 ranks, `test_jacobians_ad` **17/17** over 8 models, `test_mms_convergence_nonlinear`
-**8/8**, `test/local/` **50/50**. Per-file scores: `TEST_SUITE.md` §2.
+| campaign | scope | result |
+|---|---|---|
+| **Vertical-basis** (2026-08-30) | 83 studies, 5 bases × 8 models | **30/30 spatial** at optimal order; order independent of the vertical basis — the evidence for basis-agnosticism |
+| **Phase B** (to 2026-09-11) | 38 studies (T7–T10) | extended ladders, `:full` floor, `p≥2` bases, the horizontal pairings |
+| **Campaign C** (2026-09-12) | **18 studies / 84 runs, 1-D**, 3 pairings × 6 models | **18 OK, 0 errors, 44.1 core-h** — full matrix in `HORIZONTAL_CONVERGENCE.md` §2 |
+| **C3, 2-D Q4/Q3** (2026-09-12) | 6 studies / 24 runs | **6/6 OK, 77.6 core-h**, all at optimal `p_η`; closed the largest gap in the pairing study |
+| **Quadrature probe** (2026-09-13) | dose-response `q = 0,2,4` × 2 beds, + residual assembly | **⛔ NOT quadrature** — knob live (1.4e-08) but ~7 orders too small |
 
-**Production runs — the small-domain suite is READY TO LAUNCH** (audited 2026-08-19). The 5
-parametric scripts and 20 two-dimensional launchers were checked mechanically against the driver's
-keyword set and against each case's own geometry. Fixed in that pass: transit-aware durations (two
-case families would otherwise have ended while the domain was still filling), the inflow relaxation
-zone (documented as on, coded as off, on all three `:bc_gen` scripts, which also run
-`sponge_wL=0`), sponge widths sized against wavelength rather than domain fraction (ring
-0.64 → 1.12 λ; directional lateral 0.45 → 0.90 λ_eff; long-period case `Lx` 50 → 70 m), and a guard
-refusing oblique generation on a y-periodic domain. Boundary conditions verified correct on all
-five cases.
+### 5.5 Test suite — last full run 2026-08-18/19, re-baselined on Taylor-Hood 2026-09-07
 
-**1-D cases run LOCALLY AND SEQUENTIALLY — this is a decision, not a fallback** (2026-08-19). The
-solver is structurally 2-D, so a "1-D" problem is a narrow y-periodic strip whose cross-section is
-pinned at Gridap's periodic minimum (`ny=3`). Direct LU cost scales with the *front width*, which
-that cross-section fixes, so **the DOF count cancels from the serial-vs-distributed ratio** and no
-domain length or `dx` puts a genuine 1-D case on the distributed side. Refining `ny` would move it
-there, but the solution is exactly y-invariant, so that buys parallel efficiency with work that
-produces no physics. Consequence: `run/local/run_1d_*.sh` (sequential, with point gauges) are the
-supported path. The seven cluster twins that used to sit in `run/dist_small/` were **deleted
-2026-09-02**: they carried no warning in their own headers, so the only record that they were dead
-was this paragraph — a file that looks launchable, in the launcher directory, next to 30 live ones.
-Their physics is preserved case-for-case in `run/local/`; git history holds their cluster sizing
-(200 m / `nx=800` / 60 periods at 32 ranks) if it is ever wanted.
+**Sequential 20/20 files · distributed 13/13 gates on 4 ranks · `test_jacobians_ad` 17/17 over 8
+models · nonlinear MMS 8/8 · `test/local/` 50/50.** Per-file scores: `TEST_SUITE.md` §2. Notable
+gates: `test_taylor_hood` 13/13 (rejects equal order), `test_linear_newton_gate` 10/10,
+`test_conservation` mass drift **9.8e-16**, `test_energy` **6.0e-14**.
 
-**✅ CAMPAIGN C IS COMPLETE (2026-09-12) — 18/18 1-D studies, 84/84 solver runs, 0 errors, 44.1
-core-hours** (`PLANNED_CAMPAIGNS.md` §2; data `output/local/mms/phaseB/shard_NN_v2.csv`). Two
-results settle long-standing questions and one opens a defect:
+**Three known failures, all understood, none a solver defect:** `test_mms_convergence` G7 (a
+gate-window specification defect, rules 32/33); `test_nlpressure` G1/G3 (test-side — G1 compared an
+analytic value against an FE-interpolated one, fixed by raising that test to `Q3/Q2`; G3 is a stale
+constant needing re-measurement); `test_bc_generation` case C (10.1 % against a 10 % gate).
 
-* **The Q2/Q1 one-order velocity shortfall is UNIVERSAL** — `p_u = 2.003–2.012` against an optimal 3
-  on all six models, with `p_η` exactly optimal. Tier 2 had it on flat-bed `:none` only, which by
-  rule 4 could not exercise `∇h`; it now holds on **variable bathymetry** and on **`:native`, the
-  production tier**. **Q3/Q2 is the cheapest pairing optimal in both fields.**
-* **`:native` is free** — `:none` vs `:native` differ by ~1e-4 in `p_η` on every matched pair.
-* ⛔ **NONLINEAR `p_η` LOSES AN ORDER on fine meshes** — 2.971 → 2.922 → 2.757 → **2.450** at Q3/Q2
-  while linear models on the identical ladder hold 3.000. Not algebraic, not `𝓝`, not `∇h`, not
-  quadrature (each eliminated by measurement), so it sits in the **advection block**. It is a
-  fine-mesh effect beyond `nx=32`, which is why the 30/30 verified spatial studies never saw it.
-  Full account and next step: **`OPEN_ISSUES.md` §0b**.
+⚠ **The suite could not distinguish equal-order from Taylor-Hood at all** — all 17 physics/smoke
+tests passed unchanged across that discretisation change, because they run at tiny amplitude over
+short durations. **That blind spot is why the instability reached production, and it is still open.**
 
-**Open work** — nothing is half-built in the solver; the open items are verification gaps,
-performance, and follow-through. Full list with decisive next steps: `OPEN_ISSUES.md`; studies
-designed but not begun: `COMPLETED_VBASIS_STUDY.md`.
+### 5.6 Cluster production runs (Snellius, 2026-09, `nl_pressure=:full`)
 
-**▶ PHASE-B MMS BATCH RUNNING — 35 valid rows as of 2026-09-09** (`output/local/mms_phaseB/`, 12
-shard slots, `run_phaseB_shard.jl` + `supervise_phaseB2.sh`). A shard is a **worker slot, not a task
-type**: one 34-job queue is cost-sorted (SJF) and dealt round-robin, shard `s` owning indices with
-`(i−1) mod 12 == s`, each an independent process (rule 42). `PHASEB_MAX_STUDIES=1` recycles a worker
-after every study, which is why shard indices rotate — that is rule 41 being *enforced*, not drift.
-Tasks: T7 P1LFE-4 extended ladder, T8 the `:full` pair at `a_eta=0.4`, T9/T9b tier 2 (the horizontal
-pairings; T9b re-specifies `Q4/Q3` on a **shorter** ladder because at `nx=128` its errors sit on the
-double-precision floor), T10 the `p ≥ 2` bases.
-⚠ **P2LFE-2 IS CANCELLED from T8 and T10 (2026-09-08) and is NOT to be regenerated.** Its mesh came
-from `DEFAULT_CBDY_P[(2,2)] = [0, 0.8298, 1]`, produced by the superseded objective (rule 46), so
-those studies refine on a mesh that no longer exists. The **6 rows already written are void** —
-`output/local/mms_phaseB/INVALID_P2LFE-2.md` carries the filter. Everything else is unaffected:
-`p=1` resolves to the published `DEFAULT_CBDY`, and P2LFE-1 is `M=1` with no free interface.
-⚠ Timings are legitimately long — a single mesh level is a 100-step run at 120–150 s/step, so one
-CSV row can cost most of a day. The `solve time 00:00 (0.0%)` and `Newton iters: 0` in those logs are
-**instrumentation gaps, not stalls**: `mms_driver.jl` installs no `SolverMonitor`, so those counters
-are never incremented. Wall time is real.
-**Provisional, and three results already matter:**
-* **`Q2/Q1` has a genuine one-order velocity shortfall** — `p_u = 2.001` against an optimal 3,
-  reproduced on two models over a five-level ladder to `nx=128`, with `e_u ≈ 8e-06`, five orders
-  above round-off. `p_η` is optimal on the same runs. `Q3/Q2` is optimal (3.000/3.998).
-* ⚠ **`Q4/Q3` in 1-D is UNMEASURABLE, not defective.** Its `p_u = 2.505` sits on `e_u = 1.4e-10`,
-  the double-precision floor. A saturated error and a genuine low rate give the same slope — it
-  needs a *shorter* ladder (`nx = 8…32`). Do not quote that rate.
-* **Nonlinear `p_η` degrades to ≈2.17–2.27 on fine meshes** where linear models on the same basis
-  and ladder give 2.9998. It appears both on `p=2` bases at four levels and on `p=1` at five, so it
-  is a **fine-mesh** effect, not a property of the vertical order — a second-order component takes
-  over once the third-order part has decayed. It is **not** caused by the new σ-meshes: P2LFE-1 has
-  no free interface at all and degrades identically.
+| case | outcome |
+|---|---|
+| irregular sea, flat | ✅ completed 2600/2600 steps to t=52 |
+| irregular sea, bar | ⛔ NaN at t=31.96 |
+| directional sea, flat / bar | ⛔ NaN at t=5.52 / 6.26 |
+| ring wave | ⛔ NaN at t=6.76 |
 
-* ✅ **THE NONLINEAR GRID-SCALE INSTABILITY — RESOLVED 2026-09-06.** It was the **equal-order
-  `Q2/Q2`** pairing (inf-sup deficient; spurious checkerboard at `λ ≈ 2·dx`, matching the measured
-  `λ ≈ 2–3·dx` growth peak), not the model, the residual or the integrator. Taylor-Hood removes it
-  and the **refinement signature inverts**. Costs nothing — `Q2/Q1` and `Q3/Q2` are already MMS-
-  verified. Enforced by rule 2b; the complete account is rule 12b.
-  * ✅ **DONE 2026-09-07 — the 17 physics/smoke tests were re-run on Taylor-Hood and ALL PASSED
-    without a threshold change.** The re-baselining that looked owed was not needed; what the
-    exercise actually exposed is that the suite cannot tell the two discretisations apart (see §5
-    above). Original note follows for provenance:
-  * ⚠ ~~**FOLLOW-UP OWED — the 17 physics/smoke tests re-baselined.**~~ `test_basic`, `test_dispersion`,
-    `test_dispersion_nonlinear`, `test_nlpressure`, `test_sloshing`, `test_conservation`,
-    `test_convergence`, `test_shallow_water`, `test_bc_generation{,_distributed}`, `test_bc_spectrum`,
-    `test_basic_distributed`, `test_nlpressure_distributed`, and `test/local/` `test_2d_reduces_to_1d`,
-    `test_boundary_modes_1d`, `test_relaxation_1d`, `test_reststate_1d`, `test_sponge_1d` all call
-    `setup_and_run` **without** an explicit `p_eta`, so they moved from `Q2/Q2` to `Q2/Q1` when the
-    sentinel flipped. Their pinned constants were measured on equal order and must be **re-measured,
-    not re-thresholded**. ✅ The verification tier is UNAFFECTED: `test_mms_convergence*`,
-    `test_jacobians_ad`, `test_linear_newton_gate`, `test_mms_distributed_parity` and
-    `test_taylor_hood` all pass `p_eta` explicitly (or test it directly) and were already Taylor-Hood.
-  * ⚠ **A long-duration nonlinear regression is still missing.** No test runs long enough to have
-    caught this (the mode needed 50–80 s to emerge); that gap is why it reached production. The
-    Taylor-Hood 80 s flume run is the natural basis for one.
-* ✅ **the energy-consistent (skew-symmetric) advection correction — DERIVED, VERIFIED, REFUTED as
-  the cure** (branch `fix-nonlinear-instabilities`, commit `25be653`). Kept because the *derivation*
-  is a permanent asset even though the cure failed: the advection block's energy production is
-  **exactly** the continuity defect,
-  `n(U;U,U) = −½∫∇·(Hū)(Σ M_ij u_i·u_j) + ½∮flux`, resting on the basis-agnostic σ-tensor identity
-  `½(𝓖_ikj + 𝓖_jki) = ½𝓜_ikj − ½Φ_k M_ij` (true because `ψ_k = σΦ_k − varphi_k` vanishes at **both**
-  ends of the water column). Measured at the time to 8 significant figures against the assembled
-  operator (closed basin: `pi_adv` = −3.04e-03 vs `pi_res` = −3.83e-11) and ★ to 3.9e-15 on five
-  vertical bases.
+**Diagnosed, all four:** a **transverse, grid-scale, velocity-led** mode — η stayed bounded at
+0.13–0.14 m throughout while `u` exploded, and the y-symmetry error of a y-invariant problem grew
+1e-3 → 0.887 with an e-folding of ~0.5 s. **Its seed was a real bug, now fixed**
+(`build_airy_state` seeded the phases but not the angular spreading, so every MPI rank generated a
+different sea; the directional inflow carried six uncorrelated seas with O(1) jumps at the rank
+cuts). Two further causes were separate: the directional runs also had the Dirichlet inflow
+overlapping 80 % of the lateral sponge, and the ring exceeded the Miche breaking limit by 2.2×.
+⚠ **The flat irregular run did not "pass" — it ended at T_final while its own asymmetry was at 0.114
+and climbing.** All launchers are re-specified and none has been re-run.
 
-  ⚠ **THE FEATURE ITSELF WAS REVERTED (`0e556d8`) AND IS NOT IN THE CODE.** `skew_advection`, its
-  residual/Jacobian blocks, the `pi_adv`/`pi_res`/`div_flux` diagnostics and
-  `test_skew_advection.jl` are all gone. Two reasons, both decisive: it is **not the cure** (treated
-  and control blew up identically to 5–6 significant figures — the defect it removes is 0.4–17 % of
-  a production that is itself `O(1e-3)`, five orders too small to matter), and **the LaTeX derives
-  no such term** — `BALFEM_models/` is the single source of mathematical truth, and a residual term
-  it does not contain is one nobody can check. The derivation is recorded here because it is a
-  permanent result about the operator; the code is not.
-  **Method lesson (now standing): verifying a knob is LIVE is not enough — it must be BIG ENOUGH TO
-  MATTER.** Measuring `‖𝒞‖` against the energy growth rate on a stored baseline would have cost
-  seconds and pre-empted 12 h of runs.
-* ✅ **THE vopt DISCREPANCY IS RESOLVED AND κ IS DELETED (2026-09-08).** The functional had three
-  departures from eq. (3.10); correcting them takes `M=2` from 0.0085 to **0.0036** of the published
-  `c₂`. The `M≥3` residual is **not** a numerical artefact — it is converged in the scan increment —
-  but a consequence of the reference specifying its median population only for `M=2`. `VOPT_KAPPA`
-  and its machinery are gone: κ was fitted to Table 1 and then read off its own fit. Complete
-  account: **rule 46**. Data: `output/local/vopt/`. ⚠ Consequence: `DEFAULT_CBDY_P` no longer exists,
-  so **`p ≥ 2` has no default mesh** — that is deliberate, and a `p ≥ 2` design needs a justified `Ω`
-  first.
-* 🟢 **`quad_extra`** (`setup_and_run` kwarg, `BALFEM_QUAD_EXTRA` in the 1-D driver; **threaded
-  through `run_conv_study → run_mms_case → Measure` on 2026-09-12** — the MMS path had hard-coded the
-  degree, so the claim below had never been testable there). The default `2·max(p_u,p_η)+2` is
-  genuinely **one short** of the nonlinear integrands.
-  ⚠ **"Raising it changes no MMS rate" is now MEASURED, and the reason is effect size, not deadness.**
-  Assembling the residual at degrees 8/10/12/16 (`output/local/mms/quadrature_test/knob_liveness.log`):
-  the LINEAR core moves 4e-14 across all degrees (exact at the default), the NONLINEAR core moves
-  **3.49e-08** from degree 8→10 and 4e-14 thereafter — so the crime is real and the knob is live. Its
-  effect on converged `e_η` is ≤4.7e-07 relative (~4.6e-13 absolute), against the **3.1e-07 absolute**
-  change needed to restore third order: **six orders too small**. Default stays 0.
-  ⚠ **Gridap's `Measure(trian, d)` is exact to degree `d+1`, not `d`** (measured: 8→x⁹, 10→x¹¹,
-  12→x¹³). Read exactness from a probe, never off the argument — a liveness check built on `x⁹`
-  cannot fail at either degree and silently certifies nothing.
-* ✅ **the two `src/mms_driver.jl` defects are FIXED** (found 2026-08-19, fixed 2026-08-21).
-  **A1** — `run_conv_study` hard-coded `assemble_vertical_tensors(M, 1, [0,0.728,1])`, so `p_vert`
-  was not a parameter and any `M≠2` threw. It now takes `p_vert` and `c_bdy`, resolving through the
-  single shared `resolve_cbdy` that `setup_and_run` and its distributed twin also use; the tag
-  carries `P{p}LFE-{M}` so an `(M,p)` sweep cannot produce two studies under one label. Verified:
-  `M=3` runs and reaches optimal order (P1LFE-3, Q2/Q1: `p_η` 1.994/2, `p_u` 2.997/3).
-  **A2** — `run_mms_case_distributed` hard-coded **Model 1** (`regime=:linear, nl_pressure=:none,
-  flat_bed=true` + `mms_forcing_stage1`) while `run_conv_study` built its tag from the *requested*
-  switches, so a distributed 8-model campaign returned 8 identical Model-1 studies under 8 different
-  labels, **all passing**. The switches and `hfun` are now parameters feeding the general
-  `mms_forcing`, from the same variables that feed the solver. `test/test_mms_distributed_parity.jl`
-  (4 ranks) gates the two branches against each other on two non-Model-1 configurations — with a
-  **separation negative control first**, because a bare parity check would pass with the defect
-  present. This unblocks the vertical-basis convergence study (`COMPLETED_VBASIS_STUDY.md` §1 prerequisite A);
-  the study driver is `examples/local_mms/run_vertical_basis_study.jl`.
-* ✅ **the MMS `:full` omission is FIXED** (found 2026-08-21, fixed 2026-09-01). Both MMS drivers now
-  build the `nlp` context, and both time loops **prime it from the IC** — `update_nlp_state!` runs
-  only *after* an accepted step, so step 1 assembled as if from rest (exact for a rest start, wrong
-  for `u0 = u*(t0)`). `e_u` fell **1.19e-03 → 1.37e-06** and `p_u` went **−0.00 → 1.948**, so the
-  old floor measured **omission**, not the frozen-projection lag `VERIFIED_SCOPE.md` §4 describes.
-  ⚠ **A second, deeper limit is now exposed**: with the blocks in the residual but absent from
-  `jacobian_u`, the quasi-Newton gap has a **cliff in amplitude** — Newton stalls at 9.2e-04 at the
-  campaign's `a_eta = 0.8` and reaches ~2e-09 only at `a_eta ≤ 0.4`. `run_conv_study` gained an
-  `a_eta` kwarg; **tier-3 floors are not comparable across amplitudes.**
-* ✅ **cluster memory attribution — H3 (per-step leak) is REFUTED at production scale.** The
-  2026-08/09 small-domain runs show RSS rising over the first ~100 steps and then **plateauing**
-  (plane 1894→~3230 MB, directional 1546→~2800 MB), with a peak of **3633 MB/rank**. That is H4:
-  the baseline footprint simply exceeds 2 GB/core, so **4 GB/core is required and permanent**, and
-  3 GB would OOM. ⚠ Distinct from the *long-lived-process* drift of rule 41, which is real and
-  unbounded — these are per-run measurements, not multi-hour worker lifetimes.
-* 🔴 `test_mms_convergence` G7 — a gate-window specification decision, not a fix
-* 🟠 **the `:sdirk` LINEAR-model temporal deficit is unexplained.** Across the completed matrix
-  `:sdirk` reaches `pw_u ≈ 1.99` on the nonlinear models but only ≈1.69 on the LINEAR ones at
-  `dt0=0.15`, while `:theta` gives ≈1.99 for both. **It is not spatial-floor contamination** (the
-  temporal errors sit four orders above the floor at `nx=36`), and it is **not a dissipation penalty
-  in general** — a matched pair at `dt=0.05` has `:sdirk` and `:theta` agreeing to 0.002. The one
-  genuinely open question the vertical-basis campaign leaves behind.
-* 🟠 **a per-basis `dt` ladder is required for temporal studies, and is not yet in the test suite.**
-  A single ladder diverges outright on the richest basis; `run_vbasis_shard.jl` scales `dt0` with
-  `Nσ`, but `run_conv_study` and the gates still use one fixed ladder.
-* 🟠 no MPI tier in `runtests.jl` (cost three stale reference constants)
-* 🟠 preconditioner replacement — the single biggest performance item
-* 🟠 four run-output gaps
-* ✅ *closed by the vertical-basis campaign:* the `(M,p)` convergence study itself
-  (`COMPLETED_VBASIS_STUDY.md` §1), tier 3's `:full`-floor-vs-`Nσ` question, and `OPEN_ISSUES.md` §6's
-  velocity-shortfall question for the vertical-basis case (pre-asymptotic — the horizontal `Q2/Q1`
-  and `Q4/Q3` pairings are still untested on an extended ladder, and the recipe is now cheap)
-* naming follow-through outside this checkout: ✅ the GitHub repo is renamed and the local remote
-  URL was updated to `git@github.com:Elmanyer/GridapBALFEM.jl.git` (2026-09-06); **still outstanding:**
-  the cluster checkout and the sysimage rebuild
+### 5.7 Still to check — ordered by what would change a conclusion
 
----
+1. ⛔ **The nonlinear `p_η` order reduction** (`OPEN_ISSUES.md` §0b). Next step is **derivation, not
+   another run**: check the advection block term-by-term against `BALFEM_models/`. Cheap
+   discriminators if wanted: amplitude sweep (`a_eta = 0.8 → 0.4 → 0.2`), and Q4/Q3 extended to
+   `nx = 64`.
+2. 🔴 **Derive the expected orders for this system.** Until that exists, "sub-optimal" in every
+   convergence table is measured against an assumed optimum, and §5.3 cannot be resolved by runs.
+3. 🔴 **Re-run the cluster suite** with the seed fix, the new directional geometry and the corrected
+   sponges. Nothing on record post-dates those fixes.
+4. 🔴 **A long-duration nonlinear regression test.** The mode needed 50–80 s to emerge and no test
+   runs that long; this is the gap that let it reach production.
+5. 🟠 `:full` (models 7–8) is **not MMS-verifiable as built** — the `{1,2,4,5}` blocks are in the
+   residual but absent from `jacobian_u`. Closing it means completing `jacobian_u`, not refining a
+   mesh. **Every diverged cluster run above was `:full`, and the batch had no `:native` control.**
+6. 🟠 **The `:sdirk` linear-model temporal deficit** — `pw_u ≈ 1.69` against `:theta`'s 1.99, not
+   spatial-floor contamination, unexplained.
+7. 🟠 Per-basis `dt` ladders for temporal studies; no MPI tier in `runtests.jl`; preconditioner
+   replacement (the largest performance item); `Nσ=5` nonlinear temporal is a solve limit.
+8. 🟠 **Cluster checkout and sysimage rebuild** — `src/mms_driver.jl` changed 2026-09-12, so the
+   content stamp is stale (functionally irrelevant: no cluster driver touches the MMS path).
 
 ## 6. The design decision everything rests on
 
