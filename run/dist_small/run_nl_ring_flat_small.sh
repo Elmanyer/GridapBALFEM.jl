@@ -16,8 +16,8 @@
 #SBATCH --ntasks-per-node=28
 #SBATCH --cpus-per-task=1
 # 4 GiB/rank is REQUIRED (measured peak 3633 MB/rank; 2 GB/core was OOM-killed).
-# Sizing: 28 ranks/node x 4 GiB = 112 GiB/node = 4/8 of a rome node, x2 nodes
-#         = 8/8 billed for 56 ranks total.
+# Delivered as --mem=112G on each of 2 nodes / 28 ranks = 4 GiB per rank.
+# Sizing: 112 GiB/node = 4/8 of a rome node, x2 nodes = 8/8 billed, 56 ranks.
 # ⚠ 2 NODES x 28, NOT 1 x 56. Same 56 ranks and the SAME BILL (4/8 + 4/8 = 8/8),
 # but 112 GiB per node instead of 224. The 8/8 row of SNELLIUS_ROME_LAUNCH_CONFIGS.md
 # §2 is arithmetically correct and PRACTICALLY UNSUBMITTABLE: a rome node allocates
@@ -35,7 +35,19 @@
 # >> ~3820 MB/rank at 56 ranks (93 % of cap, too close) and ~147 h. Run that as
 # >> --ntasks=84 --nodes=2 --ntasks-per-node=42 (6/8 per node), PX=14 PY=6.
 # >> ⛔ NOT 56/node — 224 GiB on one node is refused at submit time.
-#SBATCH --mem-per-cpu=4G
+# ⚠ --mem, NOT --mem-per-cpu. Slurm on rome counts --mem-per-cpu against ALL
+# ALLOCATED CPUs, and the allocation is rounded up to the 16-core minimum — so
+# --ntasks-per-node=28 is given 32 cores and 4G/cpu becomes 32*4 = 128 GiB, not
+# the 112 intended, and the request lands on a node configuration that does not
+# exist:
+#   sbatch: error: All allocated CPUs are counted when using --mem-per-cpu,
+#           which is a multiple of the minimum allocation size.
+#   sbatch: error: Batch job submission failed: Requested node configuration
+#           is not available
+# --mem is a flat per-node total and does not depend on how many cores Slurm
+# decides to hand over. 112 GiB/node = 4/8 of a rome node; x2 nodes = 8/8 billed
+# for 56 ranks, i.e. 4 GiB per rank exactly.
+#SBATCH --mem=112G
 #SBATCH --output=%x.%j.out
 #SBATCH --error=%x.%j.err
 

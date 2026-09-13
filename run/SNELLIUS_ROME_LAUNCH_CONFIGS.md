@@ -108,8 +108,32 @@ export BALFEM_PY=4              # 7*4 = 28
   If you need 56 ranks, take **2 nodes × 28** — 112 GiB per node, 4/8 each, and the bill is the
   identical 8/8, because the tier rule applies PER NODE. Same ranks, same per-rank memory, same
   cost, and 4/8 is the most-exercised tier here.
-* **`--mem` and `--mem-per-cpu` are exclusive.** This repo uses `--mem-per-cpu` throughout so the
-  arithmetic stays per-rank.
+* ⛔ **`--mem-per-cpu` IS COUNTED AGAINST ALL *ALLOCATED* CPUs, NOT YOUR TASKS — AND THE ALLOCATION
+  IS ROUNDED UP TO 16 CORES.** Measured 2026-09-13. `--ntasks-per-node=28 --mem-per-cpu=4G` does not
+  request 112 GiB: Slurm rounds 28 cores up to 32 and asks for `32 × 4 = 128 GiB`, a different tier,
+  and the job is rejected:
+
+  ```
+  sbatch: error: All allocated CPUs are counted when using --mem-per-cpu, which is a
+          multiple of the minimum allocation size.
+  sbatch: error: Batch job submission failed: Requested node configuration is not available
+  ```
+
+  **The per-rank memory you actually get therefore depends on a core count you do not control**, and
+  it moves the moment your rank count is not already a multiple of 16. `--mem` is a flat per-node
+  total with no such coupling.
+
+  > ### ⚠ USE `--mem=<per-node GiB>`, NOT `--mem-per-cpu`
+  > ```
+  > #SBATCH --ntasks-per-node=28
+  > #SBATCH --mem=112G          # 4/8 of a rome node; 112/28 = 4 GiB per rank
+  > ```
+  > Per-node totals by tier: 1/8 = 28G · 2/8 = 56G · 3/8 = 84G · 4/8 = 112G · 5/8 = 140G ·
+  > 6/8 = 168G · 7/8 = 196G. Divide by your `ntasks-per-node` to check the per-rank figure.
+
+  ⚠ **The `ranks @ 4 GiB` column in §2 assumed `--mem-per-cpu` and is therefore a statement about
+  the per-rank budget, not about a flag to write.** Read it as "this tier affords this many ranks at
+  4 GiB", then express it as `--mem`.
 * **One node beats two, when the problem fits.** All six production launchers were moved from
   `2 × 42 ranks` (6/8 on each of two nodes) to `1 × 42` (6/8 on one) on 2026-09-07.
   ⚠ **Be precise about why this is cheaper.** It halves the *reservation*, but billing is
