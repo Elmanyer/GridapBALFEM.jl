@@ -33,7 +33,8 @@
 # >> 2.3 MB/cell/rank) and ~152 s/step -> ~101 h against the 119:59 limit.
 # >> A FINER MESH NEEDS A SECOND NODE: dx=0.167 (nx=ny=240) is 57600 cells,
 # >> ~3820 MB/rank at 56 ranks (93 % of cap, too close) and ~147 h. Run that as
-# >> --ntasks=112 --nodes=2 --ntasks-per-node=56, PX=14 PY=8, ~73 h.
+# >> --ntasks=84 --nodes=2 --ntasks-per-node=42 (6/8 per node), PX=14 PY=6.
+# >> ⛔ NOT 56/node — 224 GiB on one node is refused at submit time.
 #SBATCH --mem-per-cpu=4G
 #SBATCH --output=%x.%j.out
 #SBATCH --error=%x.%j.err
