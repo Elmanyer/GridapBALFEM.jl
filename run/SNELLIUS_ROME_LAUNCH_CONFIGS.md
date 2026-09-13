@@ -56,6 +56,24 @@ decision below follows from that single fact.
 your own allocation — the idle-core column is not waste you can recover, it is the price of the
 memory footprint. Do not try to "fill" it by adding ranks; that just steps you up a tier.
 
+### ⚠ MEASURED BILLING, 2026-09-13 — what `--mem-per-cpu` actually cost
+
+Slurm prints the charge at submit time. For a 28-rank job with `--mem-per-cpu=4G` it said
+**"You will be charged for 80 CPUs"** — 5/8 of a node, to run 28 ranks. The arithmetic, confirmed
+against that number:
+
+| ranks/node | flag | memory actually requested | GiB/rank | billed |
+|---|---|---|---|---|
+| 28 | `--mem-per-cpu=4G` | 32 × 4 = **128 GiB** | 4.57 | **5/8 — 80 CPUs** |
+| 28 | `--mem=112G` | 112 GiB | 4.00 | **4/8 — 64 CPUs** |
+| 42 | `--mem-per-cpu=4G` | 48 × 4 = **192 GiB** | 4.57 | **7/8 — 112 CPUs** |
+| 42 | `--mem=168G` | 168 GiB | 4.00 | **6/8 — 96 CPUs** |
+
+**Every Snellius launcher was switched to `--mem` on 2026-09-13**: 20 % cheaper at 28 ranks, 14 % at
+42, and the per-rank budget becomes exactly the 4.00 GiB the solver was sized for instead of an
+accidental 4.57. ⚠ **Cluster costs recorded before that date were billed 5/8 and 7/8, not the 4/8
+and 6/8 this document claimed** — `CAMPAIGN_COST.md` §3 understates them by 20 % / 14 %.
+
 ### Worked examples — the same job, sized three ways
 
 | request | memory | core frac | mem frac | **billed** | verdict |
@@ -101,13 +119,14 @@ export BALFEM_PY=4              # 7*4 = 28
 
 * **A rome node advertises 256 GB but Slurm allocates ~224 GiB.** `64 × 4G = 256 GiB` is refused at
   submit time. The table above uses the real 224.
-* ⛔ **AND THE 8/8 ROW IS NOT SUBMITTABLE EITHER (2026-09-13).** `56 × 4G = 224 GiB` is *exactly* the
-  allocatable figure, so it leaves **zero** headroom and Slurm refuses it for the same reason.
-  **The 8/8 row is arithmetic, not a usable configuration** — every launcher in this repository that
-  ever ran used 2/8, 4/8 or 6/8. **Treat 7/8 (49 ranks, 196 GiB) as the ceiling on one node.**
-  If you need 56 ranks, take **2 nodes × 28** — 112 GiB per node, 4/8 each, and the bill is the
-  identical 8/8, because the tier rule applies PER NODE. Same ranks, same per-rank memory, same
-  cost, and 4/8 is the most-exercised tier here.
+* ⚠ **CORRECTION (2026-09-13): the 8/8 row failed for a different reason than first recorded here,
+  and the reason matters.** It was not "224 GiB leaves zero headroom". With `--mem-per-cpu=4G`,
+  56 ranks are allocated **64** cores (16-core rounding), and `64 × 4G = 256 GiB` — **more memory
+  than a node has**. The flag inflated the request past the machine, which is why Slurm answered
+  *"Requested node configuration is not available"*. With `--mem` the row is fine:
+  `1 node × 56 @ --mem=224G` bills 8/8 (128 CPUs), **identical to 2 nodes × 28 @ 112G**, and avoids
+  inter-node traffic. Both are valid; the launchers here use 2 × 28 because that is what has been
+  submitted successfully. A single-node 224G request may want `--exclusive`.
 * ⛔ **`--mem-per-cpu` IS COUNTED AGAINST ALL *ALLOCATED* CPUs, NOT YOUR TASKS — AND THE ALLOCATION
   IS ROUNDED UP TO 16 CORES.** Measured 2026-09-13. `--ntasks-per-node=28 --mem-per-cpu=4G` does not
   request 112 GiB: Slurm rounds 28 cores up to 32 and asks for `32 × 4 = 128 GiB`, a different tier,

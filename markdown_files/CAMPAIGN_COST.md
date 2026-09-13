@@ -110,6 +110,13 @@ against a measured 20.2–32.0 h. Good enough to schedule with; do not quote it 
 
 ## 3. Cluster production-run cost (small-domain suite, Snellius `rome`)
 
+> ⚠ **EVERY FIGURE IN THIS SECTION UNDERSTATES WHAT WAS BILLED (discovered 2026-09-13).** The
+> launchers used `--mem-per-cpu=4G`, which Slurm counts against *allocated* CPUs after rounding the
+> allocation up to 16 cores — so a 28-rank job asked for 128 GiB and was **billed 5/8 (80 CPUs)**,
+> not the 4/8 assumed here, and a 42-rank job 7/8 rather than 6/8. Multiply the node-hours below by
+> **1.25** (28-rank jobs) or **1.17** (42-rank) for the true cost. Fixed going forward: all Snellius
+> launchers now use `--mem`. See `run/SNELLIUS_ROME_LAUNCH_CONFIGS.md` §2–4.
+
 All 32 ranks / 8000 cells unless noted; `dt=0.02`.
 
 | case | ranks | cells | s/step | steps | wall | peak RSS |

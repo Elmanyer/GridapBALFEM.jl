@@ -10,7 +10,13 @@
 # 4 GiB/rank is REQUIRED (measured peak 3633 MB/rank; 2 GB/core was OOM-killed).
 # Sizing: 14 ranks/node x 4 GiB = 56 GiB/node = 2/8 of a rome node (14 total).
 # Rules and tiers: run/SNELLIUS_ROME_LAUNCH_CONFIGS.md
-#SBATCH --mem-per-cpu=4G
+# ⚠ --mem, NOT --mem-per-cpu (measured 2026-09-13). Slurm counts --mem-per-cpu
+# against ALL ALLOCATED CPUs and rounds the allocation up to 16 cores, so
+# --ntasks-per-node=14 --mem-per-cpu=4G actually asked for 16x4 = 64 GiB
+# and was billed 3/8 (48 CPUs) to run 14 ranks. --mem is a flat per-node total:
+#   56 GiB / 14 ranks = 4.00 GiB per rank, billed 2/8 (32 CPUs).
+# See run/SNELLIUS_ROME_LAUNCH_CONFIGS.md §4.
+#SBATCH --mem=56G
 #SBATCH --output=GridapBALFEM.%j.out
 #SBATCH --error=GridapBALFEM.%j.err
 
