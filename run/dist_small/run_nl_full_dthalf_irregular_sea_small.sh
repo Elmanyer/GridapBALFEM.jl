@@ -4,11 +4,18 @@
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
 #SBATCH --ntasks=56
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=56
+#SBATCH --nodes=2
+#SBATCH --ntasks-per-node=28
 #SBATCH --cpus-per-task=1
 # 4 GiB/rank is REQUIRED (measured peak 3633 MB/rank; 2 GB/core was OOM-killed).
-# Sizing: 56 ranks/node x 4 GiB = 224 GiB/node = 8/8 of a rome node (56 total).
+# Sizing: 28 ranks/node x 4 GiB = 112 GiB/node = 4/8 of a rome node, x2 nodes
+#         = 8/8 billed for 56 ranks total.
+# ⚠ 2 NODES x 28, NOT 1 x 56. Same 56 ranks and the SAME BILL (4/8 + 4/8 = 8/8),
+# but 112 GiB per node instead of 224. The 8/8 row of SNELLIUS_ROME_LAUNCH_CONFIGS.md
+# §2 is arithmetically correct and PRACTICALLY UNSUBMITTABLE: a rome node allocates
+# ~224 GiB, so asking for exactly 224 leaves zero headroom and Slurm refuses it at
+# submit time (same failure mode as the 64 x 4G = 256 GiB trap documented there).
+# 4/8 is the tier 23 other launchers in this repo already use.
 # Rules and tiers: run/SNELLIUS_ROME_LAUNCH_CONFIGS.md
 #
 # >> WHY ALL FOUR IRREGULAR JOBS MOVED 28 -> 56 RANKS (2026-09-11). They are a

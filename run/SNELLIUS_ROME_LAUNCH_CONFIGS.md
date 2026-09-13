@@ -50,7 +50,7 @@ decision below follows from that single fact.
 | 5/8 | 80 | 140 GiB | **35** | 45 |
 | 6/8 (3/4) | 96 | 168 GiB | **42** | 54 |
 | 7/8 | 112 | 196 GiB | **49** | 63 |
-| 8/8 (full) | 128 | 224 GiB | **56** | 72 |
+| 8/8 (full) | 128 | 224 GiB | ~~56~~ ⛔ | 72 |
 
 **`ranks = 7 × k` for tier `k/8`.** At 4 GiB/rank you can never use more than 43.75 % of the cores in
 your own allocation — the idle-core column is not waste you can recover, it is the price of the
@@ -101,6 +101,13 @@ export BALFEM_PY=4              # 7*4 = 28
 
 * **A rome node advertises 256 GB but Slurm allocates ~224 GiB.** `64 × 4G = 256 GiB` is refused at
   submit time. The table above uses the real 224.
+* ⛔ **AND THE 8/8 ROW IS NOT SUBMITTABLE EITHER (2026-09-13).** `56 × 4G = 224 GiB` is *exactly* the
+  allocatable figure, so it leaves **zero** headroom and Slurm refuses it for the same reason.
+  **The 8/8 row is arithmetic, not a usable configuration** — every launcher in this repository that
+  ever ran used 2/8, 4/8 or 6/8. **Treat 7/8 (49 ranks, 196 GiB) as the ceiling on one node.**
+  If you need 56 ranks, take **2 nodes × 28** — 112 GiB per node, 4/8 each, and the bill is the
+  identical 8/8, because the tier rule applies PER NODE. Same ranks, same per-rank memory, same
+  cost, and 4/8 is the most-exercised tier here.
 * **`--mem` and `--mem-per-cpu` are exclusive.** This repo uses `--mem-per-cpu` throughout so the
   arithmetic stays per-rank.
 * **One node beats two, when the problem fits.** All six production launchers were moved from
