@@ -286,6 +286,36 @@ confirm the `A³` scaling dynamically.
 
 
 
+> ### ✅ ONE GAP CLOSED: THE SUITE NOW HAS AN EXTERNAL ORACLE (added 2026-09-16)
+>
+> `test_yl_collapse.jl` (40/40, 0.5 s) compares our vertical-velocity derivation against Yang & Liu's
+> published expressions at a prescribed state. **It is the only gate in the suite whose reference is
+> not our own specification** — §7's resolution principle applied to the *specification* rather than
+> to the implementation. Stages 2 and 3 (pressure, weighted residual) are in
+> `test/yl_collapse_wip/`, self-contained and runnable, but not wired into `runtests.jl`.
+>
+> ⚠ It is 1-DH and `p=1` by construction, and it tests operators rather than assembly. It does not
+> replace the MMS; it covers the blind spot the MMS cannot.
+
+> ### ⚠ THREE STABILITY GAPS THE SUITE STILL HAS (added 2026-09-15)
+>
+> The box above was written about the equal-order mode. The Taylor-Hood fix cured that mode; **it did
+> not cure the coverage gap**, and the 1-D production campaign walked straight into three more.
+>
+> * **No gate runs long enough, and the bar is now higher than 80 s.** The 1:2-shouldered bar
+>   completed t = 80 s cleanly and **died at t = 137 s**. A regression written to the 80 s figure in
+>   the box above would pass it. **Any stability gate must reach 100 wave periods**; the `:native`
+>   flat 100-period trace (η 0.10494 → 0.10300, Newton 5.12) is the natural reference.
+> * **No gate exercises a VARIABLE BED for long.** Rule 4's corollary — "a flat-bed regression can
+>   never test ∇h code" — has a time-axis twin: every ∇h test is short, and the ∇h failure mode takes
+>   23–86 periods to appear depending on slope (`OPEN_ISSUES.md` §0d).
+> * **No gate exercises `:full` DYNAMICALLY at all.** `test_nlpressure` checks block contributions,
+>   not a long integration; `:full` diverges in **8 wave periods** at `A = 0.10` m on a flat bed
+>   (§0c). Every diverged cluster run was `:full`, and nothing in the suite would have caught it.
+>
+> ⚠ **And the cheap version of each of these is worthless**: the mode needs both duration *and*
+> production amplitude. A short or low-amplitude gate is green and uninformative.
+
 * **The MPI tests are not reached by any runner.** `runtests.jl` covers the sequential suite; the
   distributed trio is only ever run by hand. That cost three stale reference constants, all found
   the first time they were re-run. **Fix: give `runtests.jl` an MPI tier that runs them when

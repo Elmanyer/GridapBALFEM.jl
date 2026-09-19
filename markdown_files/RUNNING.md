@@ -58,6 +58,20 @@ disagree. The output directory is auto-tagged by configuration so cases do not c
 * **7 × `run_1d_*.sh`** — **sequential**, because that was measured faster than any MPI split at
   20 k DOFs (`CONFIGURATION.md` §6) and it restores point gauges.
 * **8 × `run_2d_*.sh`** — 12-rank MPI.
+* **9 × `run_1dprod_*.sh`** (added 2026-09-15) — the nonlinear production campaign of
+  `CLAUDE.md` §5.2b: `nl_{native,full}_{flat,bar}`, the bar-shoulder ladder
+  (`_bar_gentle`/`_bar_s10`/`_bar_s15`) and the `_ad` Jacobian diagnostic. `run_all_1dprod.sh`
+  launches four side by side at 3 BLAS threads each. 100 periods, VTK every 0.2 s.
+  * The bar shape is `BALFEM_HBAR`/`XBAR`/`WBAR` (height / centre / **half**-width) plus
+    **`BALFEM_SBAR`**, the shoulder length: `max|∇h| = hbar/(2·sramp)`, small ⇒ square cross-section.
+    A vertical step is refused — the residual carries ∇h explicitly, so a discontinuous bed is not
+    representable, only aliased by the mesh.
+  * ⚠ **`exit status 1` does NOT mean these failed.** `run_flume_1d.jl:350` references an undefined
+    `tag`, so every *successful* run throws `UndefVarError` after writing all of its output
+    (`CLAUDE.md` rule 38h). Read the gate output, never the exit code (rule 35).
+  * ⚠ **Never edit a launcher while it is running**, and never append an override *after* the
+    `balfem_local_run` line — both silently produce a different run than the one you think. Rule 38h
+    records what each cost.
 * `run_all_1d.sh` runs the 1-D set side by side; `bench_solver_config.sh` compares
   preconditioner × `ls_rtol` configurations on one fixed case, reporting iterations, wall time
   **and** `max|η|`.

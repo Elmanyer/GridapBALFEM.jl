@@ -56,6 +56,16 @@ Several topics appear in many files. To avoid contradictory copies, each has **o
 | what the MMS proves, and its boundaries | `VERIFIED_SCOPE.md` | |
 | the `Q2/Q1` one-order velocity shortfall | `PLANNED_CAMPAIGNS.md` §2 — **measured on all six models 2026-09-12** | |
 | the nonlinear `p_η` order reduction | `OPEN_ISSUES.md` §0b | |
+| ⛔ **the `:full` Class-III instability — the COMPLETE account**: why the operator and the Jacobian are exonerated, what "Class III" means, why projection was chosen, what the refinement signs mean, the options and their cost, the next steps | `OPEN_ISSUES.md` §0c | |
+| why the Class-III terms cannot simply be integrated by parts, and the trial-vs-test correction | `CLAUDE.md` rule 1b, `OPEN_ISSUES.md` §0c §5/§7 | |
+| the ordered fixes for `:full` (Q3/Q2 → de-lag → algebraic reduction → `C⁰`-IP) | `PLANNED_CAMPAIGNS.md` §6b items 0a–0c | |
+| ⚙ **the Class-III REPLACEMENT being built** — the exact `{1,2,5}` reduction, the in-loop (static-condensation) projections, and the testing programme | `NEW_TREATMENT.md` (branch `new-classIII-treatment`) | |
+| ⛔ the incomplete Jacobian does NOT affect stability (proven) | `CLAUDE.md` rule 17b | |
+| the `dx`×`dt`×Jacobian refinement factorial | `CLAUDE.md` §5.2c | |
+| the collapse of `p=1` BALFE-M onto Yang & Liu's LFE-M | `CLAUDE.md` §5.2d, `VERIFIED_SCOPE.md` §0b | |
+| the variable-bed lee-shoulder mode, and `\|∇h\|` as its rate | `OPEN_ISSUES.md` §0d | |
+| the 100-period flat-bed stability result, and its caveats | `CLAUDE.md` §5.2b | |
+| stability follow-ups still owed (Q3/Q2 first, then de-lagging) | `PLANNED_CAMPAIGNS.md` §6b | |
 | the pairing × physics convergence matrix (1-D and 2-D), and the "optimal in one field or the other" pattern | `HORIZONTAL_CONVERGENCE.md` | |
 | measured study cost and memory bands per pairing | `CAMPAIGN_COST.md` §2 | |
 | why `:full` cannot reach optimal order | `PLANNED_CAMPAIGNS.md` §3 | |

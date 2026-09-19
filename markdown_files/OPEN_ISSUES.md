@@ -174,6 +174,233 @@ carry the qualifier that nonlinear `p_η` degrades beyond `nx = 32` at Q3/Q2.
 
 ---
 
+## 0c. ⛔ THE CLASS-III (`nl_pressure=:full`) NONLINEAR INSTABILITY — complete account
+
+> The authoritative record for this topic (`INDEX.md`). Written 2026-09-17, after the Yang & Liu
+> collapse verification closed off two of the three candidate causes.
+
+### 1. The short version
+
+`nl_pressure=:full` diverges on a **flat bed** in 8 wave periods at `A = 0.10` m, while `:native` —
+identical in every other knob — completes 100 periods. Three things could have caused it: a wrong
+**operator**, an incomplete **Jacobian**, or the **assembly** of the Class-III blocks. The first two
+are now eliminated by measurement. **What remains is the assembly**, specifically the frozen `L²`
+projections used to carry the `{1,2,4,5}` blocks.
+
+### 2. Why the operator is not at fault — the literature check
+
+Our `p = 1` reduction was verified term by term against Yang & Liu (2024), whose non-linear LFE-*M*
+is stable and reproduces laboratory physics (sideband instability, harmonic generation over a bar).
+Full account: `VERIFIED_SCOPE.md` §0b, `CLAUDE.md` §5.2d, and chapter 4 of
+`latex_docs/BALFEM_models/`.
+
+| object | source | worst relative difference |
+|---|---|---|
+| continuity weights `Φ` | their ⌊2.31⌋ | **0** |
+| linear coefficients `A`, `B`, `D` | their Appendix A | **7.8e-15** |
+| vertical velocity `w` (non-linear) | supplementary §A | **1.0e-14** |
+| non-hydrostatic pressure `p_nh` | supplementary §B | **1.7e-15** |
+| **weighted momentum residual** | **supplementary §C + ⌊2.28⌋–⌊2.30⌋** | **2.1e-12** |
+
+⚠ **Two of these test physics, not agreement**: the pressure stage against the vertical momentum
+equation, the residual stage against the projection of ⌊2.12⌋ — so an error *shared* by both
+derivations would still have been caught. The last stage uses the **solver's own assembled tensors**,
+so `src/vertical.jl` is verified too, not just the LaTeX.
+
+**Conclusion: the equations are right, and so is the code that builds the vertical tensors.**
+
+### 3. Why the Jacobian is not at fault
+
+See rule 17b. Every cell of the `dx`×`dt` factorial was run with both the hand Jacobian (which omits
+`{1,2,4,5}`) and the exact AD Jacobian: **onset identical or one output interval apart, `u_max` at
+failure agreeing to three significant figures, only the iteration count differing.** Completing
+`jacobian_u` would buy cost, not stability.
+
+### 4. What "Class III" means, and why those terms exist
+
+The classification is in `GlobalResidual.tex` §`sec: pressure operator implementation`, and it follows
+from one ground rule: **only first derivatives of the unknowns are admissible in a `C⁰` Lagrangian
+integrand.** Sorting the eight `𝓝ₖⱼ` components by what they demand:
+
+| class | components | demand | status |
+|---|---|---|---|
+| **I** | 6, 7, 8 | products of first-order fields only | directly implementable |
+| **II** | 3 | one second derivative, but it lands on the **analytic** bed Hessian `∂²h` | admissible (ground rule 2) |
+| **III** | **1, 2, 4, 5** | second derivatives of the **unknowns** | ⛔ not directly implementable |
+
+Expanding Class III, the demand reduces to two objects:
+* `∇sₖ` where `sₖ = ∇·(Huₖ)` — contains the **velocity Hessian** `∂²u` and, through `∇H`, the
+  **free-surface Hessian** `∂²η`. Appears in components 1, 2, 5.
+* `∇bⱼ` where `bⱼ = uⱼ·∇H` — its only inadmissible part is `∂²η`. Appears in component 4.
+
+⚠ **The count is smaller than four terms, and smaller than the document currently states.** Two
+identities collapse it:
+* `𝓝₂ = −𝓝₁ + sₖ∇·uⱼ`, so regrouping `𝓝₁Θ₁ + 𝓝₂Θ₂ = 𝓝₁(Θ₁−Θ₂) + (sₖ∇·uⱼ)Θ₂` moves part of the pair
+  into admissible territory and leaves the rest on a **reduced** weight;
+* `𝓝₅` is the `(k,j)` transpose of `𝓝₁`: `Σₖⱼ(−uₖ·∇sⱼ)T'ᵢₖⱼ = Σₖⱼ(−uⱼ·∇sₖ)T'ᵢⱼₖ` after relabelling,
+  so it folds into the same contraction with weight `(Tᵢₖⱼ + T'ᵢⱼₖ)`.
+
+**Net: one `∇s` contraction and one `∂²η`.** That is the whole of Class III.
+
+⚠ **And `∂²η` is the Hessian of the field in the LOWER Taylor-Hood space.** At **Q2/Q1** — the pairing
+every instability run has used — `η` is piecewise linear, so in 1-D `∂²η ≡ 0` **identically**:
+component 4's free-surface half, and the `∇H` half of `∇s`, contribute nothing there at all. On each
+element `H·u` is (Q1 × Q2) = cubic, so the exact `∂²(Hu)` is piecewise **linear** and discontinuous
+across every face; at Q3/Q2 it is piecewise cubic and `∂²η` is no longer identically zero.
+⚠ **CORRECTED 2026-09-18: the object Class III demands is a SECOND derivative of the unknowns, not a
+third.** `s = ∇·(Hu)` is first order and `∇s` is second — `GlobalResidual.tex` classifies Class III as
+"second derivatives of the unknowns" and that is right. An earlier draft of this section said `∂³`
+throughout; the argument is unchanged (a second derivative of a `C⁰` field is already the
+inadmissible object), but the order was wrong and the Q2/Q1 degree count with it.
+
+### 5. Why projection was chosen in the first place
+
+The admissibility problem is not a property of the components alone — it depends on the **prefactor**
+of the block each one sits in. `𝓝` enters the residual three times:
+
+| block | prefactor `Ψ` | can integration by parts repair it? |
+|---|---|---|
+| (i) non-linear pressure, **bed slope** | `H ∇h · v` — prescribed, analytic | ✅ **yes** — `∇Ψ` produces only admissible objects. Vanishes identically on a flat bed |
+| (ii) non-linear pressure, **surface slope** | `H ∇H · v` — contains the unknown `η` | ⛔ **no** — `∇Ψ ∋ ∂²η`; IBP trades `∂²u` for `∂²η`, both inadmissible, no cancellation |
+| (iii) **leading pressure** `R_P` | `H² (∇·v)` — the test function already carries a derivative | ⛔ IBP would put `∂²v` on the **test** function |
+
+With IBP unavailable for (ii) and (iii), two sound options remained: a **mixed formulation** (promote
+`∇s` to a genuine unknown with its own weak equation) or a **projection**. The projection was chosen
+because the mixed formulation enlarges the system substantially, against the goal of a fast solver —
+**and on the expectation that the projection error would be an accuracy cost, not a stability one.**
+That expectation is what the measurements contradict.
+
+### 6. What the measurements actually implicate
+
+`CLAUDE.md` §5.2c. At fixed `dx`, onset moves **out** as `dt` falls; at fixed `dt`, it moves **in** as
+`dx` falls.
+
+| `dt` (at `dx` = 0.25) | 0.04 | 0.02 | 0.005 |
+|---|---|---|---|
+| onset | 12.60 s | 21.20 s | **40.40 s** |
+
+⚠ **These are two different error sources and they should not be conflated:**
+
+| | mechanism | evidence |
+|---|---|---|
+| **recovery error** | the recovered `∇s` ≠ the true `∇s`. The true `∂²` of a `C⁰` field is **not an `L²` function**: it is `{∂²u}` cell-wise **plus a Dirac layer on the skeleton** weighted by `[∂ₙu]`. Projecting `s` and then differentiating replaces that layer with a smoothed surrogate | `dx`-refinement **advances** onset (×2.5) |
+| **lag error** | the recovered field is from the **previous step** — `update_nlp_state!` runs *after* a step, so the residual is evaluated against a stale state | `dt`-refinement **delays** onset (×1.7 per halving) — the stronger, cleaner trend |
+
+**The lag is not intrinsic to projecting. It is intrinsic to *freezing*.**
+
+⚠ **AND THE RECOVERY ERROR HAS BEEN MEASURED DIRECTLY, ON AN ANALYTIC SOLUTION — it did not have to
+be inferred from a crash time.** The `T8_full_projection` studies ran models 7 and 8 at
+`a_eta = 0.4` on four vertical bases (`PLANNED_CAMPAIGNS.md` §3), an amplitude at which Newton
+converges to ~2e-09 and the Jacobian is therefore discharged (rule 17b), so the floors are the
+**residual's own** error:
+
+| basis | `p_η` (optimal 3) | `p_u` (optimal 4) | `e_u` floor |
+|---|---|---|---|
+| P1LFE-2 | 2.56 | 1.63 | 1.4e-06 |
+| P1LFE-3 | 2.45 | 1.88 | 5.4e-06 |
+| P1LFE-4 | 2.41 | 2.10 | 9.4e-06 |
+| P2LFE-1 | 2.57 | 2.65 | 2.4e-07 |
+
+**One to two orders short in every field on every basis, and the floor grows with `Nσ`** — with the
+number of `∇s` objects that have to be recovered. Independently, the single-study P1LFE-2 model 7
+figure after the `nlp`-context fix is `p_u = 1.948` (`VERIFIED_SCOPE.md` §4). **The projection is
+not a small perturbation of the exact operator at production resolution: it is the dominant error in
+the velocity field, and it converges too slowly to be refined away.**
+
+### 7. ⚠ A correction to the original reasoning
+
+`sec: pressure operator implementation` rules out IBP for block (iii) because it "would place a second
+order derivative on the test functions — inadmissible on `C⁰` test spaces for exactly the same
+distributional reason as for the trial fields."
+
+**That equivalence is too strong.** The distributional objection concerns the *trial* space — whether
+the discrete solution is well defined and convergent. A **test** function is a chosen, known object:
+`∂²v` is a computable cellwise polynomial (non-zero from Q2 up), discontinuous only across faces.
+Keeping second derivatives cellwise on both sides and repairing the face jumps with penalty terms is
+the standard method for fourth-order problems (`C⁰` interior penalty).
+
+⚠ **And one of the original grounds no longer binds**: Gridap exposes `∇∇` — we already use it for the
+analytic bed Hessian at `src/nlpressure.jl:35` — and full skeleton machinery
+(`SkeletonCellFieldPair`, jump/mean). **This was never a missing-API problem.** `∇∇` returns the
+**broken (cell-wise) Hessian**, which is a perfectly good object — but it is *not* the distributional
+`∂²` of a `C⁰` function, which carries a Dirac layer on the skeleton that cell quadrature never sees.
+⚠ **AND RAISING THE POLYNOMIAL ORDER DOES NOT CHANGE THAT.** `FESpace(model, ReferenceFE(lagrangian,
+…, p); conformity=:H1)` is exactly `C⁰` for **every** `p` — nodal DOFs match function values across a
+face, never normal derivatives. `Q2`, `Q3`, `Q4` are all `C⁰`; only a different element family
+(Hermite, Argyris, splines/IGA) is `C¹`. **The task is to choose a formulation that is consistent with
+a broken `∂²` — not to find a library or an order that makes `∂²` classical.**
+
+### 8. Options, viability and complexity
+
+| # | option | complexity | grows the system? | addresses | viability |
+|---|---|---|---|---|---|
+| **0** | **Run `:full` at Q3/Q2** | **trivial** (one env var) | no | nothing — a diagnostic | ✅ do first: every run so far was Q2/Q1, where `∂²η ≡ 0` identically and `∂²(Hu)` is only piecewise linear |
+| **1** | **De-lag the recovery**: evaluate it inside the Newton loop from the current iterate instead of freezing it from the previous step | **low** — a change to *when* `update_nlp_state!` is called | no | the **lag** half | ✅ cheapest test of the mechanism the `dt` ladder implicates. Costs one mass-matrix solve per residual evaluation; that matrix is constant, so factor once and back-substitute |
+| **2** | **Algebraic reduction** via the two identities of §4 | **low** | no | shrinks what any later treatment must carry | ✅ worth doing regardless; does not remove the problem |
+| **3** | **`C⁰` interior penalty** on blocks (ii) and (iii) | **moderate–high** | no | the **recovery** half, principled | the only genuinely projection-free route that keeps the system size. Needs a penalty parameter and its own stability argument |
+| **4** | **Mixed formulation** (`G ≈ ∇s` as an unknown) | moderate | ⛔ **yes, substantially** | both halves | ⛔ **rejected** — against the goal of a fast solver |
+| **5** | **`C¹` space** (Hermite / splines / IGA) | high | no | both halves | no standard `C¹` Lagrange element in Gridap; a new element family |
+
+### 9. Current state of the solver, and the next steps
+
+**State.** `:none` and `:native` are sound: the `:native` flat-bed case completes 100 wave periods at
+`A = 0.10` m with Newton flat at 5.12 it/step. `:full` is the only tier that fails on a flat bed, and
+its failure is now traced to the assembly of `{1,2,4,5}` rather than to the equations, the tensors or
+the Jacobian. ⚠ Separately, **any variable bed** grows a lee-shoulder mode at a rate set by `|∇h|`
+(§0d) — that is a *different* defect and is not addressed by anything here.
+
+**Next steps, in order:**
+1. **Q3/Q2 diagnostic** — free, and the pairing the rest of the project calls production.
+2. **De-lag the recovery** — cheap, and targets the dominant measured trend.
+3. **Apply the algebraic reduction** — cheap, and lowers the burden on whatever comes next.
+4. **`C⁰`-IP** if the recovery half still bites after 1–3.
+
+⚠ **What is still NOT established.** The projection is the leading hypothesis, not a conclusion. The
+evidence is consistent with it but has not isolated it; the loose end is that the growing mode pins at
+the **inflow** in the runs that die mid-fill and near the **front/sponge** in the one that dies after
+the fill completes (36 s). A fill-state explanation is plausible — the lag error is largest where the
+solution changes most per step, which during filling is the Dirichlet boundary — **but that is a
+hypothesis, not a measurement.** Both VTK series are on disk and the question is answerable.
+
+---
+
+## 0d. ⛔ ANY VARIABLE BED GROWS A LEE-SHOULDER MODE; `|∇h|` SETS THE RATE
+
+> Found 2026-09-15, same campaign. Full context: `CLAUDE.md` §5.2b.
+
+Five runs identical but for the bar's shoulder length — height 2.0 m on `d` = 3.5 m, span 26–34 m,
+crest depth 1.5 m, `max|∇h| = hbar/(2·sramp)` — all `:native`, all `A = 0.10` m:
+
+| shoulder | `max\|∇h\|` | face | onset | periods |
+|---|---|---|---|---|
+| 0.5 m | 2.0 | 63° | t = 37.2 s | 23 |
+| 1.0 m | 1.0 | 45° | t = 57.8 s | 36 |
+| 1.5 m | 0.67 | 34° | t = 93.8 s | 59 |
+| 2.0 m | 0.5 | 27° | t = 137.2 s | 86 |
+| flat | 0 | — | **none** | ✅ 100 |
+
+One mode, four growth rates. Identical fingerprint in all four: growth **pinned at the downwave
+shoulder** (x ≈ 32–34.5 m — rule 40, never read growth without `x_at_max`; a pinned location is a
+stationary mode, not a travelling wave), `u_max` 2.2–3.3 against the flat control's steady 0.42, η to
+0.8–3.0 m from a 0.10 background, Newton degrading 12 → 15 → 20 → cap.
+
+**Onset falls monotonically with slope, and the flat bed is the limit point of the same family** —
+a *rate*, not a threshold. A badly-posed bathymetry would give a threshold; a rate is the signature
+of an instability in the formulation. The `t = 93.8` point was a **prediction** (it had to land
+between 58 and 137) and was met.
+
+⚠ **THE FIRST READING OF THIS WAS WRONG AND THE ERROR IS INSTRUCTIVE.** The 1:2 bar was called
+stable at t = 80 s — it died at t = 137 s. *A "threshold" may just be a run that ended too early*
+(rule 12b's standing lesson) applies to the shoulder ladder exactly as it applied to the equal-order
+mode. Any bar result quoted before 100 periods is provisional.
+
+**DECISIVE NEXT STEP — NOT YET RUN.** Halve `dx` on a bar case. Rule 38b separates the two whole
+classes of explanation in one run: refinement **delaying** onset ⇒ under-resolution of a steep bed;
+refinement **advancing** it ⇒ a grid-scale problem in the ∇h terms, which the pinned location and
+velocity involvement already suggest.
+
+---
+
 ## 1. 🔴 Cluster memory attribution
 
 `--mem-per-cpu=4G` is in every launcher and is **required**: a `rome` job at the node-default
@@ -238,7 +465,17 @@ per-core request fixes. **Cheapest decisive job:** `run/dist_small/run_lin_perio
 
 ---
 
-## 2. 🔴 The MMS path never assembles the `:full` frozen projections
+## 2. ✅ The MMS path never assembles the `:full` frozen projections — FIXED 2026-09-01
+
+> ⚠ **THIS SECTION WAS STALE UNTIL 2026-09-15.** The decisive next step below WAS taken: both MMS
+> drivers now build the `nlp` context and both time loops prime it from the initial condition.
+> Measured on P1LFE-2 model 7, `e_u` fell **1.19e-03 → 1.37e-06 (~870×)** and `p_u` went from a flat
+> −0.00 to **1.948** — so the recorded floor measured **omission**, as the last paragraph predicted,
+> and `:full` is *not* "MMS-unverifiable by construction". `CLAUDE.md` carries the full account.
+> ⚠ Consequence recorded there: with the blocks in the residual but still absent from `jacobian_u`,
+> the quasi-Newton gap has a **cliff in amplitude** — tier-3 studies must drop `a_eta` to ≤ 0.4.
+> ⚠ **And see §0c: completing `jacobian_u` does NOT make `:full` stable.** The two are separate.
+> The historical text follows.
 
 Found 2026-08-21 while designing the vertical-basis campaign. **Reported, deliberately not patched**
 — it is a design-level question about an existing interface, not a usage error.

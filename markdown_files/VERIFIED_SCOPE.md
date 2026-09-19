@@ -42,6 +42,39 @@ right; a collapsed rate on an *isolated* study proves it was not.
 
 ---
 
+## 0b. ✅ THE ONE EXTERNAL ORACLE: BALFE-M at `p=1` collapses onto Yang & Liu's LFE-M
+
+> Added 2026-09-16. Full account: `CLAUDE.md` §5.2d and `latex_docs/BALFEM_models/ModelVerification.tex`.
+
+§0 says that most of this suite is **self-consistency** and would pass for a consistently-wrong
+residual, and that only the analytic MMS can detect one. **That is now too weak a statement in one
+direction and too strong in another.** The MMS verifies the solver against the equations *the
+specification encodes*; `mms_forcing` is derived from the same `𝓝`/`Θ`, so a consistently-wrong
+SPECIFICATION passes it too. The collapse onto Yang & Liu (2024) is the only check in the project that
+takes something other than our own specification as its reference.
+
+| object | source | worst relative difference |
+|---|---|---|
+| continuity weights `Φ` | their (2.31) | **0** |
+| linear coefficients `A`, `B`, `D` | their Appendix A | **7.8e-15** |
+| vertical velocity `w`, non-linear | supplementary §A | **1.0e-14** |
+| non-hydrostatic pressure `p_nh` | supplementary §B | **1.7e-15** |
+| weighted momentum residual | their (2.24)+(2.26) | **1.2e-13** |
+
+⚠ **Two of these test PHYSICS, not agreement.** The pressure stage checks our package against the
+vertical momentum equation `∂p_nh/∂σ = −ρH·Dw/Dt`, and the residual stage against the projection of
+their (2.12). An error shared by both derivations would still have been caught. The residual stage
+also uses the **solver's own assembled tensors**, so it verifies `src/vertical.jl`.
+
+**What this adds to the scope: the `𝓝` package, INCLUDING Class III `{1,2,4,5}`, is verified.**
+
+⚠ **Scope limits, to be quoted with the claim.** 1-DH only (their supplementary is "in 1DH version
+for brevity"), so nothing 2-D-specific is exercised; a `p=1` statement by construction, so it says
+nothing about the basis-agnostic claim; and it compares **operators at a prescribed state**, so the
+Class-III *assembly* is untouched. Stage 1 lives in the suite as `test/test_yl_collapse.jl`.
+
+---
+
 ## 1. Verified scope — SIX of the eight models
 
 Measured `Q3/Q2`, 1-D static unless noted.
@@ -57,6 +90,22 @@ Measured `Q3/Q2`, 1-D static unless noted.
 | 7–8 | `:nonlinear` / any / **`:full`** | 2.99 → 2.59 | **−0.00** | ⛔ not MMS-verifiable **by construction** — §4 |
 
 Model 2 additionally confirmed **transient** (`2.999`/`3.998`) and in **2-D** (`3.000`/`3.963`).
+
+> ⚠ **VERIFIED ORDER IS NOT VERIFIED STABILITY, AND THE GAP IS NOW MEASURED (2026-09-15).** Every
+> rate in this table comes from short MMS studies at manufactured amplitude. They say the residual is
+> *consistent*; they say nothing about whether a long integration at production amplitude stays
+> bounded. The 1-D production campaign (`CLAUDE.md` §5.2b, `OPEN_ISSUES.md` §0c/§0d) found that:
+>
+> | configuration | MMS order | 100-period run at `A = 0.10` m |
+> |---|---|---|
+> | models 3–6, **flat** | ✅ optimal | ✅ completes (model 5 measured: η 0.10494 → 0.10300) |
+> | models 4, 6, **variable bed** | ✅ optimal (~4e-4 of flat) | ⛔ lee-shoulder mode, onset set by `\|∇h\|` |
+> | models 7–8, `:full` | ⛔ §4 | ⛔ t = 12.6 s, **operator** defect (exact-AD Jacobian dies identically) |
+>
+> **So "bathymetry is free" is a statement about CONVERGENCE RATE only.** Models 4 and 6 converge at
+> the same order as their flat twins and are the ones that go unstable over a bar. Nothing in this
+> document's scope is withdrawn — but a reader taking "six of eight models verified" as licence to
+> run model 6 over a bar for 100 periods would be misled, which is what this note exists to prevent.
 
 > ⚠ **SCOPE QUALIFIER ADDED 2026-09-12 — THE NONLINEAR ROWS ABOVE WERE MEASURED TO `nx = 32` ONLY.**
 > Campaign C extended the same configuration to `nx = 64` at Q3/Q2 and found `p_η` **degrading with
@@ -175,10 +224,28 @@ field reproduces the same rates to 3 decimals, and `B=0` makes `η` *worse*, so 
 
 ---
 
-## 4. ⛔ `:full` can never pass an MMS rate test — and that is a design fact
+## 4. 🔴 THE `:full` MMS FLOOR — what it was, and what it became once the bug was fixed
 
-> 🔴 **THE EXPLANATION BELOW IS WRONG IN ONE LOAD-BEARING DETAIL — found 2026-08-21, not yet
-> re-derived.** The numbers stand; their attribution does not.
+> ✅ **RESOLVED 2026-09-01; THIS SECTION'S TITLE AND EVERYTHING BELOW THE NEXT RULE ARE HISTORICAL.**
+> The decisive next step described below **was taken**: both MMS drivers now build the `nlp` context
+> and both time loops prime it from the initial condition. On P1LFE-2 model 7, `e_u` fell
+> **1.19e-03 → 1.37e-06 (~870×)** and `p_u` went from a flat **−0.00** to **1.948**. So the recorded
+> floor measured **OMISSION**, and `:full` is **not** "MMS-unverifiable by construction" — the
+> section title as originally written is wrong and the tables below characterise a solver that no
+> longer exists. (`OPEN_ISSUES.md` §2; `CLAUDE.md` §5.0.)
+>
+> ⚠ **WHAT THE CORRECTED NUMBER MEANS, AND IT MATTERS FOR §0c.** `:full` now *converges* — but at
+> **`p_u ≈ 1.95` against an optimal 4**. That is a direct measurement of the frozen-projection
+> **recovery** error's order of accuracy: roughly two orders short, and the deficit grows with
+> refinement in exactly the sense `OPEN_ISSUES.md` §0c's `dx` signature describes. **The projection
+> is not a small perturbation of the exact operator at production resolution**; it is the dominant
+> error in the velocity field, and it is the leading suspect for the `:full` instability.
+> ⚠ **Separate consequence:** with the blocks in the residual but still absent from `jacobian_u`, the
+> quasi-Newton gap has a **cliff in amplitude** — tier-3 studies must run at `a_eta ≤ 0.4`, and their
+> floors are **not** comparable with the ones tabulated below.
+>
+> 🔴 **THE HISTORICAL EXPLANATION BELOW IS WRONG IN ONE LOAD-BEARING DETAIL — found 2026-08-21.**
+> The numbers stand as a record of the pre-fix solver; their attribution does not.
 >
 > This section says the floor comes from projections **lagged one step**. In the MMS driver they are
 > **not lagged — they are ABSENT**. `run_time_loop` defaults `nlp = nothing` (`src/timeloop.jl:130`)
@@ -230,9 +297,13 @@ error at production resolution.
 
 > ⚠ **This is the IDENTICAL fingerprint to a genuinely wrong operator** — `e_u` pinned at a constant
 > while `e_η` holds its optimal rate. **The MMS cannot distinguish "wrong operator" from
-> "deliberately approximated operator"; only knowing what the solver implements can.** Anyone
-> re-running `:full` and reading `p_u = 0.00` as a bug will be chasing a defect that does not exist.
-> **Do not enable `:full` as a rate gate, and do not "fix" it.**
+> "deliberately approximated operator"; only knowing what the solver implements can.**
+> ⚠ **AND IN THIS CASE IT *WAS* A BUG.** The flat `p_u = 0.00` above was the `nlp` context never
+> being built — the advice that stood here, "anyone reading `p_u = 0.00` as a bug will be chasing a
+> defect that does not exist", was **exactly wrong**, and it deterred the check that found the
+> defect for ten days. The lesson is rule 28's converse: **a plausible design explanation for an
+> anomaly is not evidence, and it competes with the bug hypothesis rather than replacing it.**
+> Post-fix, `:full` converges at `p_u ≈ 1.95`; a flat zero would again be a bug.
 
 ---
 

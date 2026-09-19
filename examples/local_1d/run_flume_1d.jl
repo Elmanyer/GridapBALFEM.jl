@@ -46,6 +46,9 @@
 #    BALFEM_RELAX        inflow relaxation zone      1 for bc/sea, 0 for inner
 #    BALFEM_XWM          interior source position    sponge_wL + 6 m (must clear the sponge)
 #    BALFEM_HBAR/XBAR/WBAR   bar shape (FLAT_BED=0)  1.0 / 30 / 5
+#                        height / centre / HALF-width [m] (bar spans xbar±wbar)
+#    BALFEM_SBAR         bar shoulder length [m]     wbar/3
+#                        small ⇒ square-shouldered (box) bar; large ⇒ trapezoid
 #  plus every knob of examples/distributed/_dist_common.jl (solver, tolerances,
 #  sea state, output).
 #
@@ -191,7 +194,17 @@ usebar = !flat_bed_flag(1)
 hbar   = genv_f("BALFEM_HBAR", 1.0)
 xbar   = genv_f("BALFEM_XBAR", 30.0)
 wbar   = genv_f("BALFEM_WBAR", 5.0)
-sramp  = wbar / 3.0
+#  SHOULDER LENGTH. The bar is two back-to-back tanh shoulders at x = xbar ∓ wbar,
+#  each with transition length `sramp`: the bed crosses ~90 % of hbar over 2.9·sramp.
+#  The default wbar/3 is the smooth trapezoid every earlier case used; BALFEM_SBAR
+#  shortens it into a SQUARE-CROSS-SECTION (box) bar — 0.5 m puts the shoulder in
+#  ~1.5 m ≈ 6 cells at dx = 0.25.
+#  ⚠ A vertical step is NOT admissible and must not be requested by driving sramp
+#  to zero: the residual carries ∇h explicitly (rule 4), so a discontinuous bed is
+#  not representable by the model — it would only be aliased by the mesh, and the
+#  ∇h terms would then measure the mesh rather than the bathymetry.
+sramp  = genv_f("BALFEM_SBAR", wbar / 3.0)
+sramp > 0.0 || error("BALFEM_SBAR must be > 0 (a vertical step has no ∇h the model can carry)")
 h_bathy = usebar ?
     (x -> d - 0.5*hbar*(tanh((x[1]-(xbar-wbar))/sramp) - tanh((x[1]-(xbar+wbar))/sramp))) :
     nothing
@@ -287,6 +300,8 @@ if is_rank0()
             use_mpi ? "MPI $(genv_i("BALFEM_PX",12))×1 ranks" : "sequential (+gauges)")
     @printf("#   dt=%g s | %g periods → T_final=%.1f s | sponge L/R = %.0f/%.0f, μ=%.0f\n",
             dt, periods, Tfinal, spL, spR, mumax)
+    usebar && @printf("#   bar: h=%.2f m at x=%.1f m, half-width %.1f m, shoulder %.2f m → crest depth %.2f m\n",
+                      hbar, xbar, wbar, sramp, d - hbar)
     @printf("#   out=%s\n", outdir)
     @printf("############################################################\n")
     flush(stdout)
@@ -332,4 +347,8 @@ else
         gauges=gauges, common...)
 end
 
-is_rank0() && @printf("flume_1d [%s] done: %d steps → %s\n", tag, length(diags), outdir)
+#  `tag` was a leftover from before the output_dir_name rename (rule 2c) and was defined
+#  NOWHERE, so every SUCCESSFUL run threw UndefVarError here -- after writing every solve
+#  result, VTK file and diagnostics row. A batch runner reading exit codes scored a completed
+#  100-period run as a failure (rule 35). `_name` is the case identity this line wanted.
+is_rank0() && @printf("flume_1d [%s] done: %d steps → %s\n", _name, length(diags), outdir)

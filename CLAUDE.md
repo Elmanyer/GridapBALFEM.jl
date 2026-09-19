@@ -16,6 +16,7 @@
 > | [`VERIFIED_SCOPE.md`](markdown_files/VERIFIED_SCOPE.md) | **is it correct, and how far does the claim reach?** — the MMS campaign, the Jacobian oracle, scope boundaries |
 > | [`TEST_SUITE.md`](markdown_files/TEST_SUITE.md) | **what is checked, and what would slip through?** — every gate and its blind spots |
 > | [`OPEN_ISSUES.md`](markdown_files/OPEN_ISSUES.md) | **what is known wrong or unexplained?** — defects in work already done |
+> | [`NEW_TREATMENT.md`](markdown_files/NEW_TREATMENT.md) | ⚙ **the Class-III replacement** (branch `new-classIII-treatment`): the exact `{1,2,5}` algebraic reduction, the in-loop static-condensation projections, the derivation, the implementation plan and the test programme |
 > | [`PLANNED_CAMPAIGNS.md`](markdown_files/PLANNED_CAMPAIGNS.md) | **what runs next?** — the MMS campaigns, their ladders, and the code they need |
 > | [`COMPLETED_VBASIS_STUDY.md`](markdown_files/COMPLETED_VBASIS_STUDY.md) | the design record of the finished vertical-basis study |
 > | [`CONFIGURATION.md`](markdown_files/CONFIGURATION.md) | the settings, the evidence behind each, measured performance |
@@ -134,9 +135,9 @@ Tables comparing our numbers against theirs must not label both sides the same w
 |---|---|
 | `Project.toml` / `Manifest.toml` | the Julia package manifest — `name = "GridapBALFEM"`, `uuid = 43e94d05-4d7d-4679-96a4-d46e2615da34`. Loaded with **`using GridapBALFEM`, never `include()`** (§5). This directory is **both the package and the working environment**, so `Test`, `BlockArrays`, `MPIPreferences`, `Preferences` are in `[deps]`, not `[extras]`. `[compat]` admits two Gridap minors **on measured evidence** — see `CONFIGURATION.md` §1 |
 | `src/` | the solver package — **17 files** (`vopt.jl` added 2026-09-01), mapped in `ARCHITECTURE.md` §2. `horizontal.jl` carries `check_taylor_hood` (rule 2b); `utilities.jl` carries `output_dir_name`/`unique_output_dir` (rule 2c) |
-| `test/` | **30** test files + `runtests.jl` + `test/cluster/` + `test/local/` — inventory and scores in `TEST_SUITE.md`. `test_mms_distributed_parity.jl` (4 ranks) gates the distributed MMS path against the sequential one; `test_taylor_hood.jl` (`:fast`, 13/13) gates the horizontal pairing — Taylor-Hood accepted, equal order REJECTED |
+| `test/` | ⚠ **+`test_yl_collapse.jl` 2026-09-16** — stage 1 of the Yang & Liu collapse (40/40, 0.5 s), the **only gate that checks our derivation against an independently published one**; everything else is self-consistency (rule 28). Plus `test/yl_collapse_wip/` (stages 2–3, self-contained, not a gate). **30** test files + `runtests.jl` + `test/cluster/` + `test/local/` — inventory and scores in `TEST_SUITE.md`. `test_mms_distributed_parity.jl` (4 ranks) gates the distributed MMS path against the sequential one; `test_taylor_hood.jl` (`:fast`, 13/13) gates the horizontal pairing — Taylor-Hood accepted, equal order REJECTED |
 | `examples/` | 7 sequential + `distributed/` (7 cluster scripts + `_dist_common.jl`), `distributed_small/` (5 parametric), `validation/` (7), `local_1d/`, `local_2d/`, `local_mms/` (**11** — the parametric MMS studies, the vertical-basis campaign (`run_vbasis_campaign.jl`, `run_vbasis_shard.jl`, `report_vbasis_campaign.jl`), and the Phase-B batch: `run_phaseB_shard.jl` + `supervise_phaseB2.sh`, a resume-capable runner with a memory-aware supervisor), `inspect_run.jl` — `RUNNING.md` §2 |
-| `run/` | 10 production SLURM launchers + `run/dist_small/` (**30** small-domain 2-D cases — the 7 superseded 1-D twins were deleted 2026-09-02) + `run/local/` (**58** scripts: the original 30 incl. **6** 1-D cases + `run_all_1d.sh`, plus the **16** `run_1dnl_*.sh` nonlinear-instability ladder — 4 physics tiers × A∈{0.05,0.10,0.15,0.20} — + `run_all_1dnl.sh`; ⚠ **all 16 of those ran EQUAL ORDER and their results are void — see rule 12b**; plus the **6** `run_skewA_*.sh` (energy-consistent advection, refuted) and the **9** Taylor-Hood campaign scripts `run_th_*.sh` / `run_thref_*.sh` + `run_all_th.sh` that resolved the instability), all through `run/balfem_env.sh` (cluster) or `balfem_local.sh` (workstation) — `RUNNING.md` §3–4. **Both helpers now gate the Taylor-Hood pairing before launch and print it into the banner** (rule 2b). ⚠ **Job sizing is governed by [`run/SNELLIUS_ROME_LAUNCH_CONFIGS.md`](run/SNELLIUS_ROME_LAUNCH_CONFIGS.md)** — TRACKED, because it decides what every job COSTS. A `rome` node is 128 cores / 224 GiB divided into **eighths** (1/8 = 16 cores / 28 GiB), and the bill is `max(cores/128, mem/224)` rounded UP to the next eighth. At the 4 GiB/rank this solver needs, **memory always sets the tier**, so the cost-optimal count is **7k ranks for tier k/8** — 28 ranks bills 4/8 where 32 billed 5/8, and 42 bills 6/8 where 48 billed 7/8. All 38 launchers were resized on 2026-09-07; `--mem-per-cpu=5G` is never valid here |
+| `run/` | ⚠ **+9 local launchers 2026-09-15**: `run_1dprod_*.sh` (the §5.2b campaign — `nl_{native,full}_{flat,bar}`, the shoulder ladder `_bar_s10/_s15/_gentle`, the `_ad` diagnostic) + `run_all_1dprod.sh`. 10 production SLURM launchers + `run/dist_small/` (**30** small-domain 2-D cases — the 7 superseded 1-D twins were deleted 2026-09-02) + `run/local/` (**58** scripts: the original 30 incl. **6** 1-D cases + `run_all_1d.sh`, plus the **16** `run_1dnl_*.sh` nonlinear-instability ladder — 4 physics tiers × A∈{0.05,0.10,0.15,0.20} — + `run_all_1dnl.sh`; ⚠ **all 16 of those ran EQUAL ORDER and their results are void — see rule 12b**; plus the **6** `run_skewA_*.sh` (energy-consistent advection, refuted) and the **9** Taylor-Hood campaign scripts `run_th_*.sh` / `run_thref_*.sh` + `run_all_th.sh` that resolved the instability), all through `run/balfem_env.sh` (cluster) or `balfem_local.sh` (workstation) — `RUNNING.md` §3–4. **Both helpers now gate the Taylor-Hood pairing before launch and print it into the banner** (rule 2b). ⚠ **Job sizing is governed by [`run/SNELLIUS_ROME_LAUNCH_CONFIGS.md`](run/SNELLIUS_ROME_LAUNCH_CONFIGS.md)** — TRACKED, because it decides what every job COSTS. A `rome` node is 128 cores / 224 GiB divided into **eighths** (1/8 = 16 cores / 28 GiB), and the bill is `max(cores/128, mem/224)` rounded UP to the next eighth. At the 4 GiB/rank this solver needs, **memory always sets the tier**, so the cost-optimal count is **7k ranks for tier k/8** — 28 ranks bills 4/8 where 32 billed 5/8, and 42 bills 6/8 where 48 billed 7/8. All 38 launchers were resized on 2026-09-07; `--mem-per-cpu=5G` is never valid here |
 | `compile/` | the cluster sysimage build chain — `RUNNING.md` §5. ⚠ **`Manifest.toml` is GITIGNORED**, so a fresh cluster checkout has only `Project.toml`; `set_preferences.jl` therefore `Pkg.add`s both forks by URL (`Elmanyer/Gridap.jl` @ `fix-transient-multifield-ad` for transient-multifield AD, `Elmanyer/WaveSpec.jl` for the `change_seed!` fix) — `Pkg.instantiate()` would resolve the BROKEN upstream versions. Consequence: builds track the branch tips and are not reproducible across time |
 | `output/` | ⚠ **GITIGNORED** — nothing here survives a fresh clone, so anything load-bearing must be copied into a tracked file. Result records worth knowing about: `output/local/vopt/` (the corrected mesh-optimisation results + `README.md`, rule 46), `output/local/mms_vbasis/` (vertical-basis convergence, **10/10 PASS** on the published `p=1` meshes — accepted, not to be re-run), `output/local/mms_campaign/` (the 2026-08-30 five-basis campaign, 30/30 spatial), `output/local/mms_phaseB/` (live batch + `INVALID_P2LFE-2.md`) |
 | `postprocessing/` | `GridapBALFEMPost` — self-contained, own environment, **no dependency on the solver** |
@@ -202,7 +203,8 @@ conventions** — theirs implies ≈2.5 % on `C_g` and ≈0.09 absolute on `γ` 
 to the fully-implicit `RungeKutta(:SDIRK_2_2)` (`:theta` Crank–Nicolson selectable) — sequential
 LU+Newton, distributed GMRES+Jacobi+Newton; the full nonlinear physics (advection, the full leading
 pressure `R_P`, all eight `𝓝` components) in **both** regimes. Wavemaker / sponge / wall / periodic
-BCs; runtime monitoring plus an independent governing-equation residual checker; `w_s`/`p_s` VTK
+BCs (the 1-D bar now carries `BALFEM_SBAR`, its shoulder length: `max|∇h| = hbar/(2·sramp)`,
+small ⇒ square cross-section — the ladder parameter of §5.2b); runtime monitoring plus an independent governing-equation residual checker; `w_s`/`p_s` VTK
 reconstruction.
 
 **Dirichlet boundary wave generation + WaveSpec coupling.** Regular, multichromatic, or WaveSpec
@@ -280,6 +282,7 @@ carries a mesh-independent velocity-error floor (`VERIFIED_SCOPE.md` §4).
 ## 5. Current Implementation Stage
 
 *Rewritten 2026-09-13, after Campaign C, the 2-D Q4/Q3 tier and the quadrature probe.*
+*Amended 2026-09-15 with the 1-D nonlinear production campaign — §5.2b, §5.6b.*
 
 ### 5.0 Status in one paragraph
 
@@ -291,7 +294,11 @@ distributed. **The NONLINEAR models are correct but carry one unexplained order 
 surface elevation at fine mesh, isolated as of 2026-09-13 to the advection block and *not* explained
 by any of the six candidate causes tested. Production wave runs are stable at realistic amplitude
 since the Taylor-Hood fix, with the exception of boundary-generation failures that are a separate,
-configuration-level problem.
+configuration-level problem. ⚠ **AMENDED 2026-09-15:** that last sentence is now known to hold only
+for `nl_pressure ∈ {:none, :native}` ON A FLAT BED. The 1-D production campaign (§5.2b) found two
+distinct, reproducible instabilities — `:full` fails on a flat bed in 8 wave periods, and ANY
+variable bed grows a lee-shoulder mode whose onset time is set by `|∇h|` — while the `:native`
+flat-bed case completed **100 wave periods at `A = 0.10` m**.
 
 ### 5.1 LINEAR models (1, 2) — verified, no open defects
 
@@ -319,7 +326,7 @@ included. See §5.3.
 | Jacobians | `test_jacobians_ad` 17/17 over all 8 models; `∂R/∂u̇` exact, nonlinear `∂R/∂u` quasi-Newton by choice with the gap vanishing at order 1.11–1.16 in amplitude |
 | `:native` is free | `:none` vs `:native` agree to **~1e-4 in `p_η`** at every pairing, 1-D and 2-D — the `{1,2,4,5}` hierarchy is dynamically negligible |
 | bathymetry is free | flat vs variable bed agree to ~4e-4 in rate |
-| long-run stability | 50 wave periods at `A = 0.10` m (`κa ≈ 0.16`, `kd = 5.5`), mean `η` flat to the 4th decimal over t = 30–80, Newton **3.99 it/step**, **+5.2 %** above the linear control — the 2nd-order Stokes crest |
+| long-run stability | **100 wave periods** at `A = 0.10` m (`κa ≈ 0.16`, `kd = 5.5`) — extended 2026-09-15 from the original 50. `η` settles 0.10494 → 0.10300 across four windows, Newton flat at **5.12 it/step** start to finish. ⚠ FLAT BED AND `:native` ONLY (§5.2b) |
 | Q4/Q3 clean | `p_η` **4.000–4.002** in 1-D and **3.9997–4.0004** in 2-D, all six models |
 
 **⛔ THE OPEN DEFECT: `p_η` loses an order at Q3/Q2 on fine meshes.**
@@ -333,6 +340,176 @@ The error still falls; the *rate* decays, monotonically, **worsening with refine
 in 2-D (2.5565). `p_u` on the same runs moves the opposite way (2.77 → 3.69, rising). Six causes
 eliminated by measurement — algebra, `𝓝`, `∇h`, the linear core, 1-D posing, quadrature — leaving
 the advection block. **Full account and next step: `OPEN_ISSUES.md` §0b.**
+
+### 5.2b ⛔ THE 1-D NONLINEAR PRODUCTION CAMPAIGN (2026-09-15) — two instabilities
+
+Eight sequential runs, `P1LFE-2`, Q2/Q1 Taylor-Hood, SDIRK_2_2, boundary-generated regular wave,
+`A = 0.10` m, `kd = 5.5`, 60 m flume at `dx = 0.25`, `ny = 1` + walls, 100 periods (4000 steps),
+VTK every 0.2 s. Launchers `run/local/run_1dprod_*.sh`; output under `output/local_1d/`.
+
+| case | outcome |
+|---|---|
+| `:native`, flat | ✅ **4000/4000 steps to t = 160 s**, η 0.10494 → 0.10300, Newton 5.12, 800 VTK frames |
+| `:native`, bar | ⛔ lee-shoulder mode; onset set by bed slope (ladder below) |
+| `:full`, flat | ⛔ t = 12.6 s |
+| `:full`, bar | ⛔ t = 12.6 s — **dies before the wave reaches the bar**, so it is the flat failure |
+
+**⛔ DEFECT 1 — `:full` IS AN OPERATOR FAILURE, NOT A QUASI-NEWTON ONE. THIS IS THE IMPORTANT ONE.**
+The hand-Jacobian run stalls at t = 12.6 s (Newton 6 → 12 → 19 → 50-cap at `‖r‖` = 1.9e-05), which
+reads as the known incomplete `jacobian_u`. **It is not.** Re-run with `BALFEM_USE_AD=1` — the
+*complete* Jacobian — Newton holds **4 it/step to residual 1e-09 all the way to the same step**, and
+then the state goes to **NaN**. `r0` grows identically in both (1.09 → 1.47 → 2.33), i.e. the
+trajectory belongs to the residual, not the Jacobian (rule 17b).
+
+The mechanism is **velocity-led at the generation boundary**, with the `:native` control flat:
+
+```
+                    :full (both Jacobians)      :native (control, same t)
+t = 11.2   u_max =  0.4465                       0.4194
+t = 12.4            0.9266                       0.4196
+t = 12.6            2.4971  <- 6x in ~1 s        0.4273
+   eta_max          0.124 (BOUNDED throughout)   0.109
+   location         x = 0.50 m, the inflow       --
+```
+
+⚠ **CONSEQUENCE: completing `jacobian_u` will NOT make `:full` stable** — AD *is* the completed
+Jacobian. It may still be needed for MMS verification; it is not the fix for this. §5.7 item 5 was
+written on the opposite assumption and is corrected there.
+⚠ **This is a cheap 1-D reproduction of the cluster signature** (§5.6: "velocity-led — η stayed
+bounded while `u` exploded"), in 13 s of simulated time, and **with** the `:native` control that
+batch lacked.
+
+**⛔ DEFECT 2 — ANY VARIABLE BED GROWS A LEE-SHOULDER MODE; `|∇h|` SETS THE RATE, NOT A THRESHOLD.**
+Five runs, identical but for the bar's shoulder length (height 2.0 m on `d` = 3.5 m, span 26–34 m,
+crest depth 1.5 m; `max|∇h| = hbar/(2·sramp)`):
+
+| shoulder | `max\|∇h\|` | face | onset | periods |
+|---|---|---|---|---|
+| 0.5 m | 2.0 | 63° | t = 37.2 s | 23 |
+| 1.0 m | 1.0 | 45° | t = 57.8 s | 36 |
+| 1.5 m | 0.67 | 34° | t = 93.8 s | 59 |
+| 2.0 m | 0.5 | 27° | t = 137.2 s | 86 |
+| flat | 0 | — | **none** | ✅ 100 |
+
+One mode, four growth rates: growth **pinned at the downwave shoulder** (x ≈ 32–34.5 in all four),
+`u_max` 2.2–3.3 against the flat control's steady 0.42, η to 0.8–3.0 m from a 0.10 background,
+Newton degrading 12 → 15 → 20 → cap. **Onset falls monotonically with slope and the flat bed is the
+limit point of the same family** — a rate, not a threshold, which is the signature of an instability
+in the formulation rather than of a badly-posed bathymetry. The `t = 93.8` point was a PREDICTION
+(it had to fall between 58 and 137) and was met.
+
+⚠ **NOT YET MEASURED, AND IT IS THE DECIDING ONE:** halve `dx` on a bar case. Rule 38b — refinement
+DELAYING onset means under-resolution of the bed; refinement ADVANCING it means a grid-scale problem
+in the ∇h terms, which the pinned location and velocity involvement already suggest.
+
+⚠ **Caveats on the positive result.** SDIRK_2_2 is L-stable, so the flat-bed run's slow −1.9e-05 m/s
+decline is consistent with numerical damping and "stable" is not unqualified until `:theta` or
+explicit RK4 confirms it (rule 12c). And it is Q2/Q1, not the convergence-optimal Q3/Q2.
+
+### 5.2c THE `:full` FLAT REFINEMENT FACTORIAL (2026-09-16) — `dx` ADVANCES ONSET, `dt` DELAYS IT
+
+2 (`dx`) × 2 (`dt`) × 2 (Jacobian) on the case that dies at t = 12.6 s, plus an extended `dt` ladder.
+`P1LFE-2`, Q2/Q1, SDIRK_2_2, `A` = 0.10 m, `kd` = 5.5, 60 m flume, 16 periods. Launchers
+`run/local/run_1dref_full_*.sh`.
+
+**Onset time (s), hand Jacobian; AD in parentheses where finished:**
+
+| | `dt` = 0.04 | `dt` = 0.02 |
+|---|---|---|
+| `dx` = 0.25  | **12.60** (12.60) | **21.20** (running) |
+| `dx` = 0.125 | **5.00** (5.00)   | **8.20** (8.40) |
+
+* **Halving `dx` ADVANCES onset ×2.5–2.6.** Rule 38b: refinement making things worse is a
+  **grid-scale discretisation-stability problem, never under-resolution**.
+* **Halving `dt` DELAYS onset ×1.6–1.7.**
+* **Not a CFL effect**: (0.25, 0.04) and (0.125, 0.02) hold `dx/dt` fixed and give 12.60 vs 8.20.
+* **The two Jacobians agree** — see rule 17b, which this factorial proves.
+
+**The extended `dt` ladder at fixed `dx` = 0.25** (four points, hand Jacobian):
+
+| `dt` | 0.04 | 0.02 | 0.005 | 0.001 |
+|---|---|---|---|---|
+| onset (s) | 12.60 | **21.20** | **40.40** | > 25.6, uninformative |
+
+⚠ **THE FIRST THREE ARE ONSETS; THE FOURTH IS NOT.** The `dt` = 5e-3 case was re-run to 100 periods
+and **crashed at t = 40.40 s** (25.2 wave periods), with `x_at_max` migrating at `c_g` up to x ≈ 46.8
+and then **snapping back to x ≈ 41 and pinning** while η exploded — post-fill growth rate
+**σ = +0.34/s** against the **+0.022/s** transit artefact, a factor of fifteen. The `dt` = 1e-3 run
+completed its 16-period window (25 600 steps, Newton flat at 2) but **25.6 s is inside the 36 s
+fill**, so it carries no information about stability at all and its ">25.6" is not an onset.
+⚠ Note also that the 0.04 and 0.02 onsets both fall **inside** the fill, and only the 5e-3 one is
+post-fill — which is the likeliest reason the mode pins at the inflow in the first two and near the
+front in the third.
+
+⚠ **The `dt` = 5e-3 entry is a BOUND, AND ITS 16-PERIOD WINDOW WAS TOO SHORT TO READ AT ALL.**
+It completed 5121/5121 steps to t = 25.6 s. ⚠ **A first reading called it "still growing" (η 0.112 →
+0.125 across windows); THAT WAS RULE 14's TRANSIT TRAP AND IS WITHDRAWN.** The flume fills in
+**36 s** (45 m to the right sponge at `c_g` = 1.25 m/s), so a 25.6 s window ends *mid-fill*:
+`max|η|` creeps up because the front is still advancing, and `x_at_max` migrates at `c_g` rather than
+sitting still. The 100-period re-run shows exactly that — `x_at_max` 15 → 22 → 29 → 35 → 42 m at
+~1.1 m/s — and a naive exponential fit over the fill returns **+0.022/s**, against the **+0.028/s**
+the driver already documents as the spurious transit rate. ⚠ **NOTHING before t ≈ 36 s in ANY
+boundary-generated run on this flume may be read as growth** (rule 14; this is the fourth
+measurement it has caught).
+
+**READING.** Onset moves out as `dt` falls and in as `dx` falls. The Class-III blocks `{1,2,4,5}`
+are assembled through **frozen `L²` projections refreshed once per step**, so their lag error falls
+with `dt` — while the recovered **second** derivative of a `C⁰` field is not an `L²` object at all
+(it carries a Dirac layer on the element skeleton), so its recovery does not improve with `h`.
+⚠ **The competing explanation is dead**: the `𝓝` operator is now verified against the governing
+equations (§5.2d), so this is about the **assembly**, not the derivation. It remains a hypothesis;
+what is established is the two refinement signs and the Jacobian irrelevance.
+
+⚠ **THE TWO SIGNS ARE TWO DIFFERENT ERRORS AND MUST NOT BE CONFLATED.** The **recovery** error (the
+recovered `∇s` is not the true `∇s`; the exact `∂²` of a `C⁰` field is `{∂²u}` cell-wise **plus a
+Dirac layer on the skeleton**, which no cell quadrature sees) carries the `dx` signature. The **lag** error (`update_nlp_state!` runs only *after* a step,
+so the residual is evaluated against the previous step's state) carries the `dt` signature — and it
+is the stronger, cleaner trend. **The lag is intrinsic to *freezing*, not to projecting**, and can be
+removed without changing the function spaces at all.
+⚠ **Every run in this factorial is Q2/Q1**, where `η` is piecewise linear so `∂²η ≡ 0` *identically*
+in 1-D — so component 4's free-surface half, and the `∇H` half of `∇s`, contribute nothing there —
+and `H·u` is cubic per element, so the `∂²(Hu)` being recovered is only piecewise **linear**. That is
+the crudest discretisation that can carry Class-III content at all, and the Q3/Q2 repeat has not been
+run. Full account: `OPEN_ISSUES.md` §0c.
+
+### 5.2d ✅ BALFE-M AT `p=1` COLLAPSES ONTO YANG & LIU'S LFE-M — VERIFIED TO ROUND-OFF (2026-09-16)
+
+The supplementary material of Yang \& Liu — free with the open-access article, now kept beside the
+PDF — publishes the **non-linear** coefficients: §A the vertical velocity, §B the pressure, §C the
+residual. That makes the collapse checkable coefficient by coefficient, and it was.
+
+| object | source | worst relative difference |
+|---|---|---|
+| continuity weights `Φ` | (2.31) | **0** |
+| linear coefficients `A`, `B`, `D` | Appendix A | **7.8e-15** |
+| vertical velocity `w` (non-linear) | §A (2.19)+(A.1)–(A.2) | **1.0e-14** |
+| non-hydrostatic pressure `p_nh` | §B, via `∂p/∂σ = −ρH·Dw/Dt` | **1.7e-15** |
+| weighted momentum residual | (2.24)+(2.26) | **1.2e-13** |
+
+**⚠ TWO OF THESE ARE PHYSICS CHECKS, NOT CROSS-CHECKS.** The pressure and residual stages test our
+package against the vertical momentum equation and the projection of (2.12) — so an error that our
+derivation and theirs happened to *share* would still have been caught. The last stage uses the
+**solver's own assembled tensors** (`Mmat, Mcal, Gcal, A, K, P, Acal, Kcal, Pcal`), so it verifies
+`src/vertical.jl` and not only the LaTeX.
+
+**This is the only external oracle the project has.** Everything else in the suite is
+self-consistency (rule 28) and would pass for a consistently-wrong residual.
+**The `𝓝` package, including the Class-III set `{1,2,4,5}`, is verified.**
+
+⚠ **SCOPE, and it must be quoted with the claim.** The comparison is **1-DH only** (their
+supplementary is "in 1DH version for brevity"), so the 2-D structure — the tensor character of
+`∇uⱼ`, cross terms, both components of the `𝓜/𝓖` contractions — is NOT exercised. It is a **`p=1`**
+statement by construction, so it says nothing about the basis-agnostic claim. And it compares
+**operators at a prescribed state**: the Class-III *assembly* is untouched, which is precisely what
+§5.2c is about.
+
+⚠ **The state must satisfy depth-integrated continuity.** `pDerivation.tex` eliminates `∂H/∂t` via
+`∂H/∂t = −Σⱼ∇·(Huⱼ)Φⱼ`, both directly (Θ components 1,2) and inside `ω` (6,7,8), so our package is
+an identity ONLY on that constraint; Yang & Liu keep `H^(0,1)` explicit and are state-independent.
+A test with `H` and `uⱼ` prescribed independently makes OUR side fail by `O(ε²)` **as an artefact of
+the test**. This cost a day and a retracted defect claim; it is the first thing to check if the
+comparison is ever re-run. Full account: `latex_docs/BALFEM_models/ModelVerification.tex` (chapter 4)
+and `test/yl_collapse_wip/README.md`.
 
 ### 5.3 The Q2/Q1 velocity shortfall — universal, cause unattributed
 
@@ -393,8 +570,34 @@ overlapping 80 % of the lateral sponge, and the ring exceeded the Miche breaking
 ⚠ **The flat irregular run did not "pass" — it ended at T_final while its own asymmetry was at 0.114
 and climbing.** All launchers are re-specified and none has been re-run.
 
+### 5.6b The 1-D reproduction of that signature (2026-09-15)
+
+⚠ **The velocity-led mode above is NOT exclusive to the cluster, to 2-D, or to a sea state.** §5.2b
+reproduces it in a 1-D flume with a regular wave in 13 s of simulated time, and — unlike the cluster
+batch — **with a `:native` control that survives 100 periods**. Every diverged run in §5.6 was
+`:full`; the 1-D campaign shows `:full` failing on a FLAT bed with η bounded and `u` exploding at the
+generation boundary, and shows an exact-AD Jacobian failing identically. **Re-running the cluster
+suite should therefore carry a `:native` arm**, or it cannot distinguish the seed bug it was
+re-specified for from the `:full` operator defect.
+
 ### 5.7 Still to check — ordered by what would change a conclusion
 
+0. ⛔ **The Class-III ASSEMBLY is now the only standing explanation for the `:full` instability.**
+   The operator is verified (§5.2d), the Jacobian is exonerated (rule 17b), and refinement in space
+   makes it worse while refinement in time makes it better (§5.2c).
+   ⚠ **THE "ONE FURTHER INTEGRATION BY PARTS" NEXT STEP PREVIOUSLY RECORDED HERE IS WITHDRAWN.**
+   IBP repairs only the **bed-slope** block, whose prefactor `H∇h·v` is prescribed and analytic — and
+   that block vanishes identically on the flat bed where the instability is measured. For the
+   **surface-slope** block `∇Ψ` produces `∂²η`, trading one inadmissible object for another, and for
+   the **leading-pressure** block the test function already carries a derivative, so IBP would put
+   `∂²v` on the test side. **The complete account, with the option table, is `OPEN_ISSUES.md` §0c.**
+   Ordered next steps from it: **(0)** run `:full` at **Q3/Q2** — free, and every instability run so
+   far was Q2/Q1, where `∂²η ≡ 0` identically and `∂²(Hu)` is only piecewise linear; **(1)** **de-lag**
+   the recovery (evaluate it inside the Newton loop instead of freezing it from the previous step —
+   targets the `dt` signature, costs one mass solve with a constant, once-factorised matrix);
+   **(2)** apply the **algebraic reduction** that collapses `{1,2,5}` onto one `∇s` contraction;
+   **(3)** `C⁰` **interior penalty** if the `dx` signature survives 0–2. Rejected: the mixed
+   formulation (system size).
 1. ⛔ **The nonlinear `p_η` order reduction** (`OPEN_ISSUES.md` §0b). Next step is **derivation, not
    another run**: check the advection block term-by-term against `BALFEM_models/`. Cheap
    discriminators if wanted: amplitude sweep (`a_eta = 0.8 → 0.4 → 0.2`), and Q4/Q3 extended to
@@ -404,10 +607,22 @@ and climbing.** All launchers are re-specified and none has been re-run.
 3. 🔴 **Re-run the cluster suite** with the seed fix, the new directional geometry and the corrected
    sponges. Nothing on record post-dates those fixes.
 4. 🔴 **A long-duration nonlinear regression test.** The mode needed 50–80 s to emerge and no test
-   runs that long; this is the gap that let it reach production.
-5. 🟠 `:full` (models 7–8) is **not MMS-verifiable as built** — the `{1,2,4,5}` blocks are in the
-   residual but absent from `jacobian_u`. Closing it means completing `jacobian_u`, not refining a
-   mesh. **Every diverged cluster run above was `:full`, and the batch had no `:native` control.**
+   runs that long; this is the gap that let it reach production. ⚠ **PARTLY DISCHARGED 2026-09-15:**
+   §5.2b provides the reference trace — `:native` flat, 100 periods, η 0.10494 → 0.10300, Newton
+   5.12 — but it is a *run*, not a *gate*. It is also the duration the bar ladder needed: the 1:2
+   bar looked stable at t = 80 s and died at t = 137 s, so a regression built at 80 s would have
+   passed it. **Any gate written from this must run to at least 100 periods.**
+5. ⛔ `:full` (models 7–8) is **not MMS-verifiable as built** — the `{1,2,4,5}` blocks are in the
+   residual but absent from `jacobian_u`. ⚠ **THE SECOND SENTENCE OF THIS ITEM WAS WRONG AND IS
+   WITHDRAWN.** It read "closing it means completing `jacobian_u`, not refining a mesh", which
+   assumed the incomplete Jacobian was also what makes `:full` diverge. **Rule 17b now proves the
+   opposite across the whole factorial**: hand and exact-AD Jacobians crash in the SAME PLACE and
+   differ only in iteration count. Completing `jacobian_u` is needed for MMS verification and buys
+   **nothing** for stability. ⚠ And the operator is not at fault either — §5.2d verifies `𝓝`,
+   Class III included, against the governing equations. **What is left is the Class-III ASSEMBLY**
+   (frozen `L²` projections), which is what §5.2c's `dx`/`dt` signs point at.
+   Promoted 🟠 → ⛔: it is the tier every diverged cluster run used, and it now has a 13-second
+   reproduction with a passing control.
 6. 🟠 **The `:sdirk` linear-model temporal deficit** — `pw_u ≈ 1.69` against `:theta`'s 1.99, not
    spatial-floor contamination, unexplained.
 7. 🟠 Per-basis `dt` ladders for temporal studies; no MPI tier in `runtests.jl`; preconditioner
@@ -443,6 +658,28 @@ supporting measurement is in the linked document.
 1. **`R_P` is the entire frequency dispersion of the model.** Only the *boundary* part of its
    integration by parts vanishes; the volume part must be assembled. Without it the model degenerates
    to non-dispersive shallow water.
+1b. **THE `C⁰` DISTRIBUTIONAL OBJECTION APPLIES TO THE *TRIAL* SPACE, NOT TO THE TEST SPACE.**
+    The distributional `∂²` of a `C⁰` **trial** field is `{∂²u}` cell-wise plus a **Dirac layer on the
+    skeleton** weighted by the jump `[∂ₙu]`; cell quadrature sees only the first half, so typing
+    `∇∇(u)` into an integrand silently drops the layer. That is why the Class-III components
+    `{1,2,4,5}` are carried by frozen `L²` projections (`OPEN_ISSUES.md` §0c).
+    ⚠ **RAISING `fe_order` DOES NOT FIX THIS.** `ReferenceFE(lagrangian, …, p)` with
+    `conformity=:H1` is exactly `C⁰` for **every** `p` — nodal DOFs match values across a face, never
+    normal derivatives. `Q2`, `Q3`, `Q4` are all `C⁰`; the "higher order ⇒ smoother" intuition comes
+    from splines (degree `p` ⇒ `C^{p−1}`), which is IGA, not Lagrangian FEM. `p ≥ 2` is *necessary*
+    (a `Q1` cell-wise Hessian keeps only the mixed `∂ₓ∂ᵧ` entry and vanishes **entirely in 1-D**, so
+    the term would be absent rather than approximated — the same shape as rule 2) but nowhere near
+    sufficient.
+    But a **test** function is a chosen, known object: `∂²v` is a computable cellwise polynomial,
+    non-zero from `Q2` up and discontinuous only across faces, which is exactly what `C⁰` interior
+    penalty exists to handle. ⚠ `GlobalResidual.tex` §`sec: pressure operator
+    implementation` currently rules out integrating the leading-pressure block by parts "for exactly
+    the same distributional reason as for the trial fields" — **that equivalence is too strong and is
+    the one thing in that section that does not hold.** ⚠ Nor was this ever a missing-API problem:
+    Gridap exposes `∇∇` (already used for the analytic bed Hessian, `src/nlpressure.jl:35`) and the
+    full skeleton machinery (`SkeletonCellFieldPair`, jump/mean). **The task is to choose a
+    formulation that is CONSISTENT with a broken `∂²` — volume term plus skeleton jump terms plus a
+    penalty — not to find a library or a polynomial order that makes `∂²` classical.**
 2. **`fe_order ≥ 2`.** `Q1` elements zero `R_P` and disable all non-hydrostatic physics.
 
 2b. **ALWAYS USE TAYLOR-HOOD HORIZONTAL PAIRS: `p_eta = fe_order − 1`. NEVER EQUAL ORDER.**
@@ -692,13 +929,35 @@ supporting measurement is in the linked document.
 17. **`krylov_m` (basis size, memory) and `ls_maxiter` (iteration budget, time) are different
     bounds**, and `restart=true` is load-bearing. Symptom of getting this wrong: **`gmres=` pinned at
     exactly the same number every step.** (`ARCHITECTURE.md` §5)
-17b. **A CONVERGED NEWTON STEP IS A PROPERTY OF THE RESIDUAL, NOT THE JACOBIAN.** The Jacobian sets
-    the *path* to the root and the *cost*; the root is defined by `r(u)=0`. So an incomplete but
-    convergent Jacobian **cannot change the answer** — only the iteration count, or whether it
-    converges at all. Measured: exact-AD and quasi-Newton hand Jacobians agree to **four decimal
-    places** through an entire divergence (0.8100 vs 0.8102), while costing 6 vs 49 iterations.
-    **Corollary: never diagnose a wrong ANSWER by replacing the Jacobian** — and do not read Newton
-    stalling as the primary fault when the solution underneath is already diverging.
+17b. **⛔ THE INCOMPLETE `jacobian_u` DOES NOT AFFECT STABILITY. PROVEN, NOT ARGUED (2026-09-16).**
+    A converged Newton step is a property of the RESIDUAL, not the Jacobian: the Jacobian sets the
+    *path* to the root and the *cost*, the root is defined by `r(u)=0`. So an incomplete but
+    convergent Jacobian **cannot change the answer** — only the iteration count.
+
+    **THE DECISIVE MEASUREMENT.** Every cell of the `:full` flat `dx`×`dt` factorial (§5.2c) was run
+    TWICE — once with the hand Jacobian, which omits the `{1,2,4,5}` blocks, and once with
+    `BALFEM_USE_AD=1`, the exact AD Jacobian of the same residual:
+
+    | `nx` | `dt` | hand onset | AD onset | Newton, last 5 steps |
+    |---|---|---|---|---|
+    | 240 | 0.04 | **12.60 s** | **12.60 s** | hand 10,12,15,19,51 · AD 4,4,4,4,6 |
+    | 480 | 0.04 | **5.00 s**  | **5.00 s**  | hand 6,6,8,12,58 · AD 4,4,4,6,10 |
+    | 480 | 0.02 | **8.20 s**  | **8.40 s**  | hand 6,8,8,10,16 · AD 4,4,4,6,12 |
+
+    **A CRASHING SIMULATION CRASHES IN THE SAME PLACE WITH EITHER JACOBIAN.** Onset is identical in
+    two cells and one output interval (0.2 s) apart in the third; `u_max` at failure agrees to three
+    significant figures (2.5046 vs 2.4971; 1.6764 vs 1.6702); `η` agrees to five digits and `r0` to
+    three at every sample up to failure. **The only difference is the iteration count** — the hand
+    Jacobian degrades 6 → 12 → 19 → cap while AD holds ~4 to the last step, so the quasi-Newton gap
+    costs TIME and nothing else.
+
+    ⚠ **CONSEQUENCES, both directions.**
+    * **Never diagnose an instability, a divergence or a wrong answer by completing the Jacobian.**
+      Completing `jacobian_u` would buy iteration count, not stability. §5.7 item 5 previously said
+      the opposite and was corrected on this evidence.
+    * **Never read Newton stalling as the primary fault.** A stall at 50 iterations is the
+      quasi-Newton Jacobian failing to track a solution that is *already* diverging underneath it —
+      the symptom, not the cause.
 
 18. **`norm(PVector, Inf)` is broken** (PartitionedArrays 0.3.5) — reduce over `own_values`.
 19. **Distributed ICs use `interpolate_everywhere`**, never `FEFunction(U, zeros(…))`.
@@ -865,6 +1124,23 @@ supporting measurement is in the linked document.
     which IS the finding, and is the same shape as the skew-advection refutation in rule 12b.
     **Corollary: print precision is part of the experiment.** A comparison whose resolution is set by
     `%.6e` cannot detect anything below 1e-7 relative, however carefully the runs were controlled.
+
+38h. **THE LAUNCHER IS PART OF THE EXPERIMENT. Three ways a run silently became a different run,
+    all on 2026-09-15, all costing hours.**
+    * **An override appended AFTER the `balfem_local_run` line is a NO-OP.** A diagnostic built that
+      way ran the production configuration instead, and reported it under the diagnostic's name.
+      The tell was rule 38d's: η, Newton counts, `r0` and the final residual **identical to every
+      printed digit** against the control. An exact Jacobian cannot reproduce a quasi-Newton
+      iteration count to the digit — *check that the knob moved something before believing the run*.
+    * **NEVER EDIT A SHELL SCRIPT WHILE BASH IS EXECUTING IT.** Bash reads a script incrementally by
+      byte offset, so rewriting the file under a running interpreter shifts the content beneath it:
+      the fixed launcher's relocated run-line was re-executed by the *old* process, silently starting
+      a second solver that competed for RAM for an hour before anyone noticed. Write a NEW file.
+    * ⚠ **`exit status 1` DOES NOT MEAN THE RUN FAILED.** `examples/local_1d/run_flume_1d.jl:350`
+      ends with `@printf(..., tag, ...)` and **`tag` is defined nowhere** — a leftover from the
+      `output_dir_name` rename (rule 2c). Every *successful* run therefore throws `UndefVarError`
+      after writing every solve result, VTK file and diagnostics row. A batch runner that reads exit
+      codes will score a completed 100-period run as a failure (rule 35). One-line fix, not yet made.
 
 39. **Test a diagnosis against a case it cannot explain, rather than looking harder where it points.**
 40. **Diagnostics interpretation:** never read `growth` without `x_at_max`; `dmp/int` means "≫1 is

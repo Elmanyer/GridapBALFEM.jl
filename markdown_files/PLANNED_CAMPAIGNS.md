@@ -233,18 +233,32 @@ studies**.
 | P1LFE-4 | 2.41 | 2.10 | 9.4e-06 |
 | P2LFE-1 | 2.57 | 2.65 | 2.4e-07 |
 
-Neither order is optimal, and **the floor grows with `Nσ`**. This is the known quasi-Newton gap:
-the `{1,2,4,5}` blocks are in the residual but absent from `jacobian_u`, so Newton converges to the
-fixed point of a different map, and the gap has a **cliff in amplitude** — it stalls at ~9.2e-04 at
-`a_eta = 0.8` and only falls to ~2e-09 at `a_eta ≤ 0.4`.
+Neither order is optimal, and **the floor grows with `Nσ`**.
+
+⚠ **THE ATTRIBUTION THAT STOOD HERE — "this is the known quasi-Newton gap" — DOES NOT SURVIVE ITS
+OWN NUMBERS, AND THE CORRECTION MATTERS.** The quasi-Newton cliff is real: with `{1,2,4,5}` in the
+residual but absent from `jacobian_u`, Newton stalls at ~9.2e-04 at `a_eta = 0.8`. But **these runs
+are at `a_eta = 0.4`, where the same Newton falls to ~2e-09** — four orders below the smallest floor
+in the table. A converged Newton step is a property of the **residual**, not of the Jacobian
+(rule 17b), so at this amplitude the Jacobian has been discharged and what the floors measure is the
+**residual's own error: the frozen `L²` recovery of the Class-III terms.**
+
+**So this table is a direct measurement of the projection's accuracy, on four vertical bases:**
+`p_η` **2.41–2.57** against an optimal 3, `p_u` **1.63–2.65** against an optimal 4 — one to two
+orders short in every case, and the floor **growing with `Nσ`**, i.e. with the number of `∇s`
+objects to be recovered. That is the `dx` half of `OPEN_ISSUES.md` §0c, measured cleanly on an
+analytic solution instead of inferred from a crash time. ⚠ **Consequence: "closing this properly
+means completing `jacobian_u`" — the last line of this section — is wrong for the same reason, and
+`jacobian_u` is needed for the MMS gate, not for the order.**
 
 ⚠ **`:full` floors are not comparable across amplitudes.** Any `:full` number quoted must state its
 `a_eta`, and must not be set beside one at a different amplitude.
 
 **These numbers are kept as the record of the projection floor, not as a study to repeat.** The
-values above already establish what a `:full` convergence study measures — the quasi-Newton
-projection lag, not the discretisation order — which is precisely why §2 excludes models 7 and 8
-from the campaign. Closing this properly means completing `jacobian_u`, not refining a mesh.
+values above already establish what a `:full` convergence study measures — the **frozen-projection
+recovery error**, not the discretisation order — which is precisely why §2 excludes models 7 and 8
+from the campaign. ⚠ **Closing it means changing how `{1,2,4,5}` are assembled** (§6b items 0a–0c),
+not completing `jacobian_u` and not refining a mesh.
 
 ---
 
@@ -443,6 +457,74 @@ the floor (§0) before trusting any Q4/Q3 rate.
 * **`solve time 0.0%` / `Newton iters: 0`** in every Phase-B log are instrumentation gaps, not
   stalls: `mms_driver.jl` installs no `SolverMonitor`. Either install one or stop printing the
   fields, because they currently read as a hang.
+
+---
+
+## 6b. THE STABILITY FOLLOW-UPS (designed 2026-09-15, ordered by what would change a conclusion)
+
+Owed by the 1-D nonlinear production campaign (`OPEN_ISSUES.md` §0c/§0d, `CLAUDE.md` §5.2b). All are
+1-D, sequential, and cheap by cluster standards — the completed 100-period run cost 13 h 22 m on one
+core at 12.0 s/step.
+
+0. ✅ **DONE — the `:full` flat `dx`×`dt`×Jacobian factorial** (2026-09-16, `CLAUDE.md` §5.2c).
+   Halving `dx` advances onset ×2.5; halving `dt` delays it ×1.7; the hand and exact-AD Jacobians
+   crash in the same place. ⚠ **Item 2 below is therefore CANCELLED as a stability measure** — rule
+   17b proves completing `jacobian_u` buys iteration count and nothing else — and the remaining
+   question is the Class-III **assembly**, not the operator (verified, `CLAUDE.md` §5.2d) and not
+   the Jacobian.
+   ⚠ **THE "ONE FURTHER INTEGRATION BY PARTS" TOP ITEM THAT STOOD HERE IS WITHDRAWN.** IBP repairs
+   only the bed-slope block — whose prefactor is the prescribed, analytic `H∇h·v`, and which
+   **vanishes identically on the flat bed where the instability is measured**. On the surface-slope
+   block it trades `∂²u` for `∂²η`; on the leading-pressure block it puts `∂²v` on the test function.
+   The replacement items are 0a–0c below; the reasoning and the full option table are
+   `OPEN_ISSUES.md` §0c.
+
+0a. ⛔ **RUN `:full` AT Q3/Q2 — DO THIS FIRST, IT COSTS ONE ENVIRONMENT VARIABLE.** Every `:full`
+   instability run on record is Q2/Q1, where `η` is piecewise linear so `∂²η ≡ 0` identically in 1-D
+   (so component 4's free-surface half, and the `∇H` half of `∇s`, contribute nothing) and `H·u` is
+   cubic per element, so the `∂²(Hu)` being recovered is only piecewise **linear**. Q3/Q2 is also the production pairing and the one the whole MMS scope was
+   measured on. Same case as §5.2c's `dx = 0.25`, `dt = 0.04` (onset 12.60 s), 100 periods.
+   **Reading**: onset unchanged ⇒ the mode does not live in the recovery's polynomial degree; onset
+   pushed out substantially ⇒ it does.
+
+0b. ⛔ **DE-LAG THE CLASS-III RECOVERY.** `update_nlp_state!` runs only *after* a step, so the frozen
+   projections are one step stale — which is exactly the error the `dt` ladder measures (12.60 →
+   21.20 → 40.40 s as `dt` falls 0.04 → 0.02 → 0.005). Evaluate the recovery **inside the Newton
+   loop from the current iterate** instead. No new unknowns, no change of function space; the cost is
+   one mass solve per residual evaluation, and that mass matrix is constant, so factor once and
+   back-substitute. **This is the cheapest test of the mechanism the measurements actually implicate.**
+
+0c. 🔴 **APPLY THE ALGEBRAIC REDUCTION.** `𝓝₂ = −𝓝₁ + sₖ∇·uⱼ` moves part of the pair into admissible
+   territory, and `𝓝₅` is the `(k,j)`-transpose of `𝓝₁`, so `{1,2,5}` collapse onto a **single** `∇s`
+   contraction with a combined weight. Worth doing whatever comes next, because it lowers what any
+   later treatment has to carry. ⚠ It does **not** remove the problem: one `∇s` contraction and the
+   `∂²η` of component 4 remain.
+
+1. ⛔ **`dx` refinement on a bar case — THE DECIDING MEASUREMENT.** Halve `dx` (0.25 → 0.125) on the
+   0.5 m-shoulder bar and compare onset against t = 37.2 s. Rule 38b: refinement **delaying** onset ⇒
+   under-resolution of a steep bed; refinement **advancing** it ⇒ a grid-scale problem in the ∇h
+   terms. One run separates the two whole classes of explanation, and nothing else measured so far
+   does. ⚠ Budget the full 100 periods: halving `dx` doubles the step count *and* the cost per step.
+2. ⛔ **Isolate which `𝓝` block carries the `:full` mode.** `{1,2,4,5}` is the entire difference
+   between `:native` (100 periods, clean) and `:full` (8 periods, dead). Enable them individually.
+3. 🔴 **`:theta` and explicit-RK4 confirmation of the flat-bed 100-period result.** SDIRK_2_2 is
+   L-stable, and that run's −1.9e-05 m/s decline is consistent with numerical damping. Three
+   integrators of different stability character agreeing is what retires the objection (rule 12c); a
+   `dt` ladder on one scheme is not.
+4. 🔴 **Repeat the campaign at Q3/Q2.** Everything above is Q2/Q1 — the minimal Taylor-Hood pair,
+   chosen because it is the discretisation of the 80 s reference. Q3/Q2 is the production pairing
+   and the one the whole MMS scope was measured on; a stable Q2/Q1 result is not automatically a
+   Q3/Q2 result.
+5. 🟠 **The interior-source control for §0c.** Tests whether the generation boundary is essential to
+   the velocity-led mode. ⚠ Rule 14b: the interior source delivers ~2.1× the requested amplitude on
+   this flume and must be rescaled before comparison.
+6. 🟠 **A bar case that both survives and scatters visibly.** The 1:2 shoulder was stable to 137 s
+   but its bathymetric signature is invisible — over 205 post-transit samples the global max never
+   lands on the bar, against a clear 0.125 on the crest for the square one. Stability and visibility
+   are in tension; the useful configuration is between 0.5 and 2.0 m of shoulder.
+
+⚠ **Add the `:native` arm to the cluster re-run in §7.** Without it that batch cannot separate the
+`build_airy_state` seed bug it was re-specified for from the `:full` operator defect of §0c.
 
 ---
 
