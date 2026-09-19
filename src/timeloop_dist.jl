@@ -329,7 +329,10 @@ function run_time_loop_dist(ranks, op, solver, u0,
             # nl_pressure_full: refresh the frozen projections π𝖲, π𝖻 (CG+Jacobi
             # distributed mass solve, see nlpressure.jl :: build_nlp_ctx)
             if nlp !== nothing
-                update_nlp_state!(nlp[1], nlp[2], u_n)
+                # ⚠ Redundant in IN-LOOP mode — the residual already refreshed the
+                #   projections from the converged iterate. Skipping recovers two mass
+                #   solves per step (NEW_TREATMENT.md §B.4).
+                nlp[1].nlp_ctx[] === nothing && update_nlp_state!(nlp[1], nlp[2], u_n)
             end
 
             # D1: RELATIVE divergence guard (see the sequential twin).

@@ -277,6 +277,7 @@ solver_sym() === :theta && push!(_extra, "theta")
 (solver_sym() === :sdirk && tableau_sym() !== :SDIRK_2_2) &&
     push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
+genv_b("BALFEM_NLP_INLOOP", 0) && push!(_extra, "inloop")
 genv_i("BALFEM_QUAD_EXTRA", 0) != 0 && push!(_extra, "q$(genv_i("BALFEM_QUAD_EXTRA",0))")
 
 _name = output_dir_name(; M = M, p_vert = p_vert, ny = ny, y_wall_bc = ybc_sym,
@@ -325,6 +326,10 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           #  SEQUENTIAL ONLY -- there is no use_ad on the distributed path -- and
           #  substantially slower per assembly, so use it to diagnose, not to run.
           use_ad=genv_b("BALFEM_USE_AD", 0),
+          #  BALFEM_NLP_INLOOP=1 evaluates the Class-III L2 projections from the CURRENT
+          #  Newton iterate (static condensation) instead of freezing them one step behind.
+          #  Removes the O(dt) lag error; only meaningful with nl_pressure=:full.
+          nlp_inloop=genv_b("BALFEM_NLP_INLOOP", 0),
           output_dir=outdir, save_every=save_ev,
           write_w=write_w_flag(), write_pressure=write_p_flag(), rho=rho_val(),
           solver_type=solver_sym(), tableau=tableau_sym(),

@@ -67,6 +67,13 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
                                       #   EXACT (verified 4.4e-16) — see NEW_TREATMENT.md §A.2 and
                                       #   `alg_class3_weight`. The 𝓐 (∇h) block is NOT reduced: it is
                                       #   handled by exact IBP and vanishes on a flat bed (§A.5).
+    nlp_ctx      :: Base.RefValue{Any} # projection context, or `nothing`.
+                                      #   ⚠ PRESENCE OF A CTX SELECTS IN-LOOP (static-condensation)
+                                      #   MODE: the L² projections are then refreshed from the CURRENT
+                                      #   Newton iterate inside `global_residual`, instead of being
+                                      #   frozen from the previous accepted step. `nothing` keeps the
+                                      #   legacy lagged behaviour, so the default is unchanged.
+                                      #   See NEW_TREATMENT.md Part B.
     mu_sponge    :: Function
     wm_src       :: Function
     relax_bc     :: Bool              # generation/absorption relaxation zone (Dirichlet inflow)
@@ -209,7 +216,7 @@ function build_problem_raw(vert;
     return BALFEMProblem(g, h_bathy, vert.N_dof, Φ, Mv, Bv, P, Av, Kv, M3, G3,
                          A3, K3, P3, linearised, advection, lin_pressure,
                          P_full, nl_pressure68, nl_pressure_full, flat_bed,
-                         Ref{Any}(nothing), WK3, WP3, mu_sponge, wm_src,
+                         Ref{Any}(nothing), WK3, WP3, Ref{Any}(nothing), mu_sponge, wm_src,
                          relax_bc, relax_mu, relax_tg, mms_src)
 end
 
@@ -408,6 +415,18 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
             # Class-III bed-slope (𝓐, ∇h) IBP half — pure ∇h; skipped on a flat bed.
             prob.flat_bed || (r = r + nlp_gradh_contrib(prob, d_cf, η, H, dhx, dhy,
                                       Ux, Uy, Wx, Wy, Ugh, UgH, S, DU, dΩh))
+            # ⚠ IN-LOOP (STATIC-CONDENSATION) MODE, if a projection context is attached:
+            #   refresh π𝖲, π𝖻 from the CURRENT Newton iterate before they are used,
+            #   instead of reading the pair frozen at the previous accepted step. That
+            #   removes the O(dt) lag entirely — at convergence the projections are
+            #   evaluated at the same state the residual is (NEW_TREATMENT.md Part B).
+            #   `nlp_plain_iterate` skips the refresh under AD (Dual-valued cell data),
+            #   so the AD Jacobian differentiates the residual with π held fixed — the
+            #   same quasi-Newton treatment these blocks already get (rule 17b).
+            ctx = prob.nlp_ctx[]
+            if ctx !== nothing && nlp_plain_iterate(u)
+                refresh_nlp_state!(prob, ctx, S, UgH)
+            end
             st = prob.nlp_state[]
             if st !== nothing
                 # REDUCED assembly: {1,2,5} collapse onto one ∇π𝖲 contraction with the

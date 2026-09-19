@@ -318,3 +318,86 @@ function nlp_P_reduced_contrib(prob::BALFEMProblem, H, DW, GU, SD, N4, dΩh)
     NP = alg_dc3(prob.WP3, GU) + alg_dc3(prob.P3[2], SD) + alg_dc3(prob.P3[4], N4)
     return ∫( (-1.0)*(H*H)*(NP ⋅ DW) ) * dΩh
 end
+
+"""
+    nlp_enable_inloop!(prob, ctx)
+
+Switch `prob` into IN-LOOP (static-condensation) mode: the Class-III `L²` projections
+are refreshed from the CURRENT Newton iterate inside `global_residual` instead of being
+frozen from the previous accepted step. Pass `nothing` to return to lagged mode.
+"""
+function nlp_enable_inloop!(prob::BALFEMProblem, ctx)
+    prob.nlp_ctx[] = ctx
+    return prob
+end
+
+"""
+    nlp_plain_iterate(u) -> Bool
+
+⚠ THE AD GUARD, AND IT IS LOAD-BEARING.
+
+`global_residual` is called in two very different situations:
+  * **residual assembly** — `u` carries genuine `Float64` free values (the Newton iterate).
+    This is the ONLY case in which a mass solve makes sense, and the only case that occurs
+    at all on the default hand-Jacobian path (`TransientFEOperator(r,j,jt,U,V)` never
+    differentiates `r`).
+  * **AD Jacobian assembly** (`use_ad=true` ⇒ `TransientFEOperator(r,U,V)`) — Gridap
+    differentiates `r`, so the cell data carries `ForwardDiff.Dual` numbers. Assembling a
+    `Float64` RHS from those would throw, or silently truncate.
+
+Returning `false` there makes the refresh a no-op, so the AD Jacobian is taken with `π`
+held at the value the preceding residual evaluation computed — i.e. the SAME quasi-Newton
+treatment these blocks already receive (rule 17b: the Jacobian sets the path, not the root).
+
+Anything unexpected also returns `false`: failing safe here degrades to the legacy lagged
+behaviour rather than throwing inside an assembly loop.
+"""
+function nlp_plain_iterate(u)
+    try
+        for k in 1:3
+            v = get_free_dof_values(u[k])
+            eltype(v) === Float64 || return false
+        end
+        return true
+    catch
+        return false
+    end
+end
+
+"""
+    refresh_nlp_state!(prob, ctx, S, b) -> Float64
+
+Project `𝖲` and `𝖻` — as evaluated at the CURRENT Newton iterate — onto the projection
+space and store them on `prob.nlp_state[]`. Returns the `∞`-norm change in `π𝖲`, which
+`test_nlp_inloop.jl` G1 uses to assert the knob is live (rule 38d) and G2 to assert the
+fixed point is reached.
+
+This is `update_nlp_state!` without the one-step lag. Same mass matrix, same factorisation,
+same cost per solve — only the state it is evaluated at differs. See NEW_TREATMENT.md §B.1
+for why removing the lag costs no unknowns: the projection is static condensation of the
+mixed formulation, and the freezing was only ever a decoupling convenience.
+"""
+"Diagnostic counter: how many times the in-loop refresh has actually fired.
+Reset it before a run and read it after to check WHEN the refresh happens
+(expect ~ Newton iterations x stages per step, not once per step)."
+const NLP_REFRESH_COUNT = Ref(0)
+
+function refresh_nlp_state!(prob::BALFEMProblem, ctx, S, b)
+    NLP_REFRESH_COUNT[] += 1
+    rS = allocate_in_range(ctx.Mmass); fill!(rS, zero(eltype(rS)))
+    rb = allocate_in_range(ctx.Mmass); fill!(rb, zero(eltype(rb)))
+    assemble_vector!(v -> ∫( S ⋅ v ) * ctx.dΩh, rS, ctx.Vp)
+    assemble_vector!(v -> ∫( b ⋅ v ) * ctx.dΩh, rb, ctx.Vp)
+
+    piS_vec = allocate_in_domain(ctx.Mmass); fill!(piS_vec, zero(eltype(piS_vec)))
+    pib_vec = allocate_in_domain(ctx.Mmass); fill!(pib_vec, zero(eltype(pib_vec)))
+    ctx.solve(piS_vec, rS)
+    ctx.solve(pib_vec, rb)
+
+    st  = prob.nlp_state[]
+    chg = st === nothing ? Inf :
+          maximum(abs, get_free_dof_values(st.piS) .- piS_vec)
+    prob.nlp_state[] = (piS = FEFunction(ctx.Up, piS_vec),
+                        pib = FEFunction(ctx.Up, pib_vec))
+    return chg
+end

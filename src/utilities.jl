@@ -630,6 +630,12 @@ function setup_and_run(;
     relax_bc     :: Bool    = false,      # relaxation (generation/absorption) zone at the inflow
     relax_width  :: Float64 = 0.0,        # relaxation-zone width [m]; 0 → one peak wavelength
     # ---- Solver / diagnostics ------------------------------------------------
+    nlp_inloop   :: Bool    = false,      # ⚠ Class-III projections INSIDE the Newton loop (static
+                                          #   condensation) instead of frozen from the previous step.
+                                          #   Removes the O(dt) lag; costs one extra pair of mass
+                                          #   solves per Newton iteration. DEFAULT OFF so no existing
+                                          #   result changes silently. NEW_TREATMENT.md Part B.
+                                          #   Only meaningful with nl_pressure=:full.
     use_ad       :: Bool    = false,      # build Jacobians by AD instead of the hand Jacobians
     show_trace   :: Bool    = false,      # print the Newton iteration trace
     nl_iter      :: Int     = 50,         # max Newton iterations per stage
@@ -897,6 +903,15 @@ function setup_and_run(;
     # factorised once) used to evaluate the irreducible ∇H/𝓟 pressure halves.
     nlp = nl_pressure == :full ?
           (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh)) : nothing
+    # ⚠ Attaching the context to the problem SELECTS in-loop (static-condensation) mode:
+    #   `global_residual` then refreshes π𝖲, π𝖻 from the current Newton iterate.
+    if nlp !== nothing && nlp_inloop
+        nlp_enable_inloop!(prob, nlp[2])
+        println("  Class-III projections: IN-LOOP (static condensation, no dt lag)")
+    elseif nlp !== nothing
+        println("  Class-III projections: LAGGED one step (legacy)")
+    end
+
     # Reconstruction context for optional w/p VTK output (nothing if both off).
     recon = build_field_recon(vert, dfn, g; rho=rho,
                                   write_w=write_w, write_pressure=write_pressure)

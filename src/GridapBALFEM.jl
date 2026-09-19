@@ -105,8 +105,9 @@ export build_ode_operator, build_ode_operator_ad
 # Nonlinear pressure (full physics)
 export nlp_native_contrib, nlp_gradh_contrib, nlp_frozen_N
 export nlp_gradH_frozen_contrib, nlp_P_frozen_contrib
-export nlp_class3_reduced_fields, nlp_gradH_reduced_contrib, nlp_P_reduced_contrib
-export build_nlp_ctx, update_nlp_state!
+export nlp_class3_reduced_fields, nlp_gradH_reduced_contrib, nlp_P_reduced_contrib, nlp_plain_iterate
+export build_nlp_ctx, update_nlp_state!, refresh_nlp_state!, nlp_enable_inloop!
+export NLP_REFRESH_COUNT
 export SigmaBasis, vopt_tensors, vopt_weight, polarization, profile_errors
 export raw_errors, vopt_medians, total_error, optimise_cbdy, vopt_selfcheck
 

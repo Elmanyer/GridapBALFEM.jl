@@ -64,8 +64,10 @@ const SUITE = [
     ("test_nlpressure.jl",               :medium, "nonlinear-pressure identities + dynamics"),
     #  Class-III treatment (branch new-classIII-treatment; NEW_TREATMENT.md).
     #  The reduction is an EXACT identity, so the first two are cheap algebra gates;
+    #  test_nlp_inloop runs real (tiny) time integrations and is :medium.
     ("test_class3_reduction.jl",         :fast,   "Class-III {1,2,5} reduction + no-transpose control"),
     ("test_class3_residual_parity.jl",   :fast,   "reduced ≡ direct as assembled residual vectors"),
+    ("test_nlp_inloop.jl",               :medium, "in-loop (static-condensation) projections; live-knob + confinement"),
     ("test_sloshing.jl",                 :medium, "standing-wave period"),
     ("test_conservation.jl",             :medium, "mass conservation, closed basin"),
     # ---- physics / validation -------------------------------------------------
