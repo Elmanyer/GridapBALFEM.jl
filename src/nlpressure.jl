@@ -268,3 +268,53 @@ function update_nlp_state!(prob::BALFEMProblem, ctx, u_n)
     prob.nlp_state[] = (piS=piS, pib=pib)
     return nothing
 end
+
+# ==============================================================
+#  REDUCED Class-III assembly + IN-LOOP (static-condensation) projections
+#  Added on branch `new-classIII-treatment`.
+#  Full derivation, verification and rationale: markdown_files/NEW_TREATMENT.md
+# ==============================================================
+
+"""
+    nlp_class3_reduced_fields(Ux, Uy, S, DU, piS, pib) -> (GU, SD, N4)
+
+The three TensorValue{Nσ,Nσ} objects the REDUCED Class-III assembly needs:
+
+    GU = Σₐ ∂ₐ(π𝖲) ⊗ Uₐ     the single ∇𝖲-carrying object for components {1,2,5}
+    SD = 𝖲 ⊗ DU              the ADMISSIBLE remainder of 𝓝² (first-order product)
+    N4 = Σₐ Uₐ ⊗ ∂ₐ(π𝖻)      component 4, which needs ∇𝖻 and cannot join the others
+
+Replaces the four-object `nlp_frozen_N` for the two PROJECTED blocks. `nlp_frozen_N`
+is deliberately KEPT as the reference implementation that
+`test_class3_residual_parity.jl` compares against — it is not dead code.
+"""
+function nlp_class3_reduced_fields(Ux, Uy, S, DU, piS, pib)
+    dSx = alg_dx(piS); dSy = alg_dy(piS)
+    dbx = alg_dx(pib); dby = alg_dy(pib)
+    GU = alg_outer(dSx, Ux) + alg_outer(dSy, Uy)
+    SD = alg_outer(S, DU)
+    N4 = alg_outer(Ux, dbx) + alg_outer(Uy, dby)
+    return GU, SD, N4
+end
+
+"""
+    nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy, GU, SD, N4, dΩh)
+
+Surface-slope (𝓚) half of c ∈ {1,2,4,5}, reduced: `W ⊙ GU + 𝓚³⁽²⁾ ⊙ SD + 𝓚³⁽⁴⁾ ⊙ N4`
+instead of four separate contractions. EXACT — see NEW_TREATMENT.md §A.2.
+"""
+function nlp_gradH_reduced_contrib(prob::BALFEMProblem, H, dHx, dHy,
+                                   Wx, Wy, GU, SD, N4, dΩh)
+    NK = alg_dc3(prob.WK3, GU) + alg_dc3(prob.K3[2], SD) + alg_dc3(prob.K3[4], N4)
+    return ∫( (-1.0)*H*( dHx*(Wx ⋅ NK) + dHy*(Wy ⋅ NK) ) ) * dΩh
+end
+
+"""
+    nlp_P_reduced_contrib(prob, H, DW, GU, SD, N4, dΩh)
+
+Leading-pressure (𝓟) part of c ∈ {1,2,4,5}, reduced. EXACT — NEW_TREATMENT.md §A.2.
+"""
+function nlp_P_reduced_contrib(prob::BALFEMProblem, H, DW, GU, SD, N4, dΩh)
+    NP = alg_dc3(prob.WP3, GU) + alg_dc3(prob.P3[2], SD) + alg_dc3(prob.P3[4], N4)
+    return ∫( (-1.0)*(H*H)*(NP ⋅ DW) ) * dΩh
+end

@@ -62,3 +62,37 @@ alg_outer(a, b) = Operation(Gridap.TensorValues.outer)(a, b)
 
 "Fuse two scalar CellFields into a VectorValue{2}-CellField."
 alg_vec2(a, b) = Operation(VectorValue)(a, b)
+
+"""
+    alg_class3_weight(T1, T2, T5) -> Array{Float64,3}
+
+Combined weight for the EXACT algebraic reduction of the Class-III components
+`{1,2,5}` of `𝓝ₖⱼ` onto a single contraction (markdown_files/NEW_TREATMENT.md §A.2).
+
+With `Gₐ = ∂ₐπ(𝖲)` and the code convention `(a⊗b)[k,j] = a[k]b[j]`,
+
+    𝓝¹ = −Σₐ Gₐ⊗Uₐ        𝓝² = −𝓝¹ + 𝖲⊗DU        𝓝⁵ = −Σₐ Uₐ⊗Gₐ
+
+and relabelling the dummy pair `k↔j` in the `𝓝⁵` term gives
+
+    Σ_{ℓ∈{1,2,5}} T⁽ˡ⁾ ⊙ 𝓝⁽ˡ⁾  =  W ⊙ (Σₐ Gₐ⊗Uₐ)  +  T⁽²⁾ ⊙ (𝖲⊗DU)
+    W[i,k,j] = −T1[i,k,j] + T2[i,k,j] − T5[i,j,k]
+
+⚠ **`T5` enters TRANSPOSED IN ITS LAST TWO INDICES** — that transpose IS the content of
+"𝓝⁵ is the (k,j)-transpose of 𝓝¹". The `𝓐/𝓚/𝓟` families are NOT symmetric in `(k,j)`,
+so dropping it is a silent, plausible-looking error. `test_class3_reduction.jl` gate G4
+is the control that fails if it is dropped.
+
+Takes and returns plain arrays (called once, at problem construction).
+"""
+function alg_class3_weight(T1::AbstractArray{Float64,3},
+                           T2::AbstractArray{Float64,3},
+                           T5::AbstractArray{Float64,3})
+    N = size(T1, 1)
+    @assert size(T1) == size(T2) == size(T5) == (N, N, N)
+    W = Array{Float64,3}(undef, N, N, N)
+    for i in 1:N, k in 1:N, j in 1:N
+        W[i, k, j] = -T1[i, k, j] + T2[i, k, j] - T5[i, j, k]
+    end
+    return W
+end

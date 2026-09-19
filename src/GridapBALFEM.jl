@@ -88,7 +88,7 @@ export build_vertical_model
 export assemble_vertical_tensors, assemble_dispersion_tensors
 
 # Tensor/algebra helpers
-export alg_to_vec, alg_to_tensor2, alg_to_tensor3
+export alg_to_vec, alg_to_tensor2, alg_to_tensor3, alg_class3_weight
 export alg_dx, alg_dy, alg_mul, alg_dot, alg_dc3, alg_outer, alg_vec2
 
 # Horizontal stage
@@ -105,6 +105,7 @@ export build_ode_operator, build_ode_operator_ad
 # Nonlinear pressure (full physics)
 export nlp_native_contrib, nlp_gradh_contrib, nlp_frozen_N
 export nlp_gradH_frozen_contrib, nlp_P_frozen_contrib
+export nlp_class3_reduced_fields, nlp_gradH_reduced_contrib, nlp_P_reduced_contrib
 export build_nlp_ctx, update_nlp_state!
 export SigmaBasis, vopt_tensors, vopt_weight, polarization, profile_errors
 export raw_errors, vopt_medians, total_error, optimise_cbdy, vopt_selfcheck

@@ -59,7 +59,14 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
                                       #   factor ∇h (bed-slope 𝓐 packages, L¹=−u̇·∇h, N{3,6}, the
                                       #   bed-slope IBP half). ∇H = ∇h+∇η → ∇η, so surface-slope
                                       #   (∇η) and dispersion terms are kept. false = variable bathymetry.
-    nlp_state    :: Base.RefValue{Any} # frozen (π𝖲, π𝖻) FEFunctions; nothing before the first step
+    nlp_state    :: Base.RefValue{Any} # (π𝖲, π𝖻) FEFunctions; nothing before the first step/refresh
+    WK3          :: ThirdOrderTensorValue  # reduced Class-III weight for the 𝓚 (surface-slope) block:
+    WP3          :: ThirdOrderTensorValue  # …and for the 𝓟 (leading-pressure) block.
+                                      #   W[i,k,j] = −T¹[i,k,j] + T²[i,k,j] − T⁵[i,j,k] collapses the
+                                      #   THREE ∇𝖲-carrying components {1,2,5} onto ONE contraction.
+                                      #   EXACT (verified 4.4e-16) — see NEW_TREATMENT.md §A.2 and
+                                      #   `alg_class3_weight`. The 𝓐 (∇h) block is NOT reduced: it is
+                                      #   handled by exact IBP and vanishes on a flat bed (§A.5).
     mu_sponge    :: Function
     wm_src       :: Function
     relax_bc     :: Bool              # generation/absorption relaxation zone (Dirichlet inflow)
@@ -189,12 +196,20 @@ function build_problem_raw(vert;
     A3 = ntuple(c -> alg_to_tensor3(vert.Acal[:, :, :, c]), 8)
     K3 = ntuple(c -> alg_to_tensor3(vert.Kcal[:, :, :, c]), 8)
     P3 = ntuple(c -> alg_to_tensor3(vert.Pcal[:, :, :, c]), 8)
+    # Reduced Class-III weights for the two PROJECTED blocks (𝓚, 𝓟). Built from the raw
+    # arrays before tensorisation so the (k,j) transpose of component 5 is explicit.
+    WK3 = alg_to_tensor3(alg_class3_weight(vert.Kcal[:, :, :, 1],
+                                           vert.Kcal[:, :, :, 2],
+                                           vert.Kcal[:, :, :, 5]))
+    WP3 = alg_to_tensor3(alg_class3_weight(vert.Pcal[:, :, :, 1],
+                                           vert.Pcal[:, :, :, 2],
+                                           vert.Pcal[:, :, :, 5]))
     relax_bc && relax_tg === nothing &&
         error("build_problem: relax_bc=true requires relax_tg (incident_fields NamedTuple)")
     return BALFEMProblem(g, h_bathy, vert.N_dof, Φ, Mv, Bv, P, Av, Kv, M3, G3,
                          A3, K3, P3, linearised, advection, lin_pressure,
                          P_full, nl_pressure68, nl_pressure_full, flat_bed,
-                         Ref{Any}(nothing), mu_sponge, wm_src,
+                         Ref{Any}(nothing), WK3, WP3, mu_sponge, wm_src,
                          relax_bc, relax_mu, relax_tg, mms_src)
 end
 
@@ -395,10 +410,13 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
                                       Ux, Uy, Wx, Wy, Ugh, UgH, S, DU, dΩh))
             st = prob.nlp_state[]
             if st !== nothing
-                N1, N2, N4, N5 = nlp_frozen_N(Ux, Uy, S, DU, st.piS, st.pib)
-                r = r + nlp_gradH_frozen_contrib(prob, H, dHx, dHy, Wx, Wy,
-                                                 N1, N2, N4, N5, dΩh)
-                r = r + nlp_P_frozen_contrib(prob, H, DW, N1, N2, N4, N5, dΩh)
+                # REDUCED assembly: {1,2,5} collapse onto one ∇π𝖲 contraction with the
+                # combined weight W (NEW_TREATMENT.md §A.2). Exact; `nlp_frozen_N` +
+                # `nlp_*_frozen_contrib` remain as the reference the parity gate checks.
+                GU, SD, N4 = nlp_class3_reduced_fields(Ux, Uy, S, DU, st.piS, st.pib)
+                r = r + nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy,
+                                                  GU, SD, N4, dΩh)
+                r = r + nlp_P_reduced_contrib(prob, H, DW, GU, SD, N4, dΩh)
             end
         end
     end

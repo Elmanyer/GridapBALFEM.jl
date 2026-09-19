@@ -897,7 +897,6 @@ function setup_and_run(;
     # factorised once) used to evaluate the irreducible ∇H/𝓟 pressure halves.
     nlp = nl_pressure == :full ?
           (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh)) : nothing
-
     # Reconstruction context for optional w/p VTK output (nothing if both off).
     recon = build_field_recon(vert, dfn, g; rho=rho,
                                   write_w=write_w, write_pressure=write_pressure)
