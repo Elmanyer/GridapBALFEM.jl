@@ -178,6 +178,9 @@ carry the qualifier that nonlinear `p_η` degrades beyond `nx = 32` at Q3/Q2.
 
 > The authoritative record for this topic (`INDEX.md`). Written 2026-09-17, after the Yang & Liu
 > collapse verification closed off two of the three candidate causes.
+> ⚙ **AMENDED 2026-09-23 after the mixed-formulation campaign** (`NEW_TREATMENT.md` Part H,
+> `CLAUDE.md` §5.2e): §8's option table is **re-scored** and §9 is **rewritten**. Read those two
+> before acting on anything in §1–§7, which pre-date the campaign.
 
 ### 1. The short version
 
@@ -186,6 +189,16 @@ identical in every other knob — completes 100 periods. Three things could have
 **operator**, an incomplete **Jacobian**, or the **assembly** of the Class-III blocks. The first two
 are now eliminated by measurement. **What remains is the assembly**, specifically the frozen `L²`
 projections used to carry the `{1,2,4,5}` blocks.
+
+⚙ **AMENDED 2026-09-23 — THE ASSEMBLY IS CONFIRMED AS *A* CAUSE BUT NOT *THE* CAUSE, AND THE
+THREE-WAY SPLIT ABOVE WAS NOT EXHAUSTIVE.** Removing the projections entirely (the mixed unknown
+`𝖦 ≈ ∇𝖲`) fixes the Q2/Q1 flat case — **≥61 periods against 12.6 s** — and beats the projected
+control in all eight matched pairs, so the assembly was real and large. **But `:full` still dies at
+Q3/Q2, and still degrades with `dx`, in a formulation that has no projection and forms no second
+derivative.** So a fourth possibility, absent from the original list, is now live: the **coupled
+discrete system** itself — in particular the new `𝖦↔u` pairing, which sits at **equal order**
+(`src/horizontal.jl:59`) and has never been analysed. ⚠ And the Class-III attribution at Q3/Q2 is
+**not established at all**, because no `:native` Q3/Q2 control has been run (§9, step 1).
 
 ### 2. Why the operator is not at fault — the literature check
 
@@ -249,9 +262,24 @@ element `H·u` is (Q1 × Q2) = cubic, so the exact `∂²(Hu)` is piecewise **li
 across every face; at Q3/Q2 it is piecewise cubic and `∂²η` is no longer identically zero.
 ⚠ **CORRECTED 2026-09-18: the object Class III demands is a SECOND derivative of the unknowns, not a
 third.** `s = ∇·(Hu)` is first order and `∇s` is second — `GlobalResidual.tex` classifies Class III as
-"second derivatives of the unknowns" and that is right. An earlier draft of this section said `∂³`
-throughout; the argument is unchanged (a second derivative of a `C⁰` field is already the
-inadmissible object), but the order was wrong and the Q2/Q1 degree count with it.
+"second derivatives of the unknowns" and that is right.
+⚠ **MEASURED 2026-09-23, AND THE EARLIER CORRECTION WAS ITSELF TOO STRONG.** Both derivative counts
+are right, of different objects. Probing each quantity with a perturbation `ε(x−x₀)^k` — which
+nulls every derivative below order `k` at `x₀` — gives, at `x = 3.7`:
+
+| object | `∂²u` | `∂³u` | `∂⁴u` |
+|---|---|---|---|
+| `w` | independent | independent | independent |
+| `p_nh` | **depends** | independent | independent |
+| their §C residual ⌊2.30⌋ | depends | **depends** | independent |
+| our residual, tensor form | depends | **depends** | independent |
+
+So **the model does carry `∂³u` in its strong-form momentum equation** — `p_nh` carries the Hessian,
+momentum carries `∇p_nh` — and Yang & Liu's structural claim is correct. Our `∂²` statement is a
+claim about the **weak form**: `R_P` is assembled as `∫H²(𝓝∴𝓟)·(∇·v)`, so the integration by parts
+that produced it has already moved one derivative onto the test function, leaving the trial field
+carrying at most `∂²`. **Class III is a Hessian problem only because of that IBP**, not because the
+model is lower-order than the literature says.
 
 ### 5. Why projection was chosen in the first place
 
@@ -332,6 +360,25 @@ a broken `∂²` — not to find a library or an order that makes `∂²` classi
 
 ### 8. Options, viability and complexity
 
+> ⚙ **RE-SCORED 2026-09-23 AFTER THE MIXED CAMPAIGN** (`NEW_TREATMENT.md` Part H, `CLAUDE.md`
+> §5.2e). **Five of the six verdicts below have changed and the table as written is superseded** —
+> it is kept because the *reasoning* in each row is still the right way to think about the choice.
+> The outcomes:
+>
+> | # | option | original verdict | **what actually happened** |
+> |---|---|---|---|
+> | 0 | run at Q3/Q2 | ✅ do first | ⛔ **DONE, REFUTED, SIGN REVERSED** — Q3/Q2 is *uniformly worse*, all four cells, and worse even at matched DOF count |
+> | 1 | de-lag the recovery | ✅ cheapest test | ✅ **DISCHARGED** by the mixed construction (it solves `𝖦` at the current iterate). Both `dt` arms improved — the lag was real |
+> | 2 | algebraic reduction | ✅ do regardless | ✅ **DONE, EXACT** (4.4e-16; `test_class3_reduction` 19/19, parity 4/4) |
+> | 3 | `C⁰` interior penalty | the principled route | ⛔ **RATIONALE REMOVED** — it fixes a broken `∂²`, and the `dx` signature it was conditioned on survived a formulation with **no `∂²` to break** (H4). Do not launch on the old justification |
+> | 4 | **mixed formulation** | ⛔ **rejected (system size)** | ⚙ **BUILT ANYWAY, AND IT IS THE SOURCE OF EVERY RESULT ABOVE.** The rejection was wrong to treat as final: it bought the first long-running `:full` configuration in the project (Q2/Q1 flat, ≥61 periods vs 12.6 s). Its cost objection stands and then some — Q3/Q2 quoted **186–242 h** ETAs — so it is a **diagnostic instrument, not a production path**, unless the auxiliary rows get hand Jacobians |
+> | 5 | `C¹` / IGA | high, no element | untouched |
+>
+> ⚠ **The generalisable lesson (rule 39b): option 4 was rejected on cost and became the only
+> experiment that could refute option 3's premise.** A construction that *cannot commit* the
+> suspected error is worth building as a discriminator even when it is unaffordable as a solver.
+
+
 | # | option | complexity | grows the system? | addresses | viability |
 |---|---|---|---|---|---|
 | **0** | **Run `:full` at Q3/Q2** | **trivial** (one env var) | no | nothing — a diagnostic | ✅ do first: every run so far was Q2/Q1, where `∂²η ≡ 0` identically and `∂²(Hu)` is only piecewise linear |
@@ -343,24 +390,60 @@ a broken `∂²` — not to find a library or an order that makes `∂²` classi
 
 ### 9. Current state of the solver, and the next steps
 
-**State.** `:none` and `:native` are sound: the `:native` flat-bed case completes 100 wave periods at
-`A = 0.10` m with Newton flat at 5.12 it/step. `:full` is the only tier that fails on a flat bed, and
-its failure is now traced to the assembly of `{1,2,4,5}` rather than to the equations, the tensors or
-the Jacobian. ⚠ Separately, **any variable bed** grows a lee-shoulder mode at a rate set by `|∇h|`
-(§0d) — that is a *different* defect and is not addressed by anything here.
+*Rewritten 2026-09-23 after the mixed-formulation campaign — `NEW_TREATMENT.md` Part H.*
 
-**Next steps, in order:**
-1. **Q3/Q2 diagnostic** — free, and the pairing the rest of the project calls production.
-2. **De-lag the recovery** — cheap, and targets the dominant measured trend.
-3. **Apply the algebraic reduction** — cheap, and lowers the burden on whatever comes next.
-4. **`C⁰`-IP** if the recovery half still bites after 1–3.
+**State.** `:none` and `:native` are sound: `:native` flat-bed completes 100 wave periods at
+`A = 0.10` m, Newton flat at 5.12. **`:full` is no longer unconditionally unstable** — with the
+Class-III projections replaced by the mixed unknown `𝖦 ≈ ∇𝖲`, the Q2/Q1 flat case runs **≥61 wave
+periods flat on the `:native` trace** where it used to die at 12.6 s, and beats its projected control
+in **all eight** matched pairs. ⚠ But the cause is **only half identified**: every **Q3/Q2** arm
+still dies, earlier than its Q2/Q1 twin and earlier even at matched DOF count, and the **`dx`
+signature survives a formulation that never differentiates a `C⁰` field twice**. ⚠ Separately, **any
+variable bed** grows a lee-shoulder mode at a rate set by `|∇h|` (§0d) — a different defect, not
+addressed by any of this.
 
-⚠ **What is still NOT established.** The projection is the leading hypothesis, not a conclusion. The
-evidence is consistent with it but has not isolated it; the loose end is that the growing mode pins at
-the **inflow** in the runs that die mid-fill and near the **front/sponge** in the one that dies after
-the fill completes (36 s). A fill-state explanation is plausible — the lag error is largest where the
-solution changes most per step, which during filling is the Dirichlet boundary — **but that is a
-hypothesis, not a measurement.** Both VTK series are on disk and the question is answerable.
+⚙ **FINAL CAPTURE 2026-09-23 15:29 — THE Q2/Q1 RESULT SPLITS ON AMPLITUDE.** `A` = 0.10 reached
+**t = 100.6 s (62.9 periods)** flat in the fourth decimal with Newton constant at 6 — a genuine
+post-fill stability result. **Its `A` = 0.15 twin diverged at ~87 s** with the same velocity-led
+signature (η 0.207 → 0.278, u 0.851 → 1.144, Newton 8 → 15 in one window). **So the mixed
+formulation DELAYS the instability rather than removing it**, and amplitude is a **third independent
+axis** beside pairing and `dx`. ⚠ Quoting the `A` = 0.10 trace alone yields a confident and wrong
+"fixed" verdict — it took the same-batch amplitude twin to see the mode was merely late.
+
+**What the campaign settled.**
+* ✅ The frozen projection was a **large real contributor** (8/8 matched pairs, 1.9×–>16×).
+* ⛔ It was **not the whole cause** (Q3/Q2, and the surviving `dx` sign).
+* ⛔ The **broken-Hessian recovery explanation of the `dx` signature is REFUTED as stated** — it was
+  measured in a path that cannot commit that error. No replacement explanation yet; three candidates
+  remain unseparated (H4: it was never the recovery error / `𝖦`'s own approximation error / a
+  grid-scale problem in the new `𝖦↔u` pairing).
+* ⛔ Raising the polynomial order is **not** "more physics" and **not** a one-variable change
+  (rule 2d) — it moves representable content *and* effective resolution together. A low-order pass
+  can be a pass on a **partially masked operator**, which is what Q2/Q1 turns out to be here.
+
+**Next steps, in order.**
+1. ⛔ **`:native` at Q3/Q2 — DO THIS FIRST, IT GATES EVERYTHING.** Every Q3/Q2 arm run is `:full`
+   and the only `:native` runs are Q2/Q1, so nothing in this batch can distinguish "Class III is the
+   carrier" from "Q3/Q2 is unstable here for an unrelated reason" (rule 14c). ⚠ This is the **second
+   time on this branch** the control was the thing not run — see `NEW_TREATMENT.md` F.0, where the
+   omission voided an entire harness campaign.
+2. **`𝖦` one order below `u`.** `Vaux` is built from `reffe_U` (`src/horizontal.jl:59`), so `𝖦` is
+   at **equal order with the velocity**. Its own block is a Gram matrix and coercive — not the
+   classic rule-2b failure — but the *coupled* pairing has never been analysed, and this is the only
+   probe of H4 reading (3). Open since F.3.2, still never run.
+3. **Q3/Q2 at nx = 120**, to finish H3's isolation by matching `dx` and not only DOF count.
+4. **Hand Jacobians for the auxiliary rows** — at 186–242 h ETAs the Q3/Q2 mixed tier cannot
+   produce a stability claim at all. A prerequisite, not an optimisation.
+5. **Let `c3v_base_mixed` reach 100 periods**; it is the only candidate reference trace for a
+   `:full` long-duration regression gate (`CLAUDE.md` §5.7 item 4).
+6. ⛔ **NOT `C⁰`-IP**, until someone re-derives a justification for it (see the re-scored §8).
+
+⚠ **What is still NOT established.** *(The loose end below is unchanged by this campaign and is now
+joined by a second.)* The mode pins at the **inflow** in runs that die mid-fill and near the
+**front/sponge** in the one that died after fill completion — a fill-state explanation is plausible
+but remains a hypothesis, and both VTK series are on disk. **And now:** with the recovery
+explanation refuted, there is **no standing mechanism** for the `dx` signature at all. `:full`
+having a stable configuration does not mean it is understood.
 
 ---
 

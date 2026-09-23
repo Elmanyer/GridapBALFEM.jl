@@ -71,6 +71,7 @@ include("tensors.jl")        # constant-tensor constructors + pointwise Operatio
 include("horizontal.jl")     # Stage 2: 2D mesh + stacked [η,𝖴x,𝖴y] FE spaces + wall BCs
 include("problem.jl")        # BALFEMProblem struct + loop-free residual + hand Jacobians
 include("nlpressure.jl")     # FULL nonlinear pressure (native / ∇h exact-IBP / frozen proj.)
+include("mixed.jl")          # MIXED (projection-free) Class-III formulation — DIAGNOSTIC
 include("reconstruct.jl")    # w / total-pressure σ-level VTK fields (serial + distributed)
 include("monitor.jl")        # solver monitor + governing-eq residual checker + reports
 include("timeloop.jl")       # ODE solver factory + sequential time loop (VTK + recon)
@@ -101,6 +102,9 @@ export output_dir_name, unique_output_dir, model_token, domain_token, wave_token
 export BALFEMProblem, build_problem, build_problem_raw, resolve_physics
 export global_residual, jacobian_u, jacobian_u_t
 export build_ode_operator, build_ode_operator_ad
+# Mixed (projection-free) Class-III formulation — diagnostic, see src/mixed.jl
+export global_residual_mixed, build_ode_operator_mixed, make_initial_conditions_mixed
+export mixed_n_aux, mixed_coupling_jacobian, mixed_delta_S
 
 # Nonlinear pressure (full physics)
 export nlp_native_contrib, nlp_gradh_contrib, nlp_frozen_N
@@ -123,7 +127,7 @@ export print_solver_banner, step_report, check_report, final_report
 # Field diagnostics: max|η| location + interior/damped split, |u|/|η|, mass and
 # energy invariants, per-rank RSS, relative divergence guard, CSV step log.
 export RunDiagnostics, build_run_diagnostics, field_diagnostics
-export resolve_eta_ref, rss_bytes, masked_max, x_at_max
+export resolve_eta_ref, rss_bytes, masked_max, x_at_max, _n_multifields
 
 # --- L² errors / convergence (errors.jl) ------------------------------------
 export l2, l2_error, l2_norm_exact, error_measure

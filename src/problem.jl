@@ -67,6 +67,22 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
                                       #   EXACT (verified 4.4e-16) — see NEW_TREATMENT.md §A.2 and
                                       #   `alg_class3_weight`. The 𝓐 (∇h) block is NOT reduced: it is
                                       #   handled by exact IBP and vanishes on a flat bed (§A.5).
+    c3_mask      :: Tuple{Bool,Bool}  # ⚠ WHICH Class-III OBJECT IS ASSEMBLED: (∇𝖲, ∇𝖻).
+                                      #   After the algebraic reduction (NEW_TREATMENT.md §A.2)
+                                      #   Class III is exactly TWO contractions, so this is a
+                                      #   clean split of the {1,2,4,5} set into its two
+                                      #   irreducible objects:
+                                      #     [1] the ∇𝖲 family — components {1,2,5} collapsed onto
+                                      #         `W ⊙ GU`, plus 𝓝²'s admissible `T² ⊙ SD` remainder
+                                      #     [2] component 4 — `T⁴ ⊙ N4`, the only carrier of ∇𝖻
+                                      #   (true,true) = the full set, i.e. ordinary `:full`.
+                                      #   (false,false) is NOT `:native`: the {3,6,7,8} package is
+                                      #   still assembled by `nlp_native_contrib`; only the
+                                      #   Class-III half is suppressed.
+                                      #   EXISTS TO ANSWER: which of the two carries the `:full`
+                                      #   instability? (PLANNED_CAMPAIGNS.md §6b item 2 — designed
+                                      #   long ago, never runnable this cleanly before the
+                                      #   reduction made the split two-way instead of four-way.)
     nlp_ctx      :: Base.RefValue{Any} # projection context, or `nothing`.
                                       #   ⚠ PRESENCE OF A CTX SELECTS IN-LOOP (static-condensation)
                                       #   MODE: the L² projections are then refreshed from the CURRENT
@@ -146,6 +162,7 @@ function build_problem(vert;
         regime       :: Symbol   = :nonlinear,
         nl_pressure  :: Symbol   = :none,
         flat_bed     :: Bool     = false,
+        c3_mask      :: Tuple{Bool,Bool} = (true, true),
         mu_sponge    :: Function = (x -> 0.0),
         wm_src       :: Function = ((x, t) -> 0.0),
         relax_bc     :: Bool     = false,
@@ -154,7 +171,7 @@ function build_problem(vert;
         mms_src                  = nothing)
     phys = resolve_physics(; regime=regime, nl_pressure=nl_pressure,
                              flat_bed=flat_bed)
-    return build_problem_raw(vert; g=g, h_bathy=h_bathy,
+    return build_problem_raw(vert; g=g, h_bathy=h_bathy, c3_mask=c3_mask,
         linearised=phys.linearised, advection=phys.advection,
         lin_pressure=phys.lin_pressure, P_full=phys.P_full,
         nl_pressure68=phys.nl_pressure68, nl_pressure_full=phys.nl_pressure_full,
@@ -186,6 +203,7 @@ function build_problem_raw(vert;
         nl_pressure68:: Bool     = false,
         nl_pressure_full :: Bool = false,
         flat_bed     :: Bool     = false,
+        c3_mask      :: Tuple{Bool,Bool} = (true, true),
         mu_sponge    :: Function = (x -> 0.0),
         wm_src       :: Function = ((x, t) -> 0.0),
         relax_bc     :: Bool     = false,
@@ -216,7 +234,8 @@ function build_problem_raw(vert;
     return BALFEMProblem(g, h_bathy, vert.N_dof, Φ, Mv, Bv, P, Av, Kv, M3, G3,
                          A3, K3, P3, linearised, advection, lin_pressure,
                          P_full, nl_pressure68, nl_pressure_full, flat_bed,
-                         Ref{Any}(nothing), WK3, WP3, Ref{Any}(nothing), mu_sponge, wm_src,
+                         Ref{Any}(nothing), WK3, WP3, c3_mask, Ref{Any}(nothing),
+                         mu_sponge, wm_src,
                          relax_bc, relax_mu, relax_tg, mms_src)
 end
 
@@ -226,7 +245,8 @@ end
 Single scalar Gridap residual, stacked layout. `u` is a TransientCellField
 (`∂t(u)` available); `u[1]=η`, `u[2]=𝖴x`, `u[3]=𝖴y`. No per-layer loops.
 """
-function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
+function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh;
+                         aux = nothing)
     ut = ∂t(u)
     η,  Ux,  Uy  = u[1], u[2], u[3]
     ηt, Uxt, Uyt = ut[1], ut[2], ut[3]
@@ -423,19 +443,46 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
             #   `nlp_plain_iterate` skips the refresh under AD (Dual-valued cell data),
             #   so the AD Jacobian differentiates the residual with π held fixed — the
             #   same quasi-Newton treatment these blocks already get (rule 17b).
-            ctx = prob.nlp_ctx[]
-            if ctx !== nothing && nlp_plain_iterate(u)
-                refresh_nlp_state!(prob, ctx, S, UgH)
-            end
-            st = prob.nlp_state[]
-            if st !== nothing
-                # REDUCED assembly: {1,2,5} collapse onto one ∇π𝖲 contraction with the
-                # combined weight W (NEW_TREATMENT.md §A.2). Exact; `nlp_frozen_N` +
-                # `nlp_*_frozen_contrib` remain as the reference the parity gate checks.
-                GU, SD, N4 = nlp_class3_reduced_fields(Ux, Uy, S, DU, st.piS, st.pib)
-                r = r + nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy,
-                                                  GU, SD, N4, dΩh)
-                r = r + nlp_P_reduced_contrib(prob, H, DW, GU, SD, N4, dΩh)
+            # c3_mask selects WHICH of the two Class-III objects is assembled;
+            # (false,false) suppresses the Class-III half entirely (NOT :native —
+            # the {3,6,7,8} package above is still in).
+            if any(prob.c3_mask)
+                if aux !== nothing
+                    # ---- MIXED FORMULATION -------------------------------------------
+                    #  ∇𝖲 and ∇𝖻 are GENUINE UNKNOWNS (aux.Gx/Gy, aux.Fx/Fy), defined by
+                    #  their own weak equations in `global_residual_mixed` with the
+                    #  integration by parts built in. No projection, no lag, no frozen
+                    #  state: the Class-III blocks are consistent at the current iterate
+                    #  and enter the Jacobian like any other term.
+                    #  The reduced assembly is REUSED VERBATIM — the algebraic reduction
+                    #  (NEW_TREATMENT.md §A.2) is what makes 𝖦 enter through a single
+                    #  contraction instead of three.
+                    GU = alg_outer(aux.Gx, Ux) + alg_outer(aux.Gy, Uy)
+                    SD = alg_outer(S, DU)
+                    #  ⚠ 𝖥 EXISTS ONLY WHEN COMPONENT 4 IS ACTIVE. With c3_mask=(true,false)
+                    #  the mixed layout is 5 fields and `aux` has no Fx/Fy, so building N4
+                    #  unconditionally threw `NamedTuple has no field Fx`. `_c3_sum` never
+                    #  reads N4 in that case, so SD is a never-consumed placeholder passed
+                    #  only to keep one call signature for both layouts.
+                    N4 = prob.c3_mask[2] ?
+                         (alg_outer(Ux, aux.Fx) + alg_outer(Uy, aux.Fy)) : SD
+                    r = r + nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy,
+                                                      GU, SD, N4, dΩh)
+                    r = r + nlp_P_reduced_contrib(prob, H, DW, GU, SD, N4, dΩh)
+                else
+                    ctx = prob.nlp_ctx[]
+                    if ctx !== nothing && nlp_plain_iterate(u)
+                        refresh_nlp_state!(prob, ctx, S, UgH)
+                    end
+                    st = prob.nlp_state[]
+                    if st !== nothing
+                        # REDUCED assembly from the FROZEN projections (legacy path).
+                        GU, SD, N4 = nlp_class3_reduced_fields(Ux, Uy, S, DU, st.piS, st.pib)
+                        r = r + nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy,
+                                                          GU, SD, N4, dΩh)
+                        r = r + nlp_P_reduced_contrib(prob, H, DW, GU, SD, N4, dΩh)
+                    end
+                end
             end
         end
     end

@@ -345,6 +345,25 @@ mutable struct RunDiagnostics
 end
 
 """
+    _n_multifields(U) -> Int
+
+Number of fields in a (possibly distributed, possibly transient-trial) MultiFieldFESpace.
+Returns 3 if it cannot be determined, which is the historical layout and keeps every
+pre-existing caller on exactly the path it had before.
+"""
+function _n_multifields(U)
+    try
+        return length(U.spaces)
+    catch
+        try
+            return Gridap.MultiField.num_fields(U)
+        catch
+            return 3
+        end
+    end
+end
+
+"""
     build_run_diagnostics(prob, U0, trian, dΩ; ranks=nothing, eta_ref=0.0,
                               div_factor=20.0, output_dir="", diag_csv=false,
                               is_main=true) → RunDiagnostics
@@ -366,10 +385,20 @@ function build_run_diagnostics(prob, U0, trian, dΩ;
                                    u0                     = nothing)
     Nσ   = prob.Nσ
     zvv  = VectorValue(ntuple(_ -> 0.0, Nσ)...)
-    xh   = interpolate_everywhere([x -> x[1], x -> zvv, x -> zvv], U0)
+    zf   = x -> zvv
+    #  ⚠ THE FIELD COUNT IS NOT ALWAYS 3. The MIXED (projection-free) layout of src/mixed.jl
+    #  appends auxiliary VectorValue{Nσ} unknowns — 5 fields for 𝖦 only, 7 with 𝖥 — and these
+    #  two interpolations used to hardcode a 3-element list, so EVERY diagnostic was
+    #  unavailable on the mixed path: no `x_at_max`, no diagnostics.csv, no divergence guard.
+    #  That cost a whole mixed run, because a failure with a TIME but no PLACE cannot be
+    #  compared against the projected failure, which pins at the inflow (CLAUDE.md §5.2b).
+    #  `field_diagnostics` itself needed nothing: it already indexes only u_n[1..3].
+    nf   = _n_multifields(U0)
+    nf ≥ 3 || error("build_run_diagnostics: expected ≥3 fields ([η,𝖴x,𝖴y]), got $nf")
+    xh   = interpolate_everywhere([x -> x[1], zf, zf, fill(zf, nf - 3)...], U0)
     # total damping seen by the state: sponge + (optional) relaxation zone
     mufn = prob.relax_bc ? (x -> prob.mu_sponge(x) + prob.relax_mu(x)) : prob.mu_sponge
-    muh  = interpolate_everywhere([mufn, x -> zvv, x -> zvv], U0)
+    muh  = interpolate_everywhere([mufn, zf, zf, fill(zf, nf - 3)...], U0)
 
     d_cf = CellField(prob.h_bathy, trian)
     div_limit = eta_ref > 0.0 ? div_factor * eta_ref : 1.0e4

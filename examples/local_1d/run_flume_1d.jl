@@ -278,6 +278,8 @@ solver_sym() === :theta && push!(_extra, "theta")
     push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
 genv_b("BALFEM_NLP_INLOOP", 0) && push!(_extra, "inloop")
+genv_b("BALFEM_MIXED", 0) && push!(_extra, "mixed")
+let m = lowercase(genv("BALFEM_C3_MASK","both")); m == "both" || push!(_extra, "c3"*m) end
 genv_i("BALFEM_QUAD_EXTRA", 0) != 0 && push!(_extra, "q$(genv_i("BALFEM_QUAD_EXTRA",0))")
 
 _name = output_dir_name(; M = M, p_vert = p_vert, ny = ny, y_wall_bc = ybc_sym,
@@ -330,6 +332,18 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           #  Newton iterate (static condensation) instead of freezing them one step behind.
           #  Removes the O(dt) lag error; only meaningful with nl_pressure=:full.
           nlp_inloop=genv_b("BALFEM_NLP_INLOOP", 0),
+          #  BALFEM_MIXED=1 replaces the Class-III L2 projections with GENUINE UNKNOWNS
+          #  (5 fields for grad-S only, 7 with grad-b). Projection-free and lag-free, but
+          #  AD Jacobians and sequential only -- a DIAGNOSTIC, far slower per step.
+          mixed=genv_b("BALFEM_MIXED", 0),
+          #  BALFEM_C3_MASK isolates WHICH Class-III object is assembled, to answer
+          #  which of the two carries the :full instability:
+          #    "both" (default) = ordinary :full
+          #    "gs"   = the ∇𝖲 family only  (components {1,2,5}, collapsed + 𝓝²'s remainder)
+          #    "gb"   = component 4 only    (the ∇𝖻 carrier)
+          #    "none" = Class-III suppressed; NOT :native ({3,6,7,8} still assembled)
+          c3_mask=(m -> m == "gs" ? (true,false) : m == "gb" ? (false,true) :
+                        m == "none" ? (false,false) : (true,true))(lowercase(genv("BALFEM_C3_MASK","both"))),
           output_dir=outdir, save_every=save_ev,
           write_w=write_w_flag(), write_pressure=write_p_flag(), rho=rho_val(),
           solver_type=solver_sym(), tableau=tableau_sym(),

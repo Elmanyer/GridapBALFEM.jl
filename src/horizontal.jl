@@ -125,7 +125,8 @@ Other arguments:
 function build_fe_spaces(model, p_u::Int, Nσ::Int;
                              y_wall_bc::Symbol = :wall, x_wall_bc::Bool = false,
                              inflow = nothing,
-                             p_eta::Int = p_u - 1)
+                             p_eta::Int = p_u - 1,
+                          n_aux::Int = 0)
     #  THE gate. Every FE space in this solver is built here, so validating the pairing
     #  at this one point makes a non-Taylor-Hood run impossible rather than merely
     #  discouraged. Default p_eta = p_u − 1 is Taylor-Hood by construction.
@@ -211,6 +212,22 @@ function build_fe_spaces(model, p_u::Int, Nσ::Int;
         Uspaces = inflow === nothing ?
                   Gridap.FESpaces.SingleFieldFESpace[U_eta, U_Ux, U_Uy] :
                   [U_eta, U_Ux, U_Uy]
+    end
+    # ---- MIXED FORMULATION: n_aux extra UNCONSTRAINED VectorValue{Nσ} fields ----
+    #  Appended AFTER [η,𝖴x,𝖴y] so every existing index (u[1],u[2],u[3]) is unchanged
+    #  and the 3-field path is bit-identical when n_aux = 0.
+    #  They carry NO Dirichlet data: 𝖦 ≈ ∇𝖲 and 𝖥 ≈ ∇𝖻 are derived quantities with no
+    #  boundary condition of their own (the same argument as the projection space `Vp`
+    #  in `build_nlp_ctx` — 𝖲 = ∇·(H𝗎) is generally non-zero on a wall where 𝗎·n = 0).
+    #  They also carry no time derivative: the auxiliary rows are ALGEBRAIC constraints,
+    #  so ∂R/∂u̇ has zero rows there and the system is an index-1 DAE. The stage system
+    #  stays non-singular because ∂R_aux/∂aux is the auxiliary mass matrix.
+    if n_aux > 0
+        for _ in 1:n_aux
+            Vaux = FESpace(model, reffe_U; conformity=:H1)
+            push!(Vspaces, Vaux)
+            push!(Uspaces, TrialFESpace(Vaux))
+        end
     end
     U = MultiFieldFESpace(Uspaces)
     V = MultiFieldFESpace(Vspaces)

@@ -630,6 +630,19 @@ function setup_and_run(;
     relax_bc     :: Bool    = false,      # relaxation (generation/absorption) zone at the inflow
     relax_width  :: Float64 = 0.0,        # relaxation-zone width [m]; 0 → one peak wavelength
     # ---- Solver / diagnostics ------------------------------------------------
+    mixed_coupling :: Bool  = true,       # ⚠ include the C = dR_G/d(eta,u) and B = dR_phys/dG
+                                          #   coupling blocks in the mixed Jacobian. Default ON;
+                                          #   false reproduces the old block-diagonal form, kept
+                                          #   only so the two can be compared (NEW_TREATMENT.md G).
+    mixed        :: Bool    = false,      # ⚠ PROJECTION-FREE Class-III path (src/mixed.jl):
+                                          #   promote ∇𝖲 (and ∇𝖻 if c3_mask[2]) to genuine
+                                          #   unknowns instead of frozen L² projections.
+                                          #   DIAGNOSTIC ONLY — AD Jacobians, sequential,
+                                          #   much slower per step. Needs nl_pressure=:full.
+    c3_mask      :: Tuple{Bool,Bool} = (true, true),
+                                          # ⚠ WHICH Class-III object to assemble: (∇𝖲, ∇𝖻).
+                                          #   (true,true) = ordinary :full. Used to isolate which
+                                          #   of the two carries the :full instability.
     nlp_inloop   :: Bool    = false,      # ⚠ Class-III projections INSIDE the Newton loop (static
                                           #   condensation) instead of frozen from the previous step.
                                           #   Removes the O(dt) lag; costs one extra pair of mass
@@ -801,16 +814,33 @@ function setup_and_run(;
 
     # Build the stacked FE spaces for the horizontal problem, applying the inflow BCs if provided.
     pe = p_eta
+    #  ⚠ MIXED PATH: append the auxiliary unknowns AFTER [η,𝖴x,𝖴y], so every index the rest
+    #  of this driver uses (inflow BCs on fields 1–2, diagnostics on 1–3) is unchanged.
+    #  The count must come from `mixed_n_aux(prob)` — 2 for 𝖦 only, 4 with 𝖥 — or u[4]/u[5]
+    #  would silently index the wrong field.
+    mixed && nl_pressure != :full &&
+        error("setup_and_run: mixed=true needs nl_pressure=:full (it replaces the " *
+              "Class-III projections; there is nothing to replace otherwise)")
+    n_aux = mixed ? (c3_mask[2] ? 4 : 2) : 0
     U, V = build_fe_spaces(model, 
                                 p_u,           # horizontal (velocity) FE order
                                 vert.N_dof;             # number of vertical DOFs = number of stacked fields
                                 y_wall_bc=y_wall_bc,    # lateral BC type
                                 x_wall_bc=x_wall_bc,    # solid wall BC on x-edges
                                 inflow=inflow,          # inflow BC data (η, 𝖴x, 𝖴y) if provided
+                                n_aux=n_aux,            # mixed-formulation auxiliary unknowns
                                 p_eta=pe)               # surface FE order (see the kwarg note)
 
-    @printf("  Fields: 3 (η + 2 stacked VectorValue{%d})   free DOFs: %d\n",
-            vert.N_dof, num_free_dofs(U(0.0)))
+    #  ⚠ THE BANNER MUST NAME THE JACOBIAN ACTUALLY BUILT. This line reported
+    #  "block-diagonal" unconditionally once `mixed_coupling` was added, i.e. it described a
+    #  configuration the run was not using. A log that misreports its own settings is worse
+    #  than no log -- it is how a wrong configuration survives review (rule 12b).
+    mixed && println("  Class-III: MIXED / PROJECTION-FREE — $(n_aux) auxiliary field(s), " *
+                     (use_ad         ? "exact AD Jacobian (SLOW)" :
+                      mixed_coupling ? "quasi-Newton + C/B coupling blocks" :
+                                       "quasi-Newton (block-diagonal, LEGACY)"))
+    @printf("  Fields: %d (η + 2 stacked VectorValue{%d} + %d aux)   free DOFs: %d\n",
+            3 + n_aux, vert.N_dof, n_aux, num_free_dofs(U(0.0)))
     @printf("  Wave: λ=%.2f m, kd=%.2f\n", 2pi/k_wave, k_wave*h_val)
 
     # --- Forcing: sponge profile + internal wavemaker source ------------------
@@ -852,6 +882,7 @@ function setup_and_run(;
                         regime=regime,              # linear/nonlinear physics
                         nl_pressure=nl_pressure,    # nonlinear pressure treatment
                         flat_bed=flat_bed,          # whether to drop ∇h terms (flat bed)
+                        c3_mask=c3_mask,            # which Class-III object(s) to assemble
                         mu_sponge=sponge,           # sponge damping profile μ(x,y)
                         wm_src=wm,                  # internal wavemaker source S(x,t)
                         relax_bc=use_relax,         # whether to use a relaxation zone at the inflow
@@ -860,7 +891,11 @@ function setup_and_run(;
 
     # Build problem TransientFEOperator ->  Wrap the residual (+ Jacobians) into a Gridap operator
     # `use_ad` swaps the hand Jacobians for AD-generated ones (cross-checking only).
-    op = use_ad ? build_ode_operator_ad(prob, U, V, trian, dΩh) :
+    #  The mixed path is AD-only: jacobian_u/jacobian_u_t are hand-derived for the 3-field
+    #  layout and know nothing about 𝖦/𝖥 (rule 5 — never assume an omission is benign).
+    op = mixed  ? build_ode_operator_mixed(prob, U, V, trian, dΩh; use_ad=use_ad,
+                                          coupling=mixed_coupling) :
+         use_ad ? build_ode_operator_ad(prob, U, V, trian, dΩh) :
                   build_ode_operator(prob, U, V, trian, dΩh)
 
     # The monitor transparently wraps the Newton solver to harvest per-step stats.
@@ -885,23 +920,35 @@ function setup_and_run(;
 
     # Initial condition. Four cases: hot-start from the incident wave; rest state
     # for a generated sea; rest state (default); or a prescribed η₀(x) release.
+    #  ⚠ On the mixed path the auxiliary unknowns start at ZERO, which is EXACT only from
+    #  rest (𝖲 = 0 ⇒ 𝖦 = 0). `ic_from_bc` hot-starts from the incident wave, where 𝖦 ≠ 0 and
+    #  this initial state does NOT satisfy the auxiliary constraint — refused rather than
+    #  silently inconsistent.
+    mixed && wi !== nothing && ic_from_bc &&
+        error("setup_and_run: mixed=true is incompatible with ic_from_bc (the auxiliary " *
+              "constraint 𝖦 = ∇𝖲 would be violated at t₀); start from rest")
+    ic = mixed ? ((Usp, N; kw...) -> make_initial_conditions_mixed(Usp, N; n_aux=n_aux, kw...)) :
+                 make_initial_conditions
     u0 = if wi !== nothing && ic_from_bc
         inc = incident_fields(wi)
-        make_initial_conditions(U(0.0), vert.N_dof;
+        ic(U(0.0), vert.N_dof;
             eta0_func = x -> inc.eta(x, 0.0),
             ux0_func  = x -> inc.ux(x, 0.0),
             uy0_func  = x -> inc.uy(x, 0.0))
     elseif wi !== nothing
-        make_initial_conditions(U(0.0), vert.N_dof; eta0_func=eta0_func)
+        ic(U(0.0), vert.N_dof; eta0_func=eta0_func)
     elseif isnothing(eta0_func)
-        make_initial_conditions(U)
+        mixed ? ic(U, vert.N_dof) : make_initial_conditions(U)
     else
-        make_initial_conditions(U, vert.N_dof; eta0_func=eta0_func)
+        ic(U, vert.N_dof; eta0_func=eta0_func)
     end
 
     # For nl_pressure=:full, build the frozen-projection context (mass matrix
     # factorised once) used to evaluate the irreducible ∇H/𝓟 pressure halves.
-    nlp = nl_pressure == :full ?
+    #  ⚠ NOT on the mixed path: there are no frozen projections to build there, and doing so
+    #  printed "Class-III projections: LAGGED one step (legacy)" directly under a banner that
+    #  had just announced PROJECTION-FREE — two contradictory claims about the same run.
+    nlp = (nl_pressure == :full && !mixed) ?
           (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh)) : nothing
     # ⚠ Attaching the context to the problem SELECTS in-loop (static-condensation) mode:
     #   `global_residual` then refreshes π𝖲, π𝖻 from the current Newton iterate.

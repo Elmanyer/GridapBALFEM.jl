@@ -37,8 +37,10 @@ they demand of the unknowns:
 | **III** | **1, 2, 4, 5** | **second derivatives of the unknowns** |
 
 ⚠ **The demand is a SECOND derivative, not a third.** `s_k = ∇·(Hu_k)` is first order; `∇s_k` is
-second order in `H·u`. Any statement in the project history saying `∂³` is wrong — corrected
-2026-09-18 across `OPEN_ISSUES.md` §0c, `CLAUDE.md` §5.2c and `PLANNED_CAMPAIGNS.md` §6b.
+second order in `H·u`, so the **weak form's trial requirement** is a Hessian.
+⚠ This does NOT contradict the literature's third-derivative claim: that is about the strong-form
+momentum equation, which carries `∇p_nh` and therefore `∂³u`. Measured both ways 2026-09-23 —
+see `OPEN_ISSUES.md` §0c. The reduction to `∂²` is bought by `R_P`'s integration by parts.
 
 Writing the four Class-III components out (`GlobalResidual.tex`, eq. *N1, N2, N4, N5 class III
 expressions*):
@@ -491,7 +493,528 @@ reading rules apply only once #0 reproduces 12.60 s.
 
 ## E.5 Also corrected on this branch
 
-The project record said Class III needs a **third** derivative. It needs a **second** (`s = ∇·(Hu)`
+The project record said Class III needs a **third** derivative. In the WEAK FORM it needs a **second** (`s = ∇·(Hu)`
 is first order, `∇s` second) — `GlobalResidual.tex` had it right. Corrected in `OPEN_ISSUES.md` §0c,
 `CLAUDE.md` §5.2c/§5.7/rule 1b and `PLANNED_CAMPAIGNS.md` §6b, together with the Q2/Q1 degree counts
 that followed from it (`∂²(Hu)` is piecewise **linear** there, not a piecewise constant).
+
+---
+
+# PART F — THE MIXED (projection-free) FORMULATION
+*Branch `mixed-formulation-solver`, 2026-09-19/20.*
+
+## F.0 ⛔ READ THIS FIRST: the harness these were run in is UNFIT, and most of Part F's
+## stability numbers are VOID
+
+> ✅ **SUPERSEDED BY PART H (2026-09-23) — the proper campaign has now been run.** Part F's step-1
+> demand (re-run on the real 60 m flume with in-batch controls) was carried out as a 2 × 4 × 2
+> factorial. **Read Part H for every stability number.** Part F is kept for the static results in
+> F.1, the layout rationale in F.2, the still-open gaps in F.3, and the Class-III isolation in F.4,
+> which was always trustworthy because it ran in the production launcher against a reproduced
+> control.
+
+The mixed formulation was exercised in a small purpose-built harness (6 m domain, 24 cells,
+interior Gaussian wavemaker at x = 1.0, sponge from x = 4.0, `A` = 0.02). **A control was
+not run in the same batch until the very end, and when it finally was, it failed too:**
+
+| arm (identical settings) | n = 10 | n = 20 |
+|---|---|---|
+| **`:native` / projected** — the production tier that runs **100 periods** on the real flume | OK, η = 1.588e-01 | ⛔ **DIED** |
+| `:full` (gs) / projected | OK, η = 1.580e-01 | ⛔ DIED |
+| `:full` (gs) / **mixed** | ⛔ DIED | — |
+
+⚠ **`:native` DYING IS THE FINDING.** It carries no Class-III terms at all, so this harness
+destabilises for reasons that have nothing to do with anything Part F is about. The tell was
+visible earlier and I did not act on it: `η` reaches **0.1588 from a requested `A` = 0.02** —
+eightfold — and goes 0.0269 → 0.1588 in five steps. That is not a wave, it is a blow-up
+already under way. Likely cause: `make_wavemaker_line` defaults to `sigma_wm = 1.5` m, so in
+a **6 m** box the Gaussian source spans the domain and reaches into the sponge (rule 14b: the
+interior source does not deliver `A_wave`, and the factor is geometry-dependent).
+
+**Therefore: the mixed formulation has NOT been shown to be unstable.** Every "mixed dies"
+statement in this session — the 7-field NaN, the 5-field NaN, the identical 38-iteration
+failures — is a statement about the harness. Rule 14c, in the form that hurts: *a crash is
+not evidence until its control runs*, and here the control was the last thing tried.
+
+## F.1 What IS solid
+
+| result | evidence |
+|---|---|
+| ✅ **𝖦 recovers ∇𝖲 essentially exactly** | vs an analytic `∂ₓ𝖲`: **1.2e-11** interior, **6.1e-12** at the boundary (test_mixed_formulation.jl G4) |
+| ✅ **The boundary term is load-bearing** | dropping `∮𝖲Ψn` leaves the boundary cells wrong by a **relative 22.4**; assembling it fixes them to 6e-12. The `:full` mode is velocity-led AT THE INFLOW, so a diagnostic wrong by 22× there could not have discriminated anything |
+| ✅ **The index-1 DAE solves** | zero rows in `∂R/∂u̇` are not a problem; `:none` with the auxiliary rows present is **bit-identical** to `:none` without them |
+| ✅ **The Class-III blocks are live in the mixed path** | mixed `:full` − mixed `:native` = 6.05e-06 at 5 steps, the same order as the projected treatment's contribution — the G2 criterion Part B failed |
+| ✅ **The two treatments differ by ~40 % of the terms' own size** | mixed `:full` − projected `:full` = 2.42e-06 against a 6.05e-06 contribution. Consistent with one being a poor approximation of `∇𝖲` — which is the hypothesis — and *not* the ~100 % signature of a deleted block |
+
+⚠ All five are 5-step, early-time, tiny-amplitude results taken before the harness defect was
+known. The first two are static and unaffected; the last three should be re-taken.
+
+## F.2 The `𝖦`-only (5-field) layout
+
+`c3_mask` now sizes the mixed layout:
+
+```
+c3_mask = (true, false)  →  5 fields  [η, 𝖴x, 𝖴y, 𝖦x, 𝖦y]      ← the diagnostic
+c3_mask = (true, true)   →  7 fields  (adds 𝖥x, 𝖥y ≈ ∇𝖻)
+```
+
+guarded so a mask/layout mismatch errors instead of silently mis-indexing `u[4]`.
+
+**Justified by measurement, not preference** (§F.4): component 4 is 1140× smaller than the
+`∇𝖲` family and runs clean on its own. ⚠ **Consequence for comparisons: the 5-field path is
+the projection-free version of the `gs` ARM**, so its like-for-like control is the *projected
+gs* run, not plain `:full`.
+
+⚠ **Dropping `𝖥` did NOT change the failure**: 7-field and 5-field both NaN'd at the
+identical iteration count (38). Under F.0 that is explained — both were failing on the
+harness — but it also means the cost saving was real and the conditioning argument untested.
+
+## F.3 Known gaps in the mixed path
+
+1. **THE DIAGNOSTICS DO NOT SUPPORT IT.** `build_run_diagnostics` interpolates onto a
+   **3-field** space, so `x_at_max`, `diagnostics.csv` and the divergence guard are all
+   unavailable for mixed runs. ⚠ This is why no mixed failure has a *location*, and location
+   is the single most diagnostic quantity here — the projected failure pins at the inflow.
+   **Fix this before the next mixed run.**
+2. **Inf-sup untested.** `𝖦` sits in the velocity space (Q3). One order lower is the standard
+   first alternative and has not been tried.
+3. **Cost.** 7-field AD was ~180 s/step at `nx` = 24; 5-field is cheaper but unquantified.
+   Hand Jacobians for the auxiliary rows are the obvious remedy if this path continues.
+4. **Non-rest starts are inconsistent.** `make_initial_conditions_mixed` zeroes `𝖦`; from a
+   non-rest state the constraint would have to be solved first.
+
+## F.4 ✅ THE ONE UNAMBIGUOUS RESULT OF THIS SESSION: Class III is a SINGLE term
+
+Run on the **real** 60 m flume — the configuration with a known, reproduced control
+(`c3_0_Q2Q1_lagged` died at **t = 12.600000**, `u_max` = 2.5046, Newton 51):
+
+| arm | outcome |
+|---|---|
+| **`gs`** — ∇𝖲 family only ({1,2,5} collapsed) | ⛔ **reproduces the failure**: dying at t = 12.00, `u_max` 0.61 → **3.17** in one output interval, `x_at_max` pinned at **0.25 m (the inflow)**, Newton → cap |
+| **`gb`** — component 4 only (∇𝖻) | ✅ **ran the full 25 periods to t = 40.0**, η = 0.1065, `u_max` = 0.435, **Newton flat at 4** |
+
+Statically, on the assembled residual (test_class3_split.jl): `|∇𝖲 arm|` = 1.2837e-02 against
+`|∇𝖻 arm|` = 1.1271e-05 — **a ratio of 1140** — with the partition exact to 8.65e-15.
+
+**So `∂²η` is exonerated twice over: by magnitude and dynamically.** The target is one object,
+`W ⊙ (Σₐ ∂ₐπ(𝖲) ⊗ Uₐ)`.
+
+⚠ `gb` survived 25 periods (40 s) and the flume fills in ~36 s, so this is "did not reproduce
+the failure", **not** a stability claim (rules 12c/14). 100 periods would be needed for that.
+
+⚠ **THIS RESULT IS TRUSTWORTHY WHERE PART F's ARE NOT** because it ran in the production
+launcher configuration against a control that reproduced a known number to five digits.
+
+⚠ **And it nearly did not survive its own first attempt**: the first pair of isolation
+launchers put `export BALFEM_C3_MASK` **after** `balfem_local_run`, where it is a silent
+no-op (rule 38h). Both arms then reproduced the CONTROL, bit-identical to nine significant
+figures — which is the tell. The knob was moved before the run line and liveness re-checked
+(the arms now differ at t = 1.8 s) before any of the above was read.
+
+## F.5 Next steps, ordered
+
+> ✅ **ALL THREE ARE NOW DONE OR RE-SCOPED — see Part H.** (1) the real-flume re-run is Part H;
+> (2) the diagnostics were made mixed-aware before launch (H.0); (3) `𝖦` at one order lower is
+> **still not run** and has been promoted — H4 reading (3) makes it the probe of the one mechanism
+> that could explain the surviving `dx` signature. It is now step 2 of H.4.
+
+1. **Re-run the mixed comparison on the REAL flume configuration**, not the small harness —
+   the 60 m Q2/Q1 case with the reproduced 12.60 s control. Nothing else about the mixed
+   formulation can be believed until this exists.
+2. **Make the diagnostics mixed-aware** (F.3.1) first, or the run yields a time but no place.
+3. Then, and only then: `𝖦` at one order lower, to close the inf-sup ambiguity.
+
+---
+
+# PART G — COMPLETING THE MIXED JACOBIAN
+
+*Plan written 2026-09-22, before implementation.*
+
+## G.1 Why
+
+The mixed operator is solved with a **block-diagonal** Jacobian (`mixed_aux_jacobian`): the hand
+Jacobian on the physics rows, the mass matrix on the auxiliary rows, and **both coupling blocks
+omitted**. Writing the true stage Jacobian in block form, with `u = [η,𝖴x,𝖴y]` and `𝖦 = [𝖦x,𝖦y]`:
+
+```
+        ┌ A   B ┐            A = ∂R_phys/∂u   (hand Jacobian — present)
+   J =  │       │            M = ∂R_𝖦/∂𝖦     = the auxiliary mass matrix (present)
+        └ C   M ┘            B = ∂R_phys/∂𝖦   ⛔ OMITTED
+                             C = ∂R_𝖦/∂u      ⛔ OMITTED
+```
+
+Newton with `[A 0; 0 M]` is a block Jacobi iteration on the coupling, and its convergence rate is
+governed by `‖A⁻¹B M⁻¹C‖`. **Measured cost of that omission:**
+
+| pairing | Newton iterations/step |
+|---|---|
+| projected (3-field, hand Jacobian) | 6–8 |
+| **mixed Q2/Q1** | **26–30** |
+| **mixed Q3/Q2** | **64–88, oscillating** — and the run stalled at t = 8.0 s |
+
+⚠ **At Q3/Q2 this is not merely slow, it is disqualifying.** A step that terminates at the
+iteration cap is **not converged**, and rule 17b's licence to ignore an inexact Jacobian applies
+only to *converged* steps. A capped mixed run therefore has a Jacobian-dependent trajectory and
+cannot be compared against anything. Completing `C` (and `B`) is what makes the Q3/Q2 arm
+interpretable at all.
+
+## G.2 The derivation — both blocks are first-order and admissible
+
+The auxiliary row for `𝖦ₐ` (test function `Ψ`) is
+
+```
+R_𝖦ₐ = ∫ 𝖦ₐ·Ψ  +  ∫ 𝖲·(∂ₐΨ)  −  ∮ 𝖲 Ψ nₐ ,        𝖲 = ∇·(H𝗎)
+```
+
+so `C` is entirely the `𝖲`-dependence. Differentiating `𝖲` in the direction `(dη, d𝗎)` and using
+`H = h + η` (so `δH = dη`, `δ∇H = ∇dη`, the bed being data):
+
+> ```
+> δ𝖲 = ∇·(dη·𝗎) + ∇·(H·d𝗎)
+>     = dη(∇·𝗎) + ∇dη·𝗎  +  H(∇·d𝗎) + ∇H·d𝗎
+> ```
+
+⚠ **Every term is a product of FIRST derivatives.** `C` introduces no new admissibility problem —
+which is the point: `𝖲` was always first-order, and it is `∇𝖲` that was inadmissible, which is
+exactly why `𝖦` exists. In the code's stacked notation:
+
+```
+δ𝖲 = dη*DU + (∂ₓdη)*𝖴x + (∂ᵧdη)*𝖴y  +  H*(∂ₓd𝖴x + ∂ᵧd𝖴y) + (∂ₓH)*d𝖴x + (∂ᵧH)*d𝖴y
+```
+
+and then
+
+```
+C·(dη,d𝗎) :   ∫ δ𝖲·(∂ₓΨgx) − ∮ δ𝖲 Ψgx nₓ      (the 𝖦x row)
+              ∫ δ𝖲·(∂ᵧΨgy) − ∮ δ𝖲 Ψgy nᵧ      (the 𝖦y row)
+```
+
+`B` is simpler still. The Class-III blocks enter the physics rows through
+`GU = Σₐ 𝖦ₐ ⊗ 𝖴ₐ`, which is **linear in 𝖦**, so
+
+```
+δGU = d𝖦x ⊗ 𝖴x + d𝖦y ⊗ 𝖴y
+```
+
+and `B` is that object pushed through the same two reduced contributors the residual uses
+(`nlp_gradH_reduced_contrib`, `nlp_P_reduced_contrib`) with `SD` and `N4` held fixed — since
+neither depends on `𝖦`.
+
+⚠ **With `𝖥` active** (`c3_mask[2]`, the 7-field layout) the same applies with
+`δ𝖻 = ∇dη·𝗎 + ∇H·d𝗎` and `δN4 = Σₐ 𝖴ₐ ⊗ d𝖥ₐ`.
+
+## G.3 What is still omitted afterwards, deliberately
+
+`∂(\text{Class-III})/∂(η,𝗎)` — the dependence of `GU`, `SD`, `N4` on the *physics* unknowns through
+`𝖴ₐ`, `H` and `DU`. ⚠ **This is not a new approximation:** it is precisely the omission
+`jacobian_u` already makes on the projected path, where the `{1,2,4,5}` blocks are absent from the
+Jacobian entirely. Keeping it keeps the two paths' Jacobians comparable, which matters because the
+whole experiment is a projected-vs-mixed comparison. After G.2 the mixed Jacobian is **no less
+complete than the projected one**, which is the right target — not exactness for its own sake.
+
+## G.4 Implementation steps
+
+| # | change | file |
+|---|---|---|
+| G4.1 | `mixed_aux_jacobian` → `mixed_coupling_jacobian(prob, u, du, v, trian, dΩh, dΓ, nΓ)`: mass block **+ C + B** | `src/mixed.jl` |
+| G4.2 | `build_ode_operator_mixed`: pass the state `u` and the boundary measure into the Jacobian closure (currently it gets neither) | `src/mixed.jl` |
+| G4.3 | keep the old block-diagonal form behind `coupling=false`, so the two can be compared | `src/mixed.jl` |
+| G4.4 | expose `BALFEM_MIXED_COUPLING` (default **on**) | `run_flume_1d.jl` |
+
+⚠ **G4.2 is the structural change.** The present Jacobian closure is `jac(t,u,du,v)` and never sees
+`dΓ`/`nΓ`; `C` needs the boundary term, because the residual has one and an inconsistent Jacobian
+would reintroduce exactly the boundary defect §F measured at a relative 22.4.
+
+## G.5 How it will be tested, before any run
+
+1. **AD oracle** (the decisive one). Assemble the mixed Jacobian both ways — hand-coded with
+   coupling, and by AD of `global_residual_mixed` — and compare **block by block** on a prescribed
+   state, as `test_jacobians_ad.jl` does for the 3-field path. ⚠ Compare the `C` and `B` blocks
+   *individually*, not just the total: a total agreeing while two blocks are wrong with cancelling
+   errors is exactly what a summed comparison cannot see (rule 36).
+2. **Amplitude scaling.** The remaining gap (G.3) must vanish with amplitude at the documented
+   order 1.11–1.16; a gap that does not scale means something is wrong that is *not* the deliberate
+   omission (rule 5).
+3. **Newton count, the acceptance criterion.** On the Q2/Q1 baseline the count must fall from
+   26–30 toward the projected path's 6–8. ⚠ **If it does not fall, the implementation is wrong** —
+   that is the whole purpose of the change, and no stability result should be read from it until it
+   does.
+4. **Residual unchanged.** The converged solution must match the block-diagonal one to solver
+   tolerance: the Jacobian sets the path, not the root (rule 17b). This is the regression that
+   catches a `C` or `B` that is subtly wrong rather than merely inefficient.
+
+## G.6 Then, and only then
+
+Re-launch the Q3/Q2 arms of the §G.1 configurations — the same four set-ups the Q2/Q1 batch uses —
+at 100 periods.
+
+---
+
+# PART H — THE MIXED CAMPAIGN ON THE REAL FLUME (2026-09-22/23)
+
+*This is the run F.5 step 1 demanded: the mixed formulation on the production 60 m configuration,
+with a projected control for every arm in the same batch. It supersedes every stability number in
+Part F, which F.0 had already voided for harness defects.*
+
+## H.0 Design
+
+15 arms, `P1LFE-2`, `nl_pressure=:full`, **flat bed**, SDIRK_2_2, boundary-generated regular wave,
+`kd` = 5.5, 60 m flume, `ny` = 1 + walls, 100 periods requested, diagnostics every 0.2 s.
+A 2 × 4 factorial, each cell run **twice** — once projected, once mixed:
+
+* **pairing**: Q2/Q1 (`c3v_*`) and Q3/Q2 (`c3q_*`);
+* **cell**: `base` (nx=240, dt=0.04, A=0.10) · `amp` (A=0.15) · `dx` (nx=480) · `dt` (dt=0.02).
+
+Launchers `run/local/run_1dc3{v,q}_{base,amp,dx,dt}_{proj,mixed}.sh`; output `output/local_1d/c3*`.
+
+**Three prerequisites were discharged before launch, and each had previously invalidated a batch:**
+1. **diagnostics made mixed-aware** (F.3.1) — `build_run_diagnostics` now uses `_n_multifields(U)`
+   and `fill(zf, nf-3)` instead of a hard-coded 3-field list. Without this a mixed failure has a
+   time but **no place**, and location is the single most diagnostic quantity here;
+2. **the coupled Jacobian** `C = ∂R_𝖦/∂(η,u)` and `B = ∂R_phys/∂𝖦` (Part G), gated at 1.99e-11 and
+   2.08e-09 against a finite-difference oracle, and measured to restore Newton to 3.10 it/step
+   against the block-diagonal 7.17 and the projected 3.13;
+3. **`BALFEM_MIXED` verified LIVE** — the two arms differ from t = 0.4 s and print different DOF
+   counts (14406 for 3-field vs 31710 for 5-field at Q3/Q2). Rule 38h cost this branch a full
+   isolation batch once already.
+
+## H.1 Results — every arm
+
+Onset = last diagnostics row before Newton fails to converge (50-iteration cap, or NaN).
+
+| cell | pairing | free DOFs | **mixed** | **projected** | gain |
+|---|---|---|---|---|---|
+| `base` | Q2/Q1 | 14901 | ✅ **running > 97.4 s** | 12.60 (documented control) | **> 7.7×** |
+| `amp` A=0.15 | Q2/Q1 | 14901 | ✅ running > 93.2 s ⚠ watch | 5.8 | > 16× |
+| `dt` = 0.02 | Q2/Q1 | 14901 | ✅ running > 57.3 s | 21.2 | > 2.7× |
+| `dx` nx=480 | Q2/Q1 | 29781 | ⛔ **36.6** | 5.0 | 7.3× |
+| `base` | Q3/Q2 | 31710 | ⛔ **16.0** | 7.0 | 2.3× |
+| `amp` A=0.15 | Q3/Q2 | 31710 | ⛔ 9.6 | 4.6 | 2.1× |
+| `dt` = 0.02 | Q3/Q2 | 31710 | running 19.3 | 10.4 | > 1.9× |
+| `dx` nx=480 | Q3/Q2 | 63390 | ⛔ 6.4 (NaN) | 3.4 | 1.9× |
+
+**The Q2/Q1 `base` trace, windowed maxima over 10 s bins** — this is the headline object:
+
+```
+ t= 0- 10  eta 0.1129  u 0.4147      t= 50- 60  eta 0.1112  u 0.4043
+ t=10- 20  eta 0.1168  u 0.4358      t= 60- 70  eta 0.1112  u 0.4076
+ t=20- 30  eta 0.1168  u 0.4341      t= 70- 80  eta 0.1113  u 0.4097
+ t=30- 40  eta 0.1157  u 0.4277      t= 80- 90  eta 0.1114  u 0.4112
+ t=40- 50  eta 0.1112  u 0.4023      t= 90-100  eta 0.1115  u 0.4122
+```
+
+Flat to the fourth decimal from t = 40 on, Newton 5–6, i.e. **indistinguishable from the `:native`
+reference trace** (η 0.10494 → 0.10300, Newton 5.12) at the tier that previously died in 12.6 s.
+
+⚠ **All eleven failures share one signature**: `x_at_max` snapping back and **pinning at the inflow**
+(x = 0.50, 0.25, 0.12, 0.56) while `η` stays bounded and `u` runs away — the velocity-led mode of
+`CLAUDE.md` §5.2b/§5.6. **The mixed formulation changed *when*, never *what*.**
+
+⚠ **Diagnosing the deaths correctly required reading past the traceback.** All four logs end inside
+`paraview_collection` / `createpvd` (WriteVTK), which reads as a VTK failure; it is the enclosing
+`do`-block. The real line is higher up: `ERROR: LoadError: Newton solver did not converge after 50
+iterations` (or `NaN`). **A stack whose top frame is a writer does not mean the writer failed.**
+
+## H.1b ⚙ FINAL CAPTURE 2026-09-23 15:29 — AMPLITUDE SPLITS THE Q2/Q1 RESULT
+
+*Taken immediately before a forced suspend/restart. The four LIVE arms had not finished; all
+artifacts are on persistent disk (H.3b).*
+
+| arm | state | t | η_max | u_max | Newton |
+|---|---|---|---|---|---|
+| `c3v_base_mixed` | LIVE | **100.6 s (62.9 T)** | 0.1116 | 0.403 | 6 |
+| `c3v_amp_mixed` | LIVE | 95.2 s | **0.2300** | **1.133** | **15** |
+| `c3v_dt_mixed` | LIVE | 58.8 s | 0.1290 | 0.417 | 6 |
+| `c3q_dt_mixed` | LIVE | 19.7 s | 0.1312 | 0.501 | 8 |
+
+### ✅ `A` = 0.10 — a genuine post-fill stability result
+
+```
+ t= 40- 50  eta 0.1112  u 0.4023  NL 6      t= 80- 90  eta 0.1114  u 0.4112  NL 6
+ t= 50- 60  eta 0.1112  u 0.4043  NL 6      t= 90-100  eta 0.1115  u 0.4127  NL 6
+ t= 60- 70  eta 0.1112  u 0.4076  NL 6      t=100-110  eta 0.1116  u 0.4082  NL 6
+ t= 70- 80  eta 0.1113  u 0.4097  NL 6
+```
+
+Flat in the **fourth decimal** over seven consecutive windows, Newton **constant at 6**, entirely
+post-fill (the flume fills in ~36 s, rule 14). This satisfies rule 12c's bar in a way no earlier
+`:full` run has: it is stability, not an unexpired clock.
+
+### ⛔ `A` = 0.15 — diverges at ~87 s, same mode
+
+```
+ t= 60- 70  eta 0.1865  u 0.6949  NL  8
+ t= 70- 80  eta 0.2113  u 0.7379  NL 10
+ t= 80- 90  eta 0.2072  u 0.8514  NL  8
+ t= 90-100  eta 0.2780  u 1.1443  NL 15    <- eta +34%, u +34%, Newton ~2x in one window
+```
+
+⚠ **THE CONCLUSION: THE MIXED FORMULATION *DELAYS* THE INSTABILITY, IT DOES NOT *REMOVE* IT.**
+At `A` = 0.10 the delay exceeds the observation window and the run looks cured. At `A` = 0.15 the
+same construction buys **≈16×** over its projected control (5.8 s → ~87 s) and then fails with the
+identical velocity-led signature. **A pass at one amplitude is not a pass.**
+
+⚠ **And note how nearly this was missed.** `c3v_base_mixed` alone — the single most quotable run on
+the branch — would have produced a confident *"the projection was the cause, `:full` is fixed"*. It
+took a **same-batch amplitude twin** to see that the mode was merely late. This is rule 14c and rule
+38c's in-batch-control discipline paying out for the third time on this branch.
+
+⚠ **This amplitude sensitivity is NOT old rule 13.** That cap (`A_wave ≤ 0.001`) was an equal-order
+artefact, lifted 2026-09-06 when Taylor-Hood removed an inf-sup failure. This is measured **on**
+Taylor-Hood at 100× that cap, in the Class-III path, and it is a **third independent axis** beside
+pairing and `dx`: both `amp` arms die, each earlier than its `base` twin.
+
+⚠ **Both `dt` arms were showing early warning at capture** — Newton maxima creeping 4 → 6
+(`c3v_dt_mixed`) and 4 → 12 with `u` 0.434 → 0.707 (`c3q_dt_mixed`). Neither had failed; neither is
+a pass.
+
+⚠ **THESE FOUR ARMS WERE TERMINATED BY AN OPERATOR REBOOT AT 2026-09-23 15:38, NOT BY DIVERGENCE.**
+A frozen GNOME session forced a restart; suspend was tried first and failed. Final states:
+`c3v_base_mixed` **t = 101.4 s (63.4 T), η 0.1054, u 0.411, Newton 6 — still flat and healthy**;
+`c3v_amp_mixed` t = 95.6 s (diverging, η 0.211, u 0.849, Newton 14); `c3v_dt_mixed` t = 59.2 s;
+`c3q_dt_mixed` t = 19.8 s. **Do NOT read `c3v_base_mixed` stopping at 101.4 s as a failure** — its
+diagnostics simply end where the machine went down. It never reached the 160 s / 100-period target,
+so its result is a **lower bound**: ≥63.4 periods stable, not a completed 100-period run. Re-running
+it is the cheapest way to convert that bound into the regression-gate reference trace §5.7 item 4
+needs. All artifacts survived (`output/local_1d/<arm>/` + `_logs_2026-09-23/`).
+
+## H.2 The four hypotheses and their verdicts
+
+### H1 — "the frozen projection is what destabilises `:full`." → ✅ PARTIALLY CONFIRMED — **a delay, not a cure**
+
+Mixed outlives projected in **8/8** matched pairs, by 1.9× to >16×, and produces the first
+long-running `:full` configuration in the project's history (`A`=0.10, Q2/Q1: >100 s flat). The
+projection is a large, real contributor. **It is not the whole cause** — H2–H4 survive its removal —
+**and it is not sufficient even at Q2/Q1**: the `A`=0.15 twin diverged at ~87 s (H.1b).
+
+### H2 — "Q3/Q2 will help, because Q2/Q1 under-represents Class III." → ⛔ REFUTED, SIGN REVERSED
+
+This was option 0 of `OPEN_ISSUES.md` §0c and step (0) of `CLAUDE.md` §5.7 — *"free, do it first"*.
+The reasoning was sound: at `η ∈ Q1`, `∂²η ≡ 0` **identically** in 1-D, so part of the Class-III
+operator never contributes and Q2/Q1 was never an honest test.
+
+**It is an honest test, and it fails harder.** All four Q3/Q2 arms die earlier than their Q2/Q1
+twins — 16.0 vs >97.4, 9.6 vs >93.2, 6.4 vs 36.6, `dt` tracking the same way.
+
+⚠ **The mechanism is NOT "more nonlinear effects."** The residual is byte-for-byte the same operator
+at both pairings — same `:full`, same eight `𝓝` components. What changes is **representable
+content**: with `η ∈ Q2`, `∇η` is piecewise **linear** rather than piecewise constant, so the
+`∇η·u` half of `𝖲 = ∇·(Hu)` — the thing `𝖦` approximates the gradient of — becomes a real object for
+the first time. (Note the mixed form never builds `∂²η` explicitly; the content still enters, through
+`𝖲`.) **Consequence: the Q2/Q1 pass is a pass on a partially masked operator and must always be
+quoted as such.** Generalised as `CLAUDE.md` rule 2d.
+
+### H3 — "the Q3/Q2 penalty is just resolution." → ⛔ NOT PURELY, on a matched-DOF pair
+
+Q3 on the same cells is 2.1× the DOFs, and rule 38b says more resolution advances onset here. The
+batch contains an unplanned but decisive near-matched pair:
+
+| run | pairing | nx | dx | DOFs | onset |
+|---|---|---|---|---|---|
+| `c3v_dx_mixed` | Q2/Q1 | 480 | 0.125 | 29781 | 36.6 s |
+| `c3q_base_mixed` | Q3/Q2 | 240 | 0.25 | 31710 | **16.0 s** |
+
+**At matched problem size, order still costs 2.3×.** ⚠ **Partial isolation only** — DOFs match but
+`dx` does not (0.125 vs 0.25), so the grid scale, where a `λ ≈ 2–3·dx` mode would live, is free. The
+clean run is **Q3/Q2 at nx = 120**, which matches `dx` = 0.5 against nothing yet run, or better, a
+Q3/Q2 ladder read against the Q2/Q1 one at equal `dx`. Not done.
+
+### H4 — "the `dx` signature is the broken-Hessian recovery error." → ⛔ REFUTED. **The key result.**
+
+§5.2c attributed the `dx` sign to **recovering `∂²` of a `C⁰` field**: the exact distributional `∂²u`
+is `{∂²u}` cell-wise **plus a Dirac layer on the skeleton** weighted by `[∂ₙu]`, and cell quadrature
+sees only the first half — an error that does not improve as `h → 0`.
+
+**The mixed formulation cannot commit that error.** `𝖦` is a genuine FE unknown defined by
+`∫𝖦·Ψ = −∫𝖲 ∇·Ψ + ∮𝖲Ψ·n`; nothing is differentiated twice anywhere in the path.
+
+**The `dx` signature survived it unchanged** — `c3v_dx_mixed` (nx=480) died at 36.6 s while
+`c3v_base_mixed` (nx=240) passed 97.4 s: halving `dx` still advances onset by ≥2.7×.
+
+⚠ **THIS IS A DEDUCTION FROM TWO RUNS, NOT A MEASUREMENT OF A MECHANISM.** At least one of the
+following holds and they are **not yet separated**:
+
+1. the `dx` signature was **never** the recovery error — it was something else all along;
+2. `𝖦`'s own FE approximation of `∇𝖲` carries an `h`-dependent error of the same sign (it is an
+   `L²`-type projection onto a finite space, so it has its own consistency error);
+3. there is a genuine **grid-scale instability in the coupled `(η,u,𝖦)` system** — a pairing problem
+   in the new `𝖦↔u` block, not in `η↔u`.
+
+**Reading (3) has concrete support in the code:** `Vaux` is built from `reffe_U`
+(`src/horizontal.jl:59`), so **`𝖦` sits in the velocity space at equal order with `u`** at both
+pairings. `𝖦`'s own diagonal block is a Gram matrix and therefore coercive, so this is *not* the
+classic rule-2b inf-sup failure — but the **coupled** pairing has never been analysed, and the
+obvious probe (`𝖦` one order below `u`) has still never been run. It was already open as F.3.2.
+
+⚠ **Immediate consequence for queued work: `C⁰`-IP loses its stated rationale.** Option 3 of
+`OPEN_ISSUES.md` §0c is *"`C⁰` interior penalty if the `dx` signature survives 0–2"*. It survived —
+but `C⁰`-IP exists to make a **broken `∂²` consistent**, and the surviving signature was measured
+where there is no `∂²` to break. **Do not launch it on the old justification.** Generalised as
+`CLAUDE.md` rule 39b.
+
+### ⚠ H5 — "is Class III implicated at Q3/Q2 at all?" → **NOT TESTED. RULE 14c GAP.**
+
+**Every Q3/Q2 arm in this batch is `BALFEM_NL_PRESSURE=full`, and the only `:native` runs on record
+are Q2/Q1.** So the batch cannot distinguish:
+
+* Class III is the carrier and Q3/Q2 is merely where it is finally represented → a `:native` Q3/Q2
+  arm survives 100 periods; from
+* Q3/Q2 is unstable here for a reason with nothing to do with Class III → `:native` dies too, and
+  §0c, §5.7 item 0 and this whole branch are aimed at the wrong object.
+
+**This is exactly the failure mode F.0 recorded three days earlier** — the harness batch whose
+`:native` control was run last and died, voiding everything. *A crash is not evidence until its
+control runs*, and the control is again the thing not run. **It is the single highest-value run
+available and it is cheap.**
+
+## H.3 Caveats that must travel with these numbers
+
+* ⚠ **`c3v_amp_mixed` is UNDER WATCH, not a pass.** Its `u_max` window maxima run
+  **0.695 → 0.738 → 0.851 → 0.951** over t = 60–100 with `η` bounded at 0.205–0.211 — the onset of
+  the velocity-led signature. It may yet join the failures.
+* ⚠ **"Running" is not "stable" (rules 12c, 14).** The flume fills in ~36 s; only post-fill behaviour
+  counts, and only ≥100 periods earns the word. `c3v_base_mixed` at 97.4 s is 61 periods — good, not
+  finished. ⚠ `c3v_dx_mixed`'s 36.6 s onset lands **exactly at fill completion**, so it deserves the
+  rule-14 caveat even though the inflow pinning and η 0.113 → 0.153 make it a real divergence.
+* ⚠ **Cost makes the Q3/Q2 tier impractical as built.** Those arms quoted ETAs of **186–242 h** for
+  100 periods at ~31.7k DOFs with an AD-coupled 5-field Jacobian. None could have finished
+  regardless of stability. Hand Jacobians for the auxiliary rows (F.3.3) are now a prerequisite for
+  any Q3/Q2 stability *claim*, not an optimisation.
+* ⚠ **Still a `p = 1` vertical basis, 1-DH, flat bed, one integrator.** Nothing here speaks to the
+  variable-bed lee-shoulder mode (§0d), which is a separate defect.
+
+## H.3b Where the outputs live, and the one way to lose them
+
+Every arm directory under `output/local_1d/` holds **`diagnostics.csv`** (time series),
+**`sol_t_*.vtu` + `solution.pvd`** (fields at 0.2 s), and **`run.log`** (config banner, per-step
+Newton trace, crash reason). Index: `output/local_1d/README_c3_mixed_campaign.md`.
+
+⚠ **`output/` IS GITIGNORED — none of it survives a fresh clone**, which is why every number that
+matters is transcribed into this file and `CLAUDE.md` §5.2e rather than left in the CSVs.
+
+⚠ **AND THE LOGS WERE ONE REBOOT FROM GONE.** The solvers write stdout into the session scratchpad
+under **`/tmp`**, and this machine's `tmpfiles.d` carries **`D /tmp`** — *emptied on every boot*.
+They were copied onto persistent disk on 2026-09-23 (`<arm>/run.log`, plus all 45 session logs in
+`output/local_1d/_logs_2026-09-23/`, which is the only copy of the isolation arms `iso_gs`/`iso_gb`,
+the `c3_0`/`c3_2` factorial and the unit gates). **Any future batch should redirect stdout to
+`output/…` directly rather than to the scratchpad.**
+
+⚠ **The `diagnostics.csv` does NOT record why a run stopped** — it simply ends. The reason is only in
+`run.log`, and its traceback is misleading: every one terminates inside `paraview_collection` /
+`createpvd`, which is the enclosing `do`-block, **not** a VTK failure. Use
+`grep -m1 '^ERROR' run.log`.
+
+⚠ **The Q2/Q1 `base` projected control is not in this batch** — it is the earlier reference run
+`c3_0_Q2Q1_lagged` (t = 12.600000, `u_max` = 2.50462190), which is what every "12.6 s" claim cites.
+
+## H.4 Next steps, ordered by what would change a conclusion
+
+1. **`:native` at Q3/Q2** — closes H5, the rule-14c gap. Gates everything below it. Cheap.
+2. **`𝖦` one order below `u`** — the only probe of reading (3) of H4; `Vaux` currently uses
+   `reffe_U`. Open since F.3.2 and never run.
+3. **Q3/Q2 at nx = 120** — completes H3's isolation by matching `dx` rather than only DOF count.
+4. **Hand Jacobians for the auxiliary rows** — makes any Q3/Q2 claim affordable at all (H.3).
+5. **Let `c3v_base_mixed` reach 100 periods** and re-read; it is the only candidate reference trace
+   for a `:full` regression gate, and §5.7 item 4 needs one.
+6. ⛔ **`C⁰`-IP is NOT next** — H4 removed its rationale. Re-derive a justification before spending
+   on it.

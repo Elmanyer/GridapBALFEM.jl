@@ -297,6 +297,35 @@ function nlp_class3_reduced_fields(Ux, Uy, S, DU, piS, pib)
     return GU, SD, N4
 end
 
+
+"""
+    _c3_sum(prob, W, T2, T4, GU, SD, N4)
+
+Assemble the Class-III contraction for ONE residual block, honouring `prob.c3_mask`.
+
+The two mask bits are the two irreducible objects the algebraic reduction leaves
+(NEW_TREATMENT.md §A.2):
+
+  [1] ∇𝖲 family — `W ⊙ GU` (components {1,2,5} collapsed) **plus** `T² ⊙ SD`, the
+      first-order remainder `s_k ∇·u_j` that 𝓝² contributes. SD travels with bit 1
+      because it IS part of 𝓝²; splitting it off would make neither arm a clean subset
+      of the operator.
+  [2] ∇𝖻 — `T⁴ ⊙ N4`, component 4, the only term needing the second object.
+
+⚠ Callers must check `any(prob.c3_mask)` first: with both bits off this has nothing to
+return, and an empty Gridap contribution is not a thing. `global_residual` does that.
+"""
+function _c3_sum(prob::BALFEMProblem, W, T2, T4, GU, SD, N4)
+    use_gs, use_gb = prob.c3_mask
+    if use_gs && use_gb
+        return alg_dc3(W, GU) + alg_dc3(T2, SD) + alg_dc3(T4, N4)
+    elseif use_gs
+        return alg_dc3(W, GU) + alg_dc3(T2, SD)
+    else
+        return alg_dc3(T4, N4)
+    end
+end
+
 """
     nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy, GU, SD, N4, dΩh)
 
@@ -305,7 +334,7 @@ instead of four separate contractions. EXACT — see NEW_TREATMENT.md §A.2.
 """
 function nlp_gradH_reduced_contrib(prob::BALFEMProblem, H, dHx, dHy,
                                    Wx, Wy, GU, SD, N4, dΩh)
-    NK = alg_dc3(prob.WK3, GU) + alg_dc3(prob.K3[2], SD) + alg_dc3(prob.K3[4], N4)
+    NK = _c3_sum(prob, prob.WK3, prob.K3[2], prob.K3[4], GU, SD, N4)
     return ∫( (-1.0)*H*( dHx*(Wx ⋅ NK) + dHy*(Wy ⋅ NK) ) ) * dΩh
 end
 
@@ -315,7 +344,7 @@ end
 Leading-pressure (𝓟) part of c ∈ {1,2,4,5}, reduced. EXACT — NEW_TREATMENT.md §A.2.
 """
 function nlp_P_reduced_contrib(prob::BALFEMProblem, H, DW, GU, SD, N4, dΩh)
-    NP = alg_dc3(prob.WP3, GU) + alg_dc3(prob.P3[2], SD) + alg_dc3(prob.P3[4], N4)
+    NP = _c3_sum(prob, prob.WP3, prob.P3[2], prob.P3[4], GU, SD, N4)
     return ∫( (-1.0)*(H*H)*(NP ⋅ DW) ) * dΩh
 end
 
@@ -364,6 +393,11 @@ function nlp_plain_iterate(u)
     end
 end
 
+"Diagnostic counter: how many times the in-loop refresh has actually fired.
+Reset it before a run and read it after to check WHEN the refresh happens
+(expect ~ Newton iterations x stages per step, not once per step)."
+const NLP_REFRESH_COUNT = Ref(0)
+
 """
     refresh_nlp_state!(prob, ctx, S, b) -> Float64
 
@@ -377,11 +411,6 @@ same cost per solve — only the state it is evaluated at differs. See NEW_TREAT
 for why removing the lag costs no unknowns: the projection is static condensation of the
 mixed formulation, and the freezing was only ever a decoupling convenience.
 """
-"Diagnostic counter: how many times the in-loop refresh has actually fired.
-Reset it before a run and read it after to check WHEN the refresh happens
-(expect ~ Newton iterations x stages per step, not once per step)."
-const NLP_REFRESH_COUNT = Ref(0)
-
 function refresh_nlp_state!(prob::BALFEMProblem, ctx, S, b)
     NLP_REFRESH_COUNT[] += 1
     rS = allocate_in_range(ctx.Mmass); fill!(rS, zero(eltype(rS)))
