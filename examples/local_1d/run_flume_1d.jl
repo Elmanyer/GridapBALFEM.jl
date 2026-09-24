@@ -279,6 +279,7 @@ solver_sym() === :theta && push!(_extra, "theta")
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
 genv_b("BALFEM_NLP_INLOOP", 0) && push!(_extra, "inloop")
 genv_b("BALFEM_MIXED", 0) && push!(_extra, "mixed")
+haskey(ENV, "BALFEM_P_AUX") && push!(_extra, "aux"*ENV["BALFEM_P_AUX"])
 let m = lowercase(genv("BALFEM_C3_MASK","both")); m == "both" || push!(_extra, "c3"*m) end
 genv_i("BALFEM_QUAD_EXTRA", 0) != 0 && push!(_extra, "q$(genv_i("BALFEM_QUAD_EXTRA",0))")
 
@@ -336,6 +337,9 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           #  (5 fields for grad-S only, 7 with grad-b). Projection-free and lag-free, but
           #  AD Jacobians and sequential only -- a DIAGNOSTIC, far slower per step.
           mixed=genv_b("BALFEM_MIXED", 0),
+          #  BALFEM_P_AUX sets the FE order of the mixed auxiliary unknowns (𝖦, 𝖥).
+          #  Unset → the velocity order (every mixed run before 2026-09-23).
+          p_aux=(haskey(ENV, "BALFEM_P_AUX") ? genv_i("BALFEM_P_AUX", feord) : nothing),
           #  BALFEM_C3_MASK isolates WHICH Class-III object is assembled, to answer
           #  which of the two carries the :full instability:
           #    "both" (default) = ordinary :full

@@ -371,7 +371,7 @@ function setup_and_run_distributed(;
                          nl_iter, nl_tol),
                 @sprintf("GMRES(%d) restarted + %s preconditioner | max iters = %d | rtol = %.1e, atol = 1.0e-14",
                          krylov_m, string(precond), ls_maxiter, ls_rtol);
-                solver_type=solver_type, theta=theta, dt=dt, t0=0.0, T_final=T_final,
+                solver_type=solver_type, theta=theta, tableau=tableau, dt=dt, t0=0.0, T_final=T_final,
                 print_every=print_every, print_dt=print_dt,
                 check_every=check_every, check_tol=check_tol,
                 monitor=monitor, diag_every=max(diag_n, 0), eta_ref=eta_ref_v,

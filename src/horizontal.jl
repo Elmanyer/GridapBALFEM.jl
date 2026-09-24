@@ -126,7 +126,8 @@ function build_fe_spaces(model, p_u::Int, Nσ::Int;
                              y_wall_bc::Symbol = :wall, x_wall_bc::Bool = false,
                              inflow = nothing,
                              p_eta::Int = p_u - 1,
-                          n_aux::Int = 0)
+                          n_aux::Int = 0,
+                          p_aux::Int = p_u)
     #  THE gate. Every FE space in this solver is built here, so validating the pairing
     #  at this one point makes a non-Taylor-Hood run impossible rather than merely
     #  discouraged. Default p_eta = p_u − 1 is Taylor-Hood by construction.
@@ -222,9 +223,17 @@ function build_fe_spaces(model, p_u::Int, Nσ::Int;
     #  They also carry no time derivative: the auxiliary rows are ALGEBRAIC constraints,
     #  so ∂R/∂u̇ has zero rows there and the system is an index-1 DAE. The stage system
     #  stays non-singular because ∂R_aux/∂aux is the auxiliary mass matrix.
+    #  ⚠ ORDER OF THE AUXILIARY SPACE: `p_aux`, DEFAULT `p_u` (the velocity order — every
+    #  mixed run before 2026-09-23 used it, so the default is bit-identical). 𝖦 has its own
+    #  Gram block, so no Stokes-type inf-sup condition applies to this choice; lowering it
+    #  to p_u−1 is the NEW_TREATMENT.md F.3.2 probe (Sørensen et al. 2004 put their
+    #  Boussinesq auxiliary in the surface-elevation space). It costs no asymptotic order:
+    #  ∇𝖲 is a second derivative of 𝗎 ∈ Q_p, best approximated at O(h^{p−1}) anyway.
     if n_aux > 0
+        p_aux ≥ 1 || error("build_fe_spaces: p_aux = $p_aux must be ≥ 1 (continuous aux space)")
+        reffe_aux = p_aux == p_u ? reffe_U : ReferenceFE(lagrangian, VectorValue{Nσ,Float64}, p_aux)
         for _ in 1:n_aux
-            Vaux = FESpace(model, reffe_U; conformity=:H1)
+            Vaux = FESpace(model, reffe_aux; conformity=:H1)
             push!(Vspaces, Vaux)
             push!(Uspaces, TrialFESpace(Vaux))
         end

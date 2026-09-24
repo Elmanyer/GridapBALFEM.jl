@@ -630,6 +630,9 @@ function setup_and_run(;
     relax_bc     :: Bool    = false,      # relaxation (generation/absorption) zone at the inflow
     relax_width  :: Float64 = 0.0,        # relaxation-zone width [m]; 0 → one peak wavelength
     # ---- Solver / diagnostics ------------------------------------------------
+    p_aux        :: Union{Int,Nothing} = nothing,  # ⚠ ORDER OF THE MIXED AUXILIARY SPACE (𝖦, 𝖥).
+                                          #   nothing → p_u (the velocity order; every mixed run
+                                          #   before 2026-09-23). Only meaningful with mixed=true.
     mixed_coupling :: Bool  = true,       # ⚠ include the C = dR_G/d(eta,u) and B = dR_phys/dG
                                           #   coupling blocks in the mixed Jacobian. Default ON;
                                           #   false reproduces the old block-diagonal form, kept
@@ -829,13 +832,15 @@ function setup_and_run(;
                                 x_wall_bc=x_wall_bc,    # solid wall BC on x-edges
                                 inflow=inflow,          # inflow BC data (η, 𝖴x, 𝖴y) if provided
                                 n_aux=n_aux,            # mixed-formulation auxiliary unknowns
+                                p_aux=(p_aux === nothing ? p_u : p_aux),  # their FE order
                                 p_eta=pe)               # surface FE order (see the kwarg note)
 
     #  ⚠ THE BANNER MUST NAME THE JACOBIAN ACTUALLY BUILT. This line reported
     #  "block-diagonal" unconditionally once `mixed_coupling` was added, i.e. it described a
     #  configuration the run was not using. A log that misreports its own settings is worse
     #  than no log -- it is how a wrong configuration survives review (rule 12b).
-    mixed && println("  Class-III: MIXED / PROJECTION-FREE — $(n_aux) auxiliary field(s), " *
+    mixed && println("  Class-III: MIXED / PROJECTION-FREE — $(n_aux) auxiliary field(s) " *
+                     "in Q$(p_aux === nothing ? p_u : p_aux), " *
                      (use_ad         ? "exact AD Jacobian (SLOW)" :
                       mixed_coupling ? "quasi-Newton + C/B coupling blocks" :
                                        "quasi-Newton (block-diagonal, LEGACY)"))
@@ -986,7 +991,7 @@ function setup_and_run(;
         @sprintf("Newton (NLsolve, exact hand Jacobians) | max iters = %d | ftol (‖r‖∞) = %.1e",
                  nl_iter, nl_tol),
         "LU direct factorisation (sequential)";
-        solver_type=solver_type, theta=theta, dt=dt, t0=0.0, T_final=T_final,
+        solver_type=solver_type, theta=theta, tableau=tableau, dt=dt, t0=0.0, T_final=T_final,
         print_every=print_every, check_every=check_every, check_tol=check_tol,
         monitor=monitor, diag_every=max(diag_n, 0), eta_ref=eta_ref_v,
         div_limit=rundiag === nothing ? NaN : rundiag.div_limit)
