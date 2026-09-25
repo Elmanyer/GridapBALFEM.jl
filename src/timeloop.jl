@@ -169,6 +169,12 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                            check_tol  :: Float64 = 1e-8,
                            rundiag               = nothing,   # RunDiagnostics
                            diag_every :: Int     = 0,
+                           vtk_nsubcells :: Int  = -1,        # >0: sample each cell on an nsubcells
+                                                              #   sub-grid (Gridap `nsubcells`). Default
+                                                              #   -1 = vertices only (unchanged). ⚠ Vertex
+                                                              #   sampling HIDES every sub-element mode of
+                                                              #   Q2/Q3 — the band a grid-scale instability
+                                                              #   lives in; spectral analyses need > 0.
                            final_uh              = nothing)   # optional Ref: receives the last
                                                               #   solution FEFunction. Non-breaking
                                                               #   out-parameter — the MMS driver needs
@@ -279,7 +285,10 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                                  FEFunction(space_at(trial_space, t_n - dt), prev_vals)
                         append!(fields, extra_field_cellfields(u_n, u_prev, dt, recon, trian))
                     end
-                    pvd[t_n] = createvtk(trian, fname; cellfields=fields, append=false)
+                    pvd[t_n] = vtk_nsubcells > 0 ?
+                        createvtk(trian, fname; cellfields=fields, append=false,
+                                  nsubcells=vtk_nsubcells) :
+                        createvtk(trian, fname; cellfields=fields, append=false)
                     push!(pvd_entries, (t_n, "sol_t_$(tn_str).vtu"))
                     write_pvd_index(joinpath(output_dir, "solution.pvd"), pvd_entries)
                 end

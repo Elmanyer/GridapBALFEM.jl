@@ -269,3 +269,75 @@ end
 #     `:native` at the same settings. If they agree, the Class-III blocks are not
 #     contributing and any stability is meaningless — that is exactly how the in-loop
 #     attempt failed (NEW_TREATMENT.md §E.3), and rule 38d exists for it.
+
+# ---------------------------------------------------------------
+#  CONSISTENT auxiliary fields at a NON-REST initial state
+# ---------------------------------------------------------------
+"""
+    mixed_consistent_ic(u0, prob, U, trian, dΩh; bdeg=10) → (u0c, rel_aux_residual)
+
+Return `u0` with its auxiliary fields REPLACED by the solution of their own weak
+constraints at the physical state `(η, 𝖴x, 𝖴y)` of `u0`:
+
+    ∫ 𝖦ₐ·Ψ  =  −∫ 𝖲·∂ₐΨ + ∮ 𝖲·Ψ nₐ          (𝖲 = ∇·(H𝗎))
+    ∫ 𝖥ₐ·Ψ  =  −∫ 𝖻·∂ₐΨ + ∮ 𝖻·Ψ nₐ          (𝖻 = 𝗎·∇H, only on the 7-field layout)
+
+i.e. exactly the auxiliary rows of `global_residual_mixed`, solved field by field
+against the auxiliary Gram matrix. ⚠ WHY THIS EXISTS: `make_initial_conditions_mixed`
+zeroes the auxiliary fields, which satisfies the constraint ONLY from rest (𝖲 = 0). Any
+hot start — a periodic-domain run initialised with a wave — was otherwise inconsistent
+at t₀ by construction (NEW_TREATMENT.md F.3.4), and the index-1 DAE would have to
+absorb an O(1) constraint violation in its first step.
+
+`rel_aux_residual` is the auxiliary block of the ASSEMBLED mixed residual at the returned
+state, relative to its value with the auxiliary fields zeroed — the gate that the
+field-by-field solve reproduces the residual the solver actually integrates (≈ 1e-12).
+"""
+function mixed_consistent_ic(u0, prob::BALFEMProblem, U, trian, dΩh; bdeg::Int = 10)
+    nf    = length(U.spaces)
+    naux  = nf - 3
+    naux == mixed_n_aux(prob) ||
+        error("mixed_consistent_ic: $(nf) fields but c3_mask=$(prob.c3_mask) needs " *
+              "$(3 + mixed_n_aux(prob))")
+    η, Ux, Uy = u0[1], u0[2], u0[3]
+    d_cf = CellField(prob.h_bathy, trian)
+    H    = d_cf + η
+    dhx  = prob.flat_bed ? 0.0 * d_cf : alg_dx(d_cf)
+    dhy  = prob.flat_bed ? 0.0 * d_cf : alg_dy(d_cf)
+    dHx  = dhx + alg_dx(η)
+    dHy  = dhy + alg_dy(η)
+    bf   = dHx * Ux + dHy * Uy                     # 𝖻 = 𝗎·∇H
+    S    = H * (alg_dx(Ux) + alg_dy(Uy)) + bf      # 𝖲 = ∇·(H𝗎)
+    Γ    = BoundaryTriangulation(get_background_model(trian))
+    dΓ   = Measure(Γ, bdeg)
+    nΓ   = get_normal_vector(Γ)
+    nx   = Operation(n -> n ⋅ Ex)(nΓ)
+    ny   = Operation(n -> n ⋅ Ey)(nΓ)
+
+    #  (source field, derivative direction) for each auxiliary field, in layout order
+    srcs = naux == 2 ? [(S, :x), (S, :y)] : [(S, :x), (S, :y), (bf, :x), (bf, :y)]
+    nfree = [num_free_dofs(U.spaces[i]) for i in 1:nf]
+    offs  = cumsum([0; nfree])
+    vals  = copy(get_free_dof_values(u0))
+    for (ia, (src, dir)) in enumerate(srcs)
+        i   = 3 + ia
+        Ua  = U.spaces[i]
+        Va  = Ua isa TrialFESpace ? Ua.space : Ua
+        dψ  = dir === :x ? alg_dx : alg_dy
+        na  = dir === :x ? nx : ny
+        A   = assemble_matrix((g, ψ) -> ∫(g ⋅ ψ) * dΩh, Ua, Va)
+        b   = assemble_vector(ψ -> ∫(-(src ⋅ dψ(ψ))) * dΩh + ∫((src ⋅ ψ) * na) * dΓ, Va)
+        vals[(offs[i] + 1):offs[i + 1]] .= A \ b
+    end
+    u0c = FEFunction(U, vals)
+
+    #  gate: the assembled auxiliary rows of the REAL mixed residual must now vanish
+    V   = MultiFieldFESpace([Ua isa TrialFESpace ? Ua.space : Ua for Ua in U.spaces])
+    ia  = (offs[4] + 1):offs[end]
+    rv(uh) = assemble_vector(v -> global_residual_mixed(0.0, TransientCellField(uh, (uh,)), v,
+                                                        prob, trian, dΩh, dΓ, nΓ), V)[ia]
+    zv  = copy(get_free_dof_values(u0)); zv[ia] .= 0.0
+    r0  = norm(rv(FEFunction(U, zv)))
+    rel = norm(rv(u0c)) / max(r0, 1e-300)
+    return u0c, rel
+end

@@ -619,6 +619,11 @@ function setup_and_run(;
                                           #   true = flat bed (∇h≡0; every ∇h-term dropped, ∇η-terms kept)
     h_bathy                 = nothing,    # x → d(x): variable bathymetry (overrides h_val)
     eta0_func               = nothing,    # x → η₀(x): initial free surface (IC release: set x_wall_bc=true)
+    ux0_func                = nothing,    # x → 𝖴x₀(x) (VectorValue{Nσ}): initial stacked x-velocity
+    vtk_nsubcells :: Int    = -1,         # >0: VTK samples each cell on a sub-grid (see run_time_loop)
+    x_periodic   :: Bool    = false,      # ⚠ x-PERIODIC closed flume: no inflow, no sponge, no source,
+                                          #   no relaxation — the INTERIOR discretisation alone
+                                          #   (examples/local_1d/run_periodic_1d.jl). Needs an IC.
     # ---- Dirichlet boundary wave generation (waveinput.jl) --------------------
     wave_gen     :: Symbol  = :auto,      # :inner_res | :bc_gen  (:auto infers from wave_bc)
     wave_bc                 = nothing,    # nothing | :regular | WaveInput | WaveSpec AiryState
@@ -712,7 +717,20 @@ function setup_and_run(;
 
     # --- STAGE 2 SETUP: HORIZONTAL MESH + INTEGRATION MEASURE ----------------- 
     # `y_periodic` glues the top/bottom edges when y_wall_bc == :periodic.
-    model, trian = build_horizontal_model(domain, partition; y_periodic=y_periodic)
+    #  ⚠ x-PERIODIC: the whole point is that NOTHING but the interior operator acts, so every
+    #  boundary mechanism is refused rather than silently kept (rule 38h: a run that is not
+    #  the run it says it is costs more than one that errors).
+    if x_periodic
+        wave_bc === nothing ||
+            error("setup_and_run: x_periodic=true has no inflow boundary; wave_bc must be nothing")
+        (sponge_wL > 0 || sponge_wR > 0) &&
+            error("setup_and_run: x_periodic=true must not carry x-sponges (got wL=$sponge_wL, wR=$sponge_wR)")
+        x_wall_bc && error("setup_and_run: x_periodic=true is incompatible with x_wall_bc=true")
+        (isnothing(eta0_func) && isnothing(ux0_func)) &&
+            error("setup_and_run: x_periodic=true has no forcing; supply eta0_func/ux0_func")
+    end
+    model, trian = build_horizontal_model(domain, partition; y_periodic=y_periodic,
+                                          x_periodic=x_periodic)
     # quadrature degree = 2·p_u+2 integrates the nonlinear (product) terms exactly enough.
     dΩh = Measure(trian, 2*max(p_u, p_eta) + 2 + quad_extra)
 
@@ -736,7 +754,7 @@ function setup_and_run(;
     # boundary; the interior wavemaker is disabled below. `wi` stays nothing for
     # the internal-wavemaker path.
     wg = resolve_wave_gen(wave_gen, wave_bc)
-    @printf("  Wave generation: %s\n", string(wg))
+    @printf("  Wave generation: %s\n", x_periodic ? "NONE (x-periodic, unforced; IC only)" : string(wg))
     wi = nothing
     if wg === :bc_gen
         bc_side in (:left, :right) ||
@@ -854,8 +872,8 @@ function setup_and_run(;
 
     # Internal source S(x,t): none when generating at a boundary; a line source
     # (plane waves) when y_wm is nothing; a point source (ring waves) otherwise.
-    if wi !== nothing
-        wm = (x, t) -> 0.0  # Dirichlet generation disables the interior wavemaker
+    if wi !== nothing || x_periodic
+        wm = (x, t) -> 0.0  # Dirichlet generation (or the unforced periodic flume) disables the interior wavemaker
     elseif isnothing(y_wm)
         wm = make_wavemaker_line(x_wm, A_wave, T_wave, k_wave)  # line source (plane waves)
     else
@@ -942,10 +960,18 @@ function setup_and_run(;
             uy0_func  = x -> inc.uy(x, 0.0))
     elseif wi !== nothing
         ic(U(0.0), vert.N_dof; eta0_func=eta0_func)
-    elseif isnothing(eta0_func)
+    elseif isnothing(eta0_func) && isnothing(ux0_func)
         mixed ? ic(U, vert.N_dof) : make_initial_conditions(U)
     else
-        ic(U, vert.N_dof; eta0_func=eta0_func)
+        ic(U, vert.N_dof; eta0_func=eta0_func, ux0_func=ux0_func)
+    end
+    #  ⚠ MIXED + NON-REST START: solve the auxiliary constraints at t₀ so 𝖦 = ∇𝖲 holds
+    #  exactly (make_initial_conditions_mixed zeroes it, which is right only from rest).
+    if mixed && wi === nothing && !(isnothing(eta0_func) && isnothing(ux0_func))
+        u0, aux_rel = mixed_consistent_ic(u0, prob, U, trian, dΩh)
+        @printf("  Mixed IC: auxiliary fields solved from their constraints at t₀ (assembled aux-row residual, relative: %.2e)\n", aux_rel)
+        aux_rel < 1e-8 ||
+            error("setup_and_run: consistent mixed IC failed (relative aux residual $aux_rel)")
     end
 
     # For nl_pressure=:full, build the frozen-projection context (mass matrix
@@ -1018,7 +1044,8 @@ function setup_and_run(;
                             check_every=check_every,    # re-verify the governing equations every N steps (0 = off)
                             check_tol=check_tol,        # tolerance for that verification (‖R‖∞)
                             rundiag=rundiag,            # field-diagnostics state (max|η| location, invariants, RSS)
-                            diag_every=max(diag_n, 0))  # sample the field diagnostics every N steps (0 = off)
+                            diag_every=max(diag_n, 0),  # sample the field diagnostics every N steps (0 = off)
+                            vtk_nsubcells=vtk_nsubcells) # >0: sub-cell VTK sampling (spectral analyses)
 
     return diags, vert, prob
 end

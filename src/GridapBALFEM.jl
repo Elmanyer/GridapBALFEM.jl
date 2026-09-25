@@ -104,7 +104,7 @@ export global_residual, jacobian_u, jacobian_u_t
 export build_ode_operator, build_ode_operator_ad
 # Mixed (projection-free) Class-III formulation — diagnostic, see src/mixed.jl
 export global_residual_mixed, build_ode_operator_mixed, make_initial_conditions_mixed
-export mixed_n_aux, mixed_coupling_jacobian, mixed_delta_S
+export mixed_n_aux, mixed_coupling_jacobian, mixed_delta_S, mixed_consistent_ic
 
 # Nonlinear pressure (full physics)
 export nlp_native_contrib, nlp_gradh_contrib, nlp_frozen_N

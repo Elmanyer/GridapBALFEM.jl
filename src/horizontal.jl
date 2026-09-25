@@ -18,21 +18,27 @@
 # ==============================================================
 
 """
-    build_horizontal_model(domain, partition; y_periodic=false) → (model, trian)
+    build_horizontal_model(domain, partition; y_periodic=false, x_periodic=false) → (model, trian)
 
 2D Cartesian mesh on ((x0,x1),(y0,y1)) (or flat (x0,x1,y0,y1)) with
 `partition = (nx, ny)` cells. Create the measure as `Measure(trian, 2*p_u+2)`.
 `y_periodic=true` builds the mesh periodic in y (the matching top/bottom edge DOFs
 are identified), for the `:periodic` lateral boundary condition.
+`x_periodic=true` identifies the left/right edges instead: the closed, unforced
+periodic flume used to test the INTERIOR discretisation with no inflow, relaxation
+zone or sponge (examples/local_1d/run_periodic_1d.jl). Gridap needs `nx ≥ 3`.
 """
-function build_horizontal_model(domain::Tuple, partition::Tuple; y_periodic::Bool=false)
+function build_horizontal_model(domain::Tuple, partition::Tuple; y_periodic::Bool=false,
+                                x_periodic::Bool=false)
     if domain isa Tuple{Tuple,Tuple}
         (x0,x1), (y0,y1) = domain
         dom_flat = (x0, x1, y0, y1)
     else
         dom_flat = domain
     end
-    model = CartesianDiscreteModel(dom_flat, partition; isperiodic=(false, y_periodic))
+    x_periodic && partition[1] < 3 &&
+        error("build_horizontal_model: an x-periodic mesh needs nx ≥ 3 (got $(partition[1]))")
+    model = CartesianDiscreteModel(dom_flat, partition; isperiodic=(x_periodic, y_periodic))
     trian = Triangulation(model)
     return model, trian
 end
