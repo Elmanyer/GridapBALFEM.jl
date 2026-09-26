@@ -77,6 +77,13 @@ Class-III *assembly* is untouched. Stage 1 lives in the suite as `test/test_yl_c
 
 ## 1. Verified scope — SIX of the eight models
 
+> ⚠ **Verified ≠ stable (2026-09-26).** This file is about *consistency*: the residual is the right
+> residual, at the right order. It says nothing about *stability*. The `:full` tier (models 7–8) has an
+> **interior grid-scale instability** in its horizontal discretisation (`CLAUDE.md` §5.2f,
+> `OPEN_ISSUES.md` §0e), and at Q3/Q2 even `:native` grows slowly without integrator damping. By
+> Lax–Richtmyer, consistency plus instability does not converge: no verified-scope claim here may be
+> read as a production licence for `:full`.
+
 Measured `Q3/Q2`, 1-D static unless noted.
 
 | model | `regime` / `flat_bed` / `nl_pressure` | `p_η` (opt 3) | `p_u` (opt 4) | |

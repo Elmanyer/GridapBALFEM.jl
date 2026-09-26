@@ -1018,3 +1018,50 @@ the `c3_0`/`c3_2` factorial and the unit gates). **Any future batch should redir
    for a `:full` regression gate, and §5.7 item 4 needs one.
 6. ⛔ **`C⁰`-IP is NOT next** — H4 removed its rationale. Re-derive a justification before spending
    on it.
+
+---
+
+# PART I — THE CLOSED PERIODIC BOX, THE INTEGRATOR, AND THE VERDICT (2026-09-24…26)
+
+*Full account with figures: LaTeX chapter 8; summary `CLAUDE.md` §5.2f; open item `OPEN_ISSUES.md` §0e.*
+
+## I.1 What was run after Part H
+
+* **Flume, mixed, continued.** `c3v_base_mixed_r2` (Q2/Q1, `A`=0.10) re-run to 100 periods: **diverged at
+  ≈ 126 s** at the inflow. The `:native` Q3/Q2 control (Part H's rule-14c gap, H5): completed 160 s with
+  `u_max` drifting 0.45 → 0.61 near the relaxation-zone inner edge.
+* **Auxiliary order (F.3.2, H4 reading 3).** `𝖦` one order below `u` (`p_aux = p_u − 1`, knob
+  `BALFEM_P_AUX`): **worse** at both pairings — Q2/Q1 35.4 s (vs 126), Q3/Q2 9.8 s (vs 16.0), η-led at the
+  relaxation-zone inner edge. Reading (3) of H4 is answered: the `𝖦↔u` pairing at equal order is the
+  better one; the Gram block makes it no inf-sup choice.
+* **Integrator order (projected path).** RK4 against SDIRK_2_2: Q2/Q1 40.2 vs 40.4 s, Q3/Q2 15.8 vs 15.6 s
+  — no effect.
+* **Frozen-state eigen-analysis** (`examples/local_1d/stability_eig.jl`, `output/local_1d/stability_eig/`):
+  frozen growth rates are not predictive; the spectral radius is — `:native` saturates at `ω∞`, `:full`
+  grows as `k_Nyq·U` (∝ `A/h_e`).
+* **Closed x-periodic box** (`examples/local_1d/run_periodic_1d.jl`, `x_periodic=true`): SDIRK_2_2
+  campaign (`run_1dper_batch_global.sh`) and Crank–Nicolson repeats (`run_1dper_batch_cn{,2,3}.sh`).
+
+## I.2 The verdict
+
+1. **The instability is interior.** In the box, with no boundary mechanism, mixed `:full` grows
+   element-scale modes and diverges at Q3/Q2 (35 s SDIRK, 26 s CN), at `A`=0.15 (102 s SDIRK), and at
+   Q2/Q1 32 cells/λ under CN (≈ 90 s). Every Q2/Q1 `:native` twin is flat, with or without integrator
+   damping.
+2. **SDIRK_2_2 masked it.** Gridap's tableau (`DIRK22(1,0,1)`) removes ≈ `0.75(ωΔt)⁴` per step: it
+   explains the 0.011 s⁻¹ carrier decay of every SDIRK run exactly and damps the fastest `:full` modes at
+   2–10 s⁻¹ (`CLAUDE.md` rule 15).
+3. **Q3/Q2 `:native` also grows under CN**, at +0.10 s⁻¹ (five times slower than `:full`). Unexplained.
+4. **So the mixed formulation — the discretisation of the exact model — is unstable.** It was far more
+   benign than the projection (projected box: 8.4 s), which is why the projection looked like the cause
+   for so long; but no treatment of the Class-III *assembly* removes an instability of the horizontal
+   discretisation. The next step is a stabiliser, not another formulation: `OPEN_ISSUES.md` §0e,
+   `PLANNED_CAMPAIGNS.md` §6c.
+
+## I.3 Status of the branch
+
+`mixed-formulation-solver` carries the mixed formulation (`src/mixed.jl`, `mixed=true`, sequential only,
+off by default), the in-loop projections (broken, off by default — commit `b8c93e2`), the x-periodic box,
+the stability tooling, and the documentation of all of the above. It is prepared for merging into
+`main` as the record of the Class-III work; the stabilisation study starts from it.
+

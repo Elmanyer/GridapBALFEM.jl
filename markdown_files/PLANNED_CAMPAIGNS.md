@@ -460,6 +460,50 @@ the floor (§0) before trusting any Q4/Q3 rate.
 
 ---
 
+## 6c. ⛔ THE STABILISATION CAMPAIGN (designed 2026-09-26) — the first priority
+
+*The open item is `OPEN_ISSUES.md` §0e; evidence `CLAUDE.md` §5.2f; analysis LaTeX chapter 8.
+§6b below is the earlier follow-up list, largely spent — read it as history.*
+
+**Stage 0 — finish the undamped baseline (running).** Crank–Nicolson repeats of every periodic-box
+case: `run/local/run_1dper_batch_cn2.sh` (Q2/Q1 mixed and `:native` at 16 and 64 cells/λ) and
+`run_1dper_batch_cn3.sh` (`A`=0.15 pair, projected arm, 8-cell pair). Analyse each with
+`periodic_growth.jl` and add it to chapter 8 (Table `tab: stab periodic`, the figure cells of
+`latex_docs/doc_figures/generate_doc_plots.ipynb`). This gives the undamped growth rate against
+resolution, order and amplitude that every stabiliser must beat.
+
+**Stage 1 — implement the stabilisers (code).**
+* **S1 explicit filter.** A low-pass projection of `η` and `𝖴` every `n` steps, applied after the step
+  (knobs `filter_every`, `filter_order`). Needs a post-step hook in `run_time_loop` (sequential and
+  distributed).
+* **S2 CIP edge stabilisation.** `γ Σ_F h_F^s ∫_F [∂ₙ𝖴]·[∂ₙ𝐕]` on the interior skeleton, in
+  `global_residual` and, exactly, in `jacobian_u` (knobs `cip_gamma`, `cip_s`, and which fields it acts
+  on). Gridap: `SkeletonTriangulation`, `Measure(Λ, q)`, `jump(∇(u)⋅n_Λ)`. Distributed: skeleton
+  terms work on `DistributedTriangulation`, but the ghost layer must cover the face patch.
+* **S3 (comparison only)** generalised-α with `ρ∞` < 1 — already available as `solver_type=:gen_alpha`
+  in the sequential factory; verify it runs on the mixed layout.
+* Unit gates before any run: CIP term zero on a polynomial of the trial space's degree; energy
+  identity `dE/dt = −γ Σ h^s ‖[∂ₙu]‖²` on a linear test; Jacobian-vs-AD on the new block
+  (`test_jacobians_ad.jl` pattern); MMS orders unchanged at small `γ` (`test_mms_convergence`).
+
+**Stage 2 — the box ladder, under Crank–Nicolson.** For each stabiliser, a `γ` (or `n`) ladder of
+3–4 values on the four discriminating cells: Q2/Q1 32 cells/λ, Q3/Q2 16 cells/λ, Q2/Q1 16 cells/λ
+at `A`=0.15, and the Q3/Q2 `:native` case that also grows. Record the band growth rates and the
+carrier attenuation against the unstabilised `:native` trace. Choose the smallest `γ` meeting the
+acceptance criteria of `OPEN_ISSUES.md` §0e §3.
+
+**Stage 3 — back to the flume and to MMS.** Re-run the §5.2e flume factorial (mixed, Q2/Q1 and
+Q3/Q2, base/`A`/`dx`) with the chosen stabiliser under both integrators; re-run the `:full` MMS
+studies to confirm the orders; then the §0d variable-bed ladder (`:native`), where Yang & Liu also
+filter.
+
+**Stage 4 — gate.** A closed-box `:full` regression test, 100 periods under Crank–Nicolson, in
+`test/local/`; the suite has no long-duration stability gate today.
+
+**Cost (measured 2026-09-24…26, four runs sharing the workstation).** A 100-period box run takes
+11–30 h wall time (Q2/Q1 mixed 32 cells/λ ≈ 21 h, 64 cells/λ ≈ 11 h with fewer neighbours); Q3/Q2
+mixed reached 35 s in ≈ 7 h. Memory ≈ 3 GB per run; four slots in parallel.
+
 ## 6b. THE STABILITY FOLLOW-UPS (designed 2026-09-15, ordered by what would change a conclusion)
 
 Owed by the 1-D nonlinear production campaign (`OPEN_ISSUES.md` §0c/§0d, `CLAUDE.md` §5.2b). All are
@@ -508,7 +552,8 @@ core at 12.0 s/step.
 2. ⛔ **Isolate which `𝓝` block carries the `:full` mode.** `{1,2,4,5}` is the entire difference
    between `:native` (100 periods, clean) and `:full` (8 periods, dead). Enable them individually.
 3. 🔴 **`:theta` and explicit-RK4 confirmation of the flat-bed 100-period result.** SDIRK_2_2 is
-   L-stable, and that run's −1.9e-05 m/s decline is consistent with numerical damping. Three
+   strongly dissipative (≈ 0.75(ωΔt)⁴ per step, CLAUDE.md rule 15), and that run's −1.9e-05 m/s decline is
+   consistent with numerical damping. Three
    integrators of different stability character agreeing is what retires the objection (rule 12c); a
    `dt` ladder on one scheme is not.
 4. 🔴 **Repeat the campaign at Q3/Q2.** Everything above is Q2/Q1 — the minimal Taylor-Hood pair,

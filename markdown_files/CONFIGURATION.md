@@ -80,7 +80,10 @@ silently and the loss would only have surfaced mid-debugging.
 
 ## 3. Time integrator
 
-**Default `RungeKutta(:SDIRK_2_2)`** — fully implicit, L-stable, 2nd order. Robust in the stiff
+**Default `RungeKutta(:SDIRK_2_2)`** — fully implicit, 2nd order. ⚠ Gridap's `SDIRK_2_2` is
+`DIRK22(1,0,1)` (`A=[1 0;−1 1]`, `b=(½,½)`): A-stable but **not** L-stable (`R(∞)=−½`), removing
+≈ `0.75(ωΔt)⁴` of a mode's energy per step — 100× the textbook `γ=1−1/√2` scheme (CLAUDE.md rule 15).
+Robust in the stiff
 deep-water regime, and **dissipative by construction**: see `TEST_SUITE.md` §4 for the four tests
 that must pin `solver_type=:theta` and the measured difference.
 

@@ -55,6 +55,14 @@ disagree. The output directory is auto-tagged by configuration so cases do not c
 `balfem_local.sh` is the helper — project resolution, a hard rank cap, `balfem_local_run`
 (sequential) / `balfem_local_mpi` (MPI), and exit-143 handling.
 
+* **Stability campaigns (2026-09-15…26), all sequential 1-D:** `run_1dc3{v,q,r}_*.sh` (the mixed vs
+  projected flume factorial and its RK4/aux-order arms), `run_1dref_*.sh` (the `dx`×`dt`×Jacobian
+  factorial), and the **closed periodic box**: `run_1dper_batch_global.sh [MAXP]` (SDIRK_2_2) and
+  `run_1dper_batch_cn{,2,3}.sh [MAXP]` (Crank–Nicolson). The batch scripts count *all* running
+  `run_periodic_1d.jl` solvers against `MAXP` (default 4), skip a case whose log already exists, and
+  write logs to `output/local_1d/periodic/_logs/` (persistent disk, rule 47). Analyse each case with
+  `PG_NCELL=<n> PG_PU=<p> julia --project=postprocessing postprocessing/examples/periodic_growth.jl
+  output/local_1d/periodic/<case> [t0] [t1]`.
 * **7 × `run_1d_*.sh`** — **sequential**, because that was measured faster than any MPI split at
   20 k DOFs (`CONFIGURATION.md` §6) and it restores point gauges.
 * **8 × `run_2d_*.sh`** — 12-rank MPI.

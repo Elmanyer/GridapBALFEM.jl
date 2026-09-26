@@ -55,6 +55,9 @@ const SUITE = [
     ("test_jacobians_ad.jl",             :slow,   "hand ∂R/∂u, ∂R/∂u̇ vs AD, all 8 models"),
     ("test_mms_convergence.jl",          :slow,   "order of accuracy, Model 1"),
     ("test_mms_convergence_nonlinear.jl",:slow,   "order of accuracy, Models 3–4"),
+    #  THE ONLY EXTERNAL ORACLE: p=1 BALFE-M collapses onto Yang & Liu's published LFE-M
+    #  (stage 1, vertical velocity; stages 2–3 live in test/yl_collapse_wip/). Registered 2026-09-26.
+    ("test_yl_collapse.jl",              :fast,   "Yang & Liu collapse, stage 1: w to round-off"),
     # ---- base ----------------------------------------------------------------
     ("test_vertical.jl",                 :fast,   "vertical tensor identities"),
     ("test_primitives.jl",               :fast,   "tensor index order / contraction semantics"),
@@ -62,12 +65,21 @@ const SUITE = [
     ("test_basic.jl",                    :medium, "smoke, linear + fully nonlinear"),
     ("test_dispersion.jl",               :medium, "phase speed vs linear theory, kd=3"),
     ("test_nlpressure.jl",               :medium, "nonlinear-pressure identities + dynamics"),
-    #  Class-III treatment (branch new-classIII-treatment; NEW_TREATMENT.md).
-    #  The reduction is an EXACT identity, so the first two are cheap algebra gates;
-    #  test_nlp_inloop runs real (tiny) time integrations and is :medium.
+    #  Class-III treatment (branches new-classIII-treatment → mixed-formulation-solver;
+    #  NEW_TREATMENT.md). The reduction is an EXACT identity, so it is a cheap algebra gate;
+    #  the others assemble or integrate. Tiers re-measured 2026-09-26 (wall time incl. compile).
     ("test_class3_reduction.jl",         :fast,   "Class-III {1,2,5} reduction + no-transpose control"),
-    ("test_class3_residual_parity.jl",   :fast,   "reduced ≡ direct as assembled residual vectors"),
-    ("test_nlp_inloop.jl",               :medium, "in-loop (static-condensation) projections; live-knob + confinement"),
+    ("test_class3_residual_parity.jl",   :medium, "reduced ≡ direct as assembled residual vectors (~6 min)"),
+    ("test_class3_split.jl",             :slow,   "c3_mask arms partition the Class-III set exactly (~17 min)"),
+    #  ⚠ KNOWN FAILURE: G3 fails — the in-loop projection mode is IMPLEMENTED, BROKEN, OFF BY
+    #  DEFAULT (commit b8c93e2, NEW_TREATMENT.md §C). Kept so the failure stays visible.
+    ("test_nlp_inloop.jl",               :slow,   "in-loop projections [KNOWN FAIL G3: feature broken, off] (~2 h)"),
+    #  The mixed (projection-free) Class-III path, src/mixed.jl.
+    ("test_mixed_jacobian.jl",           :slow,   "mixed coupling blocks C, B vs FD oracle (~20 min)"),
+    ("test_diagnostics_mixed.jl",        :medium, "run diagnostics on 3/5/7-field layouts"),
+    #  ⚠ test_mixed_formulation.jl is NOT registered: its G1–G3 harness (6 m box, source
+    #  spanning the domain) kills even :native after 20 steps — NEW_TREATMENT.md §F.0. G4/G5
+    #  pass. Re-register once the harness is re-posed (TEST_SUITE.md §8).
     ("test_sloshing.jl",                 :medium, "standing-wave period"),
     ("test_conservation.jl",             :medium, "mass conservation, closed basin"),
     # ---- physics / validation -------------------------------------------------

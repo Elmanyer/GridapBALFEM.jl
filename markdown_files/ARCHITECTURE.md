@@ -157,8 +157,10 @@ identifies the DOFs). The residual, Jacobians and time loop are untouched.
 
 `build_ode_solver` / `build_ode_solver_distributed`:
 
-* **Default: `RungeKutta(nls, ls, dt, :SDIRK_2_2)`** — fully implicit, L-stable, 2nd order,
-  diagonally implicit; robust in the stiff deep-water regime.
+* **Default: `RungeKutta(nls, ls, dt, :SDIRK_2_2)`** — fully implicit, 2nd order, diagonally
+  implicit; robust in the stiff deep-water regime. ⚠ Gridap's tableau is `DIRK22(1,0,1)`: A-stable,
+  **not** L-stable, energy loss ≈ `0.75(ωΔt)⁴` per step (CLAUDE.md rule 15). Stability claims need a
+  Crank–Nicolson (`solver_type=:theta`) repeat.
 * `solver_type=:theta` selects Crank–Nicolson.
 
 > ⚠ **The default integrator is DISSIPATIVE by construction.** Any test measuring a

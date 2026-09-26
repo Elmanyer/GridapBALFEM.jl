@@ -392,7 +392,7 @@ Repeated on a **nonlinear** model (M3) as well:
 * `nx = 36, ny = 3`, `Q3/Q2` — fine enough that the spatial error sits below the temporal one.
 * **4 levels**: `dt = 0.15, 0.075, 0.0375, 0.01875` (16 → 128 steps).
 * **Integrator `:theta` (Crank–Nicolson) is the primary measurement.** The default `SDIRK_2_2` is
-  L-stable, i.e. **dissipative by construction**, and the documented G7 measurements show it
+  **dissipative by construction** (A-stable, not L-stable as implemented in Gridap — CLAUDE.md rule 15), and the documented G7 measurements show it
   contaminating exactly this window (`:sdirk` 1.382/1.332 against `:theta` 2.406/1.272 on the same
   case). Rule 15: never fix such a failure by moving a threshold — pin the non-dissipative scheme
   when measuring the rate.
@@ -452,7 +452,7 @@ held fixed (same model, basis, mesh, window, tolerances), against the `:theta` c
 
 **At a step size where it converges, `:sdirk` reaches second order and agrees with `:theta` to
 0.002.** So the failure was **feasibility of the step size for the nonlinear solve**, not something
-intrinsic to the L-stable scheme — and `SDIRK_2_2` carries no temporal-order penalty here once it is
+intrinsic to the dissipative scheme — and `SDIRK_2_2` carries no temporal-order penalty here once it is
 inside its convergence radius.
 
 > This also **retires the earlier claim** (made from the two linear cases at 7/66) that `:sdirk`
@@ -872,7 +872,7 @@ should not be quoted as a single figure.
 ## 4.5 Phase 2B — TEMPORAL, `:sdirk` (SDIRK_2_2, the production integrator)
 
 Run on the reference basis P1LFE-2 across all six models, **reported separately and never merged**
-with `:theta` (rule 15: L-stable ⇒ dissipative by construction).
+with `:theta` (rule 15: `SDIRK_2_2` is dissipative by construction).
 
 | model | ladder | `pw_η` | `pw_u` | `e_u` (finest) | verdict | `:theta` `pw_u` for comparison |
 |---|---|---|---|---|---|---|
@@ -893,7 +893,7 @@ with `:theta` (rule 15: L-stable ⇒ dissipative by construction).
   the temporal `e_u` of 4.9e-04 sits four orders above the spatial floor (~1e-07) at `nx=36`.
 * **The M6 pair is the decisive experiment** (§2.3c). At `dt=0.15` `:sdirk` stalls where `:theta`
   converges; at `dt=0.05` both reach ~1.99 and agree to 0.002. **The failure was step-size
-  feasibility for the nonlinear solve, not the L-stable scheme.**
+  feasibility for the nonlinear solve, not the dissipative scheme.**
 
 ## 4.6 Supplementary studies
 

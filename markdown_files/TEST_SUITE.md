@@ -266,6 +266,39 @@ confirm the `A³` scaling dynamically.
 
 ## 8. Known gaps in the suite itself
 
+> ### ⛔ NO GATE TESTS THE `:full` DISCRETISATION FOR STABILITY — AND SDIRK_2_2 WOULD HIDE IT (2026-09-26)
+>
+> The closed periodic box (`CLAUDE.md` §5.2f) showed an interior grid-scale instability of the `:full`
+> tier that takes 25–100 s of simulated time to appear, and that the default integrator masks: Gridap's
+> `SDIRK_2_2` removes ≈ `0.75(ωΔt)⁴` of a mode's energy per step (`CLAUDE.md` rule 15), so a Q2/Q1 run
+> that diverges at 90 s under Crank–Nicolson stays bounded for 100 periods under SDIRK_2_2. A stability
+> gate must therefore (i) run in the closed box, (ii) under `solver_type=:theta`, (iii) for ≥ 100
+> periods, (iv) with its `:native` twin, and (v) read band growth rates, not `max|η|`. It is Stage 4 of
+> `PLANNED_CAMPAIGNS.md` §6c and cannot be written until a stabiliser exists (`OPEN_ISSUES.md` §0e).
+
+> ### Registration of the Class-III / mixed tests (2026-09-26, merge of `mixed-formulation-solver`)
+>
+> Run one by one before the merge (wall time incl. compile, one process each):
+>
+> | file | result | time | tier in `runtests.jl` |
+> |---|---|---|---|
+> | `test_yl_collapse.jl` | 40/40 | 1 s | `:fast` — **newly registered**; the only external oracle |
+> | `test_taylor_hood.jl` | 13/13 | 9 s | `:fast` |
+> | `test_class3_reduction.jl` | 19/19 | 5 s | `:fast` |
+> | `test_class3_residual_parity.jl` | 4/4 | 6 min | `:fast` → **`:medium`** |
+> | `test_class3_split.jl` | 4/4 | 17 min | **`:slow`, newly registered** |
+> | `test_mixed_jacobian.jl` | 7/7 | 21 min | **`:slow`, newly registered** |
+> | `test_diagnostics_mixed.jl` | 5/5 | 1 min | **`:medium`, newly registered** |
+> | `test_nlp_inloop.jl` | 8/9 — **G3 fails** | 2 h | `:medium` → **`:slow`**; ⚠ known failure — the in-loop projection mode is broken and off by default (commit `b8c93e2`, `NEW_TREATMENT.md` §C) |
+> | `test_mixed_formulation.jl` | 4/5 — **G1 fails** | 31 min | **not registered** |
+>
+> ⚠ **`test_mixed_formulation.jl` G1–G3 run in an unfit harness** (`NEW_TREATMENT.md` §F.0): a 6 m
+> box whose Gaussian source (`sigma_wm` = 1.5 m) spans the domain kills even `:native` after 20
+> steps, and G1 asks for 40. The failure is the harness, not the mixed path (which runs 100 periods on
+> the real flume, `CLAUDE.md` §5.2e). G4 (𝖦 recovers the analytic `∂ₓ𝖲` to 1e-11) and G5
+> (confinement) pass. **Re-pose G1–G3** — a longer box or a narrower source, or the closed periodic
+> box of `CLAUDE.md` §5.2f, which has a known null — and then register the file.
+
 > ### ⚠ THE SUITE CANNOT DETECT THE NONLINEAR GRID-SCALE INSTABILITY (added 2026-09-05)
 >
 > The equal-order mode documented in `CLAUDE.md` rule 12b (now cured by the Taylor-Hood

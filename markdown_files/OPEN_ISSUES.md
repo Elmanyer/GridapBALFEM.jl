@@ -181,6 +181,11 @@ carry the qualifier that nonlinear `p_η` degrades beyond `nx = 32` at Q3/Q2.
 > ⚙ **AMENDED 2026-09-23 after the mixed-formulation campaign** (`NEW_TREATMENT.md` Part H,
 > `CLAUDE.md` §5.2e): §8's option table is **re-scored** and §9 is **rewritten**. Read those two
 > before acting on anything in §1–§7, which pre-date the campaign.
+> ⛔ **SUPERSEDED AS THE ACTIVE ITEM 2026-09-26 by §0e.** The closed periodic box and the
+> Crank–Nicolson repeats showed the instability is an **interior discretisation instability** that no
+> Class-III *assembly* change removes. §0c stays as the record of how the operator, the Jacobian and
+> the assembly were ruled out; its §9 "next steps" 1 and 2 have been run (Q3/Q2 `:native`; `𝖦` one
+> order below `u` — worse), and the stabilisation study of §0e replaces the rest.
 
 ### 1. The short version
 
@@ -444,6 +449,76 @@ joined by a second.)* The mode pins at the **inflow** in runs that die mid-fill 
 but remains a hypothesis, and both VTK series are on disk. **And now:** with the recovery
 explanation refuted, there is **no standing mechanism** for the `dx` signature at all. `:full`
 having a stable configuration does not mean it is understood.
+
+---
+
+## 0e. ⛔ THE `:full` DISCRETISATION IS UNSTABLE — STUDY AND IMPLEMENT STABILISATION METHODS
+
+> Opened 2026-09-26 on the closed-periodic-box campaign and its Crank–Nicolson repeats. Evidence and
+> numbers: `CLAUDE.md` §5.2f; full analysis with figures: LaTeX chapter 8
+> (`latex_docs/BALFEM_models/SolverValidation/StabilityAnalysis.tex`); campaign design:
+> [`PLANNED_CAMPAIGNS.md`](PLANNED_CAMPAIGNS.md) §6c. **This is the first open item of the project.**
+
+### 1. What is established
+
+* **The instability is interior.** In a closed x-periodic box — one model wavelength, no inflow,
+  relaxation, sponge or source, a known null (nothing grows) — the mixed `:full` solver grows
+  element-scale modes by itself: slowly at Q2/Q1 with 32 cells/λ, to divergence at Q3/Q2 (35 s) and at
+  `A`=0.15 (102 s). Every `:native` twin stays bounded under SDIRK_2_2. The flume boundary only makes
+  it fail sooner.
+* **It is a discretisation instability, not an operator or assembly defect.** The operator reproduces
+  Yang & Liu to round-off (`CLAUDE.md` §5.2d); the Jacobian is irrelevant (rule 17b); replacing the
+  projected Class-III assembly by the mixed formulation delays but does not remove it (§0c, §5.2e);
+  the auxiliary order does not help (`𝖦` one order below `u` is worse); the integrator order does not
+  help (RK4 = SDIRK on the flume).
+* **The default integrator was masking it.** Gridap's `SDIRK_2_2` (`DIRK22(1,0,1)`) removes
+  ≈ `0.75(ωΔt)⁴` per step — 2–10 s⁻¹ at the fastest `:full` modes (`CLAUDE.md` rule 15). Under
+  Crank–Nicolson, `:full` grows 40–60 % faster and Q2/Q1 at 32 cells/λ diverges at ≈ 90 s.
+* **Mechanism (frozen analysis + measurements).** Class III adds a Doppler branch `ω ≈ kU + ω∞` to the
+  high-`k` band (spectral radius ∝ `A/h_e`, where `:native` saturates at `ω∞`); the carrier pumps energy
+  up the wavenumber ladder at a rate ∝ `kU`; `C⁰` elements represent that band to beyond the node
+  Nyquist with no null, so nothing removes it. Yang & Liu's five-point FD is capped at `1.37/Δx`, null
+  at `2Δx`, and they filter where the bed feeds the grid scale.
+
+### 2. What is not established
+
+* **Why Q3/Q2 `:native` grows** under Crank–Nicolson (+0.10 s⁻¹ over 100 periods, five times slower than `:full`); its
+  frozen spectral radius is also the one that does not saturate at the finest level.
+* **The lower `:full` branch** of the frozen spectrum (frequency falling with `k` and with `A`).
+* **Whether the continuum is well posed at finite amplitude**, i.e. whether the fix is a numerical
+  stabilisation or a regularisation of the model. A converging growth rate under refinement would point
+  to the latter; so far the rates rise with resolution and order.
+* **The undamped resolution ladder** (Crank–Nicolson at 8, 16, 64 cells/λ, and the `A`=0.15 and
+  projected twins) — running (`run/local/run_1dper_batch_cn{2,3}.sh`).
+
+### 3. The open item: stabilisation
+
+Study, implement and verify a **wavenumber-selective energy sink** for the horizontal discretisation.
+Candidates, in the order they should be tried:
+1. **Explicit low-pass filter** of `η`, `𝖴` every `n` steps (FE analogue of Yang & Liu's Shapiro
+   filter). Cheapest to try; not consistent in the variational sense; strength set by `n` and the
+   filter order.
+2. **Continuous interior penalty (CIP) edge stabilisation** (Burman & Hansbo 2004):
+   `γ Σ_F h_F^s ∫_F [∂ₙu]·[∂ₙv] dF`, added to the momentum residual (and possibly continuity). It
+   vanishes on smooth solutions, is sign-definite in the energy balance, enters the Jacobian exactly,
+   and acts on the grid scale. Gridap has the skeleton machinery (`SkeletonTriangulation`, `jump`,
+   `mean`). ⚠ Not to be confused with the `C⁰`-IP treatment of a broken Hessian (Engel et al. 2002),
+   which is a consistency device, not a damper (`CLAUDE.md` rule 1b, chapter 8 §8.7.4).
+3. **Targeted integrator damping** (generalised-α with a chosen `ρ∞`) as a comparison only: it acts on
+   frequency, not wavenumber, and vanishes as `Δt → 0` — a mask, not a remedy.
+
+**Acceptance, all four, measured under Crank–Nicolson (rule 15), box first, then flume:**
+(i) the damping exceeds the measured transfer rate with margin — mid/high-band `σ_E` ≤ 0 at Q3/Q2,
+16 cells/λ and Q2/Q1, 32 cells/λ, `A` = 0.10 and 0.15; (ii) the carrier at 16 cells/λ is unattenuated
+over 100 periods against the `:native` Crank–Nicolson trace; (iii) the MMS orders of
+[`VERIFIED_SCOPE.md`](VERIFIED_SCOPE.md) are preserved; (iv) the amplitude ceiling it buys is
+measured and stated, since the transfer rate grows with `A`.
+
+**Also:** the same sink is the natural first test on the variable-bed lee-shoulder mode of §0d,
+which affects `:native` too — that is exactly where Yang & Liu apply their filter and limit the slope.
+
+**Then:** a long-duration `:full` regression gate in the closed box (100 periods, Crank–Nicolson),
+which the suite does not have (`TEST_SUITE.md`), and a re-run of the flume factorial of §5.2e.
 
 ---
 

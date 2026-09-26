@@ -15,8 +15,9 @@
 
 Gridap ODE solver factory (template: GridapSWE.jl `RungeKutta(nls, ls, dt,
 tableau)`). Options: `:sdirk` (fully-implicit diagonally-implicit Runge–Kutta,
-default — more stable than Crank–Nicolson; tableau `:SDIRK_2_2`, L-stable
-2nd-order), `:theta` (Crank–Nicolson θ=0.5, non-dissipative), `:gen_alpha`,
+default — more stable than Crank–Nicolson; tableau `:SDIRK_2_2` = Gridap's `DIRK22(1,0,1)`,
+2nd-order, A-stable but NOT L-stable (R(∞) = −1/2), energy loss ≈ 0.75(ωΔt)⁴ per step — strongly
+dissipative), `:theta` (Crank–Nicolson θ=0.5, non-dissipative), `:gen_alpha`,
 `:rk3` (SDIRK_3_4). Nonlinear solve: Newton + LU. Pass a `SolverMonitor` as
 `monitor` to collect per-step convergence statistics (the monitor wraps the
 Newton solver transparently; for RK it accumulates over the implicit stages).
