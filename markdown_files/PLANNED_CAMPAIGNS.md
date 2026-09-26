@@ -465,7 +465,7 @@ the floor (§0) before trusting any Q4/Q3 rate.
 *The open item is `OPEN_ISSUES.md` §0e; evidence `CLAUDE.md` §5.2f; analysis LaTeX chapter 8.
 §6b below is the earlier follow-up list, largely spent — read it as history.*
 
-**Stage 0 — finish the undamped baseline (running).** Crank–Nicolson repeats of every periodic-box
+**Stage 0 — finish the undamped baseline (✅ DONE 2026-09-27, `CLAUDE.md` §5.2f table).** Crank–Nicolson repeats of every periodic-box
 case: `run/local/run_1dper_batch_cn2.sh` (Q2/Q1 mixed and `:native` at 16 and 64 cells/λ) and
 `run_1dper_batch_cn3.sh` (`A`=0.15 pair, projected arm, 8-cell pair). Analyse each with
 `periodic_growth.jl` and add it to chapter 8 (Table `tab: stab periodic`, the figure cells of
@@ -488,7 +488,7 @@ resolution, order and amplitude that every stabiliser must beat.
 
 **Stage 2 — the box ladder, under Crank–Nicolson.** For each stabiliser, a `γ` (or `n`) ladder of
 3–4 values on the four discriminating cells: Q2/Q1 32 cells/λ, Q3/Q2 16 cells/λ, Q2/Q1 16 cells/λ
-at `A`=0.15, and the Q3/Q2 `:native` case that also grows. Record the band growth rates and the
+at `A`=0.15, and the two `:native` cases that also grow (Q3/Q2 16 cells/λ; Q2/Q1 64 cells/λ). Record the band growth rates and the
 carrier attenuation against the unstabilised `:native` trace. Choose the smallest `γ` meeting the
 acceptance criteria of `OPEN_ISSUES.md` §0e §3.
 

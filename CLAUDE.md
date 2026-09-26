@@ -68,9 +68,10 @@
 > Full account, including the ten refuted hypotheses and the method lessons: **rule 12b** below.
 > (`NONLINEAR_INSTABILITY.md` was folded into it and deleted — one record, in the tracked file.)
 >
-> **⛔ THE FULL NONLINEAR MODEL (`nl_pressure=:full`) HAS AN UNSTABLE DISCRETISATION (2026-09-26).
-> THE INSTABILITY IS INTERIOR, GRID-SCALE, AND CARRIED BY THE CLASS-III TERMS. STABILISING THE
-> SOLVER IS NOW THE OPEN ITEM** (§5.2f, §5.7 item 0, `OPEN_ISSUES.md` §0e, `PLANNED_CAMPAIGNS.md` §6c).
+> **⛔ THE HORIZONTAL DISCRETISATION OF THE NONLINEAR MODEL IS UNSTABLE AT THE GRID SCALE
+> (2026-09-26/27). THE INSTABILITY IS INTERIOR; THE CLASS-III TERMS (`nl_pressure=:full`) MAKE IT FAST
+> AND PRESENT AT EVERY RESOLUTION, BUT `:native` HAS IT TOO ONCE INTEGRATOR DAMPING IS REMOVED AND THE
+> MESH IS FINE. STABILISING THE SOLVER IS NOW THE OPEN ITEM** (§5.2f, §5.7 item 0, `OPEN_ISSUES.md` §0e, `PLANNED_CAMPAIGNS.md` §6c).
 > * **The closed x-periodic box settles where it lives.** One model wavelength, no inflow, relaxation,
 >   sponge or source; the continuum answer is "nothing grows". The mixed `:full` solver grows
 >   element-scale modes by itself and diverges at Q3/Q2 (35 s) and at `A`=0.15 (102 s); every
@@ -81,8 +82,11 @@
 >   0.011 s⁻¹ carrier decay of every periodic run *exactly*, and it damps the fastest `:full` modes at
 >   2–10 s⁻¹. Under **Crank–Nicolson** the carrier is conserved, `:full` grows 40–60 % faster, Q2/Q1 at
 >   32 cells/λ **diverges at ≈90 s** (bounded 100 periods under SDIRK), Q3/Q2 diverges at 26 s.
-> * **Q2/Q1 `:native` is flat even without damping; Q3/Q2 `:native` is not** — it grows slowly under
->   Crank–Nicolson (+0.10 s⁻¹ over 100 periods, 5× slower than `:full`), which SDIRK had hidden. Unexplained.
+> * **The undamped (Crank–Nicolson) ladder is clean and monotone.** Mixed `:full`, Q2/Q1: diverges at
+>   157 / 104 / 90 / **31 s** at 8 / 16 / 32 / 64 cells/λ (band growth +0.03 → +0.44 s⁻¹). `:native`,
+>   Q2/Q1: flat at 8–32 cells/λ but **diverges at 146 s at 64 cells/λ** (+0.20 s⁻¹); Q3/Q2 `:native` grows
+>   at 16 cells/λ (+0.10 s⁻¹). SDIRK had hidden all of the `:native` growth. `:native` is safe only at
+>   production resolution (≤ 32 cells/λ at Q2/Q1) — and, under SDIRK, only because SDIRK damps it.
 > * **Mechanism (chapter 8 of the LaTeX).** Class III gives the high-`k` band a Doppler branch
 >   `ω ≈ kU + ω∞` (spectral radius ∝ `A/h_e`, measured) where `:native` saturates at `ω∞`; the carrier
 >   pumps energy up the wavenumber ladder at a rate ∝ `kU`; `C⁰` elements represent the whole band to
@@ -325,7 +329,9 @@ escape hatch. Pressure content is intrinsic to the model: `P_full = advection`,
 `lin_pressure = advection ∨ ¬flat_bed`. `flat_bed` acts at a **single control point** —
 `dhx,dhy = flat_bed ? 0 : ∂h` in `global_residual`/`jacobian_*`. Full term table: `MODEL.md` §6.
 
-**`nl_pressure=:native` is the production tier.** The whole `{1,2,4,5}` hierarchy contributes
+**`nl_pressure=:native` is the production tier** — ⚠ with the stability caveat of §5.2f: without integrator
+damping it is stable at Q2/Q1 up to 32 cells/λ but diverges at 64, and grows slowly at Q3/Q2 with 16
+cells/λ. The whole `{1,2,4,5}` hierarchy contributes
 **0.013 % (1-D) / 0.094 % (2-D)** on top of advection's 0.77 % / 1.84 % at `A=1e-3`, and `:full`
 carries a mesh-independent velocity-error floor (`VERIFIED_SCOPE.md` §4).
 
@@ -337,44 +343,43 @@ carries a mesh-independent velocity-error floor (`VERIFIED_SCOPE.md` §4).
 *Amended 2026-09-15 with the 1-D nonlinear production campaign — §5.2b, §5.6b.*
 *Amended 2026-09-23 with the mixed-formulation campaign — §5.2e, and §5.7 item 0 rewritten.*
 *Amended 2026-09-26 with the closed periodic box and the Crank–Nicolson repeats — §5.2f; §5.7 item 0
-rewritten as the stabilisation open item.*
+rewritten as the stabilisation open item. Amended 2026-09-27: the complete Crank–Nicolson ladder
+(`:native` also diverges at fine resolution).*
 
-### 5.0 Status in one paragraph
+### 5.0 Status at a glance (2026-09-27)
 
-The solver is **feature-complete in serial and distributed form** and has been so since 2026-09-02:
-stacked loop-free residual, hand Jacobians, the full nonlinear physics, SDIRK/θ integrators, every
-boundary treatment, Dirichlet generation with WaveSpec coupling. **The LINEAR models are in excellent
-shape** — optimal order in both fields, on five vertical bases, in 1-D and 2-D, sequential and
-distributed. **The NONLINEAR models are correct but carry one unexplained order reduction** in the
-surface elevation at fine mesh, isolated as of 2026-09-13 to the advection block and *not* explained
-by any of the six candidate causes tested. Production wave runs are stable at realistic amplitude
-since the Taylor-Hood fix, with the exception of boundary-generation failures that are a separate,
-configuration-level problem. ⚠ **AMENDED 2026-09-15:** that last sentence is now known to hold only
-for `nl_pressure ∈ {:none, :native}` ON A FLAT BED. The 1-D production campaign (§5.2b) found two
-distinct, reproducible instabilities — `:full` fails on a flat bed in 8 wave periods, and ANY
-variable bed grows a lee-shoulder mode whose onset time is set by `|∇h|` — while the `:native`
-flat-bed case completed **100 wave periods at `A = 0.10` m**.
+**Working.**
+* **Solver infrastructure**, feature-complete since 2026-09-02, serial and distributed: the stacked,
+  loop-free residual; hand Jacobians; SDIRK/θ/generalised-α/RK integrators; every boundary treatment;
+  Dirichlet generation with WaveSpec coupling; the x-periodic closed box; stability and postprocessing
+  tooling.
+* **Model correctness.** At `p=1` BALFE-M reproduces Yang & Liu's LFE-M coefficient by coefficient,
+  nonlinear pressure included (§5.2d). The analytic MMS verifies six of eight models at theoretical
+  order on five vertical bases (§5.1, §5.4).
+* **Linear models.** Optimal order in both fields, 1-D and 2-D, sequential and distributed; no open
+  defects (§5.1).
+* **`:native` nonlinear model at production resolution.** Stable for 100 wave periods at `A` = 0.10 m on
+  a flat bed (Q2/Q1, ≤ 32 cells/λ), with or without integrator damping (§5.2b, §5.2f).
+* **Both Class-III treatments are implemented:** projected (3-field, the distributed path) and mixed
+  (5/7-field, `src/mixed.jl`, sequential). The mixed one is the discretisation of the exact model and is
+  the one the LaTeX documents as implemented (§3).
 
-⚠ **AMENDED 2026-09-23 — `:full` IS NO LONGER UNCONDITIONALLY UNSTABLE, AND THE CAUSE IS ONLY
-PARTLY IDENTIFIED (§5.2e).** Replacing the frozen `L²` Class-III projections with a genuine mixed
-unknown (`𝖦 ≈ ∇𝖲`) turns the Q2/Q1 flat `:full` case from a **12.6 s** death into **≥61 wave
-periods flat on the `:native` trace**, and outlives the projected control in **all eight** matched
-pairs. So the projection was a large real contributor. **But it was not the whole cause:** every
-**Q3/Q2** arm still dies — *earlier* than its Q2/Q1 twin, and earlier even at matched DOF count —
-and the **`dx` refinement signature survives a formulation that never differentiates a `C⁰` field
-twice**, which refutes the broken-Hessian recovery explanation of §5.2c as stated. ⚠ **The
-attribution to Class III at Q3/Q2 is NOT established**: every Q3/Q2 arm run is `:full` and no
-`:native` Q3/Q2 control exists (rule 14c). That one cheap run gates every further conclusion.
-
-⛔ **AMENDED 2026-09-26 — THE `:full` DISCRETISATION IS UNSTABLE; THE INSTABILITY IS INTERIOR (§5.2f).**
-In a closed x-periodic box with no boundary mechanism of any kind, the mixed `:full` solver grows
-element-scale modes by itself — to divergence at Q3/Q2 and at `A`=0.15 — while every `:native` twin
-stays bounded under the default integrator. That integrator, Gridap's `SDIRK_2_2`, turned out to be
-strongly dissipative (rule 15) and had been **masking** part of it: under Crank–Nicolson the `:full`
-growth is 40–60 % faster, Q2/Q1 at 32 cells/λ diverges, and even Q3/Q2 `:native` grows slowly. The
-`:full` tier therefore needs a **stabilised discretisation** before it can be used for production;
-that study is the first open item (§5.7 item 0). `:native` remains the production tier; at Q2/Q1 it
-is flat even without integrator damping.
+**Not working / under development.**
+* ⛔ **Grid-scale instability of the nonlinear horizontal discretisation — the first open item.** It is
+  interior (the closed periodic box shows it with no boundary mechanism) and was masked by Gridap's
+  strongly dissipative `SDIRK_2_2` (rule 15). Under Crank–Nicolson, mixed `:full` diverges at every
+  resolution (157 → 31 s from 8 to 64 cells/λ), and `:native` diverges at 64 cells/λ (Q2/Q1) and grows
+  at Q3/Q2. The Class-III Doppler branch explains the `:full` rate; the `:native` mechanism is open.
+  **Next: study and implement stabilisation** (a filter, or CIP edge stabilisation) — §5.2f, §5.7 item 0,
+  `OPEN_ISSUES.md` §0e, `PLANNED_CAMPAIGNS.md` §6c.
+* ⛔ **Variable bathymetry**: any bed grows a lee-shoulder mode in `:native`, at a rate set by `|∇h|`
+  (§5.2b, `OPEN_ISSUES.md` §0d) — where Yang & Liu filter; the same stabiliser is the first thing to try.
+* 🔴 **Nonlinear `p_η` order reduction** at Q3/Q2 on fine meshes, isolated to the advection block (§5.2,
+  `OPEN_ISSUES.md` §0b).
+* 🔴 **Cluster production suite** not re-run since the seed/geometry fixes (§5.6); the sysimage is stale.
+* The history of how the instability was narrowed down — the equal-order artefact (rule 12b), the 1-D
+  production campaign (§5.2b), the refinement factorial (§5.2c), the mixed campaign (§5.2e) and the box
+  (§5.2f) — is kept in the subsections below, in the order it happened.
 
 ### 5.1 LINEAR models (1, 2) — verified, no open defects
 
@@ -809,15 +814,17 @@ Stokes wave at `κa` = 0.16 is superharmonically stable — **nothing should gro
 
 | case | SDIRK_2_2 | Crank–Nicolson |
 |---|---|---|
-| Q2/Q1 `:native`, 8/16/32 cells/λ | 100 periods, flat | 32: flat (mid band +0.004 s⁻¹) |
-| Q2/Q1 `:full` mixed, 8 / 16 cells/λ | 100 periods, flat | running (16), queued (8) |
+| Q2/Q1 `:native`, 8 / 16 / 32 cells/λ | 100 periods, flat | 100 periods, flat (mid band ≤ +0.01 s⁻¹) |
+| Q2/Q1 `:native`, **64** cells/λ | — | ⛔ **diverged 146 s**, mid band +0.20 s⁻¹ |
+| Q2/Q1 `:full` mixed, 8 cells/λ | 100 periods, flat | ⛔ diverged 157 s, +0.03 s⁻¹ |
+| Q2/Q1 `:full` mixed, 16 cells/λ | 100 periods, flat | ⛔ diverged 104 s, +0.16 s⁻¹ |
 | Q2/Q1 `:full` mixed, **32** cells/λ | 100 periods, mid band **+0.10 s⁻¹** | ⛔ **diverged ≈ 90 s**, +0.16 s⁻¹ |
-| Q2/Q1 `:full` mixed, 64 cells/λ | 100 periods, **no growth** (masked, below) | queued |
+| Q2/Q1 `:full` mixed, 64 cells/λ | 100 periods, **no growth** (masked, below) | ⛔ **diverged 31 s**, +0.44 s⁻¹ |
 | Q3/Q2 `:native`, 16 cells/λ | 100 periods, flat | 100 periods but **growing, +0.10 s⁻¹** |
 | Q3/Q2 `:full` mixed, 16 cells/λ | ⛔ diverged 35 s, +0.35 s⁻¹ all bands | ⛔ **diverged 26 s**, +0.48 s⁻¹ |
-| Q2/Q1 `:native`, `A`=0.15 | 100 periods, flat | queued |
-| Q2/Q1 `:full` mixed, `A`=0.15 | ⛔ diverged ≈ 102 s | queued |
-| Q2/Q1 `:full` **projected** | ⛔ diverged 8.4 s, ≈ +2 s⁻¹ | queued |
+| Q2/Q1 `:native`, `A`=0.15 | 100 periods, flat | 100 periods, flat |
+| Q2/Q1 `:full` mixed, `A`=0.15 | ⛔ diverged ≈ 102 s | ⛔ diverged 41 s, +0.34 s⁻¹ |
+| Q2/Q1 `:full` **projected** | ⛔ diverged 8.4 s, ≈ +2 s⁻¹ | ⛔ diverged 8.8 s, +1.7 s⁻¹ |
 
 **WHAT IT ESTABLISHES.**
 * **The instability is interior.** With no boundary at all, `:full` grows at the element scale and
@@ -831,10 +838,14 @@ Stokes wave at `κa` = 0.16 is superharmonically stable — **nothing should gro
   the measured growth. Hence Q2/Q1 at 32 cells bounded under SDIRK but diverging under CN, and the
   64-cell SDIRK run showing *no* growth (its fastest modes, ρ ≈ 42 rad/s, lose ≈ 10 s⁻¹ against
   ≈ 3 s⁻¹ at 32 cells): the resolution ladder under SDIRK is not monotone *because of* the masking.
-* **At Q2/Q1 the Class-III terms alone carry it** (`:native` flat under CN). **At Q3/Q2 `:native` also
-  grows under CN**, five times slower than `:full` — a slow grid-scale growth of the higher-order
-  pairing that Class III amplifies. Unexplained; the frozen analysis flagged the same pairing (its
-  `:native` spectral radius does not saturate at the finest level).
+* **Under CN the ladder is monotone: onset advances with every refinement** (mixed Q2/Q1: 157 → 104 →
+  90 → 31 s from 8 to 64 cells/λ) — the grid-scale signature of rule 38b, now without masking.
+* **`:native` has the same instability, much weaker.** Under CN it is flat at Q2/Q1 up to 32 cells/λ,
+  diverges at 64 cells/λ (146 s, +0.20 s⁻¹), and grows at Q3/Q2 with 16 cells/λ (+0.10 s⁻¹) — i.e. it
+  appears once the *effective* resolution (cells × order) is high enough. Class III adds an order of
+  magnitude to the rate and brings it down to every resolution. The frozen analysis flagged it: the
+  Q3/Q2 `:native` spectral radius is the one that does not saturate at the finest level. The `:native`
+  mechanism is not identified (it has no `kU` Doppler branch).
 * **Mixed vs projected:** the mixed interior is far more benign (projected box: 8.4 s, +2 s⁻¹).
 
 **THE MECHANISM, as far as the frozen analysis and the measurements go** (chapter 8 §8.6–8.7). The
@@ -957,7 +968,9 @@ re-specified for from the `:full` operator defect.
    against the `:native` CN trace; the MMS orders of `VERIFIED_SCOPE.md` are preserved; and the
    amplitude ceiling it buys is measured and stated (the transfer rate grows with `A`). **Every
    stability claim is made under Crank–Nicolson (rule 15), in the closed box first, then on the
-   flume.** Also owed: why Q3/Q2 `:native` grows under CN; the lower frozen branch; whether the
+   flume.** ⚠ **The stabiliser must also cover `:native`**, which under CN diverges at Q2/Q1 with 64
+   cells/λ and grows at Q3/Q2 with 16 cells/λ — its acceptance runs belong in the same ladder. Also owed:
+   the `:native` mechanism (it has no `kU` Doppler branch); the lower frozen branch; whether the
    continuum is well posed at finite amplitude (a regularisation vs a stabilisation).
 1. ⛔ **The nonlinear `p_η` order reduction** (`OPEN_ISSUES.md` §0b). Next step is **derivation, not
    another run**: check the advection block term-by-term against `BALFEM_models/`. Cheap
@@ -1326,7 +1339,9 @@ supporting measurement is in the linked document.
       help**. (`TEST_SUITE.md` §4)
     * ⛔ **NO STABILITY CLAIM MAY REST ON `SDIRK_2_2` ALONE.** It masked the `:full` interior instability:
       Q2/Q1 at 32 cells/λ ran 100 periods bounded under SDIRK and **diverged at ≈ 90 s under
-      Crank–Nicolson**; the 64-cell SDIRK run showed no growth at all. Pair every stability run with a
+      Crank–Nicolson**; the 64-cell SDIRK run showed no growth at all and **diverged at 31 s under
+      Crank–Nicolson**; and SDIRK hid a `:native` instability altogether (Q2/Q1 64 cells/λ diverges at
+      146 s under CN). Pair every stability run with a
       Crank–Nicolson repeat (`BALFEM_SOLVER=theta`), which has `|R(iy)| ≡ 1`.
     * Before quoting any tableau's damping, read the tableau in `TableausDIM.jl` — never infer it from
       the name.

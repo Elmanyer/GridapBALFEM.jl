@@ -1046,8 +1046,10 @@ the `c3_0`/`c3_2` factorial and the unit gates). **Any future batch should redir
 
 1. **The instability is interior.** In the box, with no boundary mechanism, mixed `:full` grows
    element-scale modes and diverges at Q3/Q2 (35 s SDIRK, 26 s CN), at `A`=0.15 (102 s SDIRK), and at
-   Q2/Q1 32 cells/λ under CN (≈ 90 s). Every Q2/Q1 `:native` twin is flat, with or without integrator
-   damping.
+   Q2/Q1 32 cells/λ under CN (≈ 90 s). The full CN ladder (2026-09-27): mixed Q2/Q1 diverges at
+   157 / 104 / 90 / 31 s at 8 / 16 / 32 / 64 cells/λ; `:native` Q2/Q1 is flat up to 32 cells/λ but
+   **diverges at 146 s with 64 cells/λ** — `:native` carries the same grid-scale instability, far weaker,
+   once the resolution is fine and the integrator no longer damps it.
 2. **SDIRK_2_2 masked it.** Gridap's tableau (`DIRK22(1,0,1)`) removes ≈ `0.75(ωΔt)⁴` per step: it
    explains the 0.011 s⁻¹ carrier decay of every SDIRK run exactly and damps the fastest `:full` modes at
    2–10 s⁻¹ (`CLAUDE.md` rule 15).

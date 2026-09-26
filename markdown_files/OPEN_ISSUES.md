@@ -452,7 +452,7 @@ having a stable configuration does not mean it is understood.
 
 ---
 
-## 0e. ⛔ THE `:full` DISCRETISATION IS UNSTABLE — STUDY AND IMPLEMENT STABILISATION METHODS
+## 0e. ⛔ THE NONLINEAR DISCRETISATION IS UNSTABLE AT THE GRID SCALE (`:full` FAST, `:native` AT FINE MESHES) — STUDY AND IMPLEMENT STABILISATION METHODS
 
 > Opened 2026-09-26 on the closed-periodic-box campaign and its Crank–Nicolson repeats. Evidence and
 > numbers: `CLAUDE.md` §5.2f; full analysis with figures: LaTeX chapter 8
@@ -474,6 +474,13 @@ having a stable configuration does not mean it is understood.
 * **The default integrator was masking it.** Gridap's `SDIRK_2_2` (`DIRK22(1,0,1)`) removes
   ≈ `0.75(ωΔt)⁴` per step — 2–10 s⁻¹ at the fastest `:full` modes (`CLAUDE.md` rule 15). Under
   Crank–Nicolson, `:full` grows 40–60 % faster and Q2/Q1 at 32 cells/λ diverges at ≈ 90 s.
+* **The undamped ladder (completed 2026-09-27) is monotone.** Crank–Nicolson, Q2/Q1, `A`=0.10, mixed
+  `:full` diverges at 157 / 104 / 90 / 31 s at 8 / 16 / 32 / 64 cells/λ (mid band +0.03 / +0.16 / +0.16 /
+  +0.44 s⁻¹); at `A`=0.15 (16 cells/λ) at 41 s; the projected arm at 8.8 s (+1.7 s⁻¹).
+* **`:native` is not immune.** Under Crank–Nicolson it is flat at Q2/Q1 with 8–32 cells/λ and at
+  `A`=0.15, but **diverges at 146 s with 64 cells/λ** (+0.20 s⁻¹) and grows at Q3/Q2 with 16 cells/λ
+  (+0.10 s⁻¹). The grid-scale instability belongs to the discretisation of the nonlinear model; the
+  Class-III terms raise its rate by an order of magnitude and bring it down to every resolution.
 * **Mechanism (frozen analysis + measurements).** Class III adds a Doppler branch `ω ≈ kU + ω∞` to the
   high-`k` band (spectral radius ∝ `A/h_e`, where `:native` saturates at `ω∞`); the carrier pumps energy
   up the wavenumber ladder at a rate ∝ `kU`; `C⁰` elements represent that band to beyond the node
@@ -482,14 +489,15 @@ having a stable configuration does not mean it is understood.
 
 ### 2. What is not established
 
-* **Why Q3/Q2 `:native` grows** under Crank–Nicolson (+0.10 s⁻¹ over 100 periods, five times slower than `:full`); its
-  frozen spectral radius is also the one that does not saturate at the finest level.
+* **The `:native` mechanism.** `:native` has no `kU` Doppler branch, yet it diverges at Q2/Q1 with
+  64 cells/λ and grows at Q3/Q2 with 16 cells/λ under Crank–Nicolson; the Q3/Q2 frozen spectral radius
+  is also the one that does not saturate at the finest level. The advection block is the obvious
+  candidate (it is the only nonlinear block in `:native`).
 * **The lower `:full` branch** of the frozen spectrum (frequency falling with `k` and with `A`).
 * **Whether the continuum is well posed at finite amplitude**, i.e. whether the fix is a numerical
   stabilisation or a regularisation of the model. A converging growth rate under refinement would point
   to the latter; so far the rates rise with resolution and order.
-* **The undamped resolution ladder** (Crank–Nicolson at 8, 16, 64 cells/λ, and the `A`=0.15 and
-  projected twins) — running (`run/local/run_1dper_batch_cn{2,3}.sh`).
+* ~~The undamped resolution ladder~~ — completed 2026-09-27 (above).
 
 ### 3. The open item: stabilisation
 
@@ -509,7 +517,7 @@ Candidates, in the order they should be tried:
 
 **Acceptance, all four, measured under Crank–Nicolson (rule 15), box first, then flume:**
 (i) the damping exceeds the measured transfer rate with margin — mid/high-band `σ_E` ≤ 0 at Q3/Q2,
-16 cells/λ and Q2/Q1, 32 cells/λ, `A` = 0.10 and 0.15; (ii) the carrier at 16 cells/λ is unattenuated
+16 cells/λ and Q2/Q1, 32 and 64 cells/λ, `A` = 0.10 and 0.15, for **both** `:full` and `:native`; (ii) the carrier at 16 cells/λ is unattenuated
 over 100 periods against the `:native` Crank–Nicolson trace; (iii) the MMS orders of
 [`VERIFIED_SCOPE.md`](VERIFIED_SCOPE.md) are preserved; (iv) the amplitude ceiling it buys is
 measured and stated, since the transfer rate grows with `A`.
