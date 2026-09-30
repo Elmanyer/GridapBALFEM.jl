@@ -77,6 +77,8 @@ const SUITE = [
     #  The mixed (projection-free) Class-III path, src/mixed.jl.
     ("test_mixed_jacobian.jl",           :slow,   "mixed coupling blocks C, B vs FD oracle (~20 min)"),
     ("test_diagnostics_mixed.jl",        :medium, "run diagnostics on 3/5/7-field layouts"),
+    #  BROKEN (skeleton) Class-III path + C⁰-IP penalty — markdown_files/BROKEN_FORMULATION_PLAN.md §T6
+    ("test_broken_formulation.jl",       :slow,   "broken layer identity, C⁰-IP algebra, Jacobian (~25 min)"),
     #  ⚠ test_mixed_formulation.jl is NOT registered: its G1–G3 harness (6 m box, source
     #  spanning the domain) kills even :native after 20 steps — NEW_TREATMENT.md §F.0. G4/G5
     #  pass. Re-register once the harness is re-posed (TEST_SUITE.md §8).

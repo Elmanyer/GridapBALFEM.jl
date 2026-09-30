@@ -647,6 +647,17 @@ function setup_and_run(;
                                           #   unknowns instead of frozen L² projections.
                                           #   DIAGNOSTIC ONLY — AD Jacobians, sequential,
                                           #   much slower per step. Needs nl_pressure=:full.
+    broken       :: Bool    = false,      # ⚠ BROKEN (skeleton) Class-III path (src/broken.jl): the
+                                          #   𝓚/𝓟 Class-III blocks by the DISTRIBUTIONAL gradient —
+                                          #   cellwise Hessians + a skeleton-layer integral — instead
+                                          #   of frozen L² projections (default) or auxiliary unknowns
+                                          #   (mixed=true). 3 fields. Needs nl_pressure=:full; refused
+                                          #   with mixed / nlp_inloop. Sequential only.
+                                          #   markdown_files/BROKEN_FORMULATION_PLAN.md
+    cip_gamma_u  :: Float64 = 0.0,        # ⚠ C⁰ interior penalty on ⟦∂ₙ𝖴⟧ (dimensionless γ_u; 0 = off).
+                                          #   J_h = Σ_F ∫ γ_u d√(gd) h_F^s Σₐ⟦∂ₙ𝖴ₐ⟧·Mv⟦∂ₙ𝖵ₐ⟧. Any tier.
+    cip_gamma_eta:: Float64 = 0.0,        # ⚠ C⁰-IP on ⟦∂ₙη⟧ in continuity (γ_η √(gd) h_F^s; 0 = off).
+    cip_hexp     :: Float64 = 2.0,        # exponent s of h_F in the penalty.
     c3_mask      :: Tuple{Bool,Bool} = (true, true),
                                           # ⚠ WHICH Class-III object to assemble: (∇𝖲, ∇𝖻).
                                           #   (true,true) = ordinary :full. Used to isolate which
@@ -842,6 +853,15 @@ function setup_and_run(;
     mixed && nl_pressure != :full &&
         error("setup_and_run: mixed=true needs nl_pressure=:full (it replaces the " *
               "Class-III projections; there is nothing to replace otherwise)")
+    #  ⚠ BROKEN PATH: a DIFFERENT treatment of the same Class-III blocks, never an addend.
+    broken && nl_pressure != :full &&
+        error("setup_and_run: broken=true needs nl_pressure=:full (it replaces the " *
+              "Class-III projections; there is nothing to replace otherwise)")
+    broken && mixed &&
+        error("setup_and_run: broken=true and mixed=true are alternative Class-III " *
+              "treatments — choose one")
+    broken && nlp_inloop &&
+        error("setup_and_run: broken=true has no projections to refresh in-loop (nlp_inloop)")
     n_aux = mixed ? (c3_mask[2] ? 4 : 2) : 0
     U, V = build_fe_spaces(model, 
                                 p_u,           # horizontal (velocity) FE order
@@ -862,6 +882,12 @@ function setup_and_run(;
                      (use_ad         ? "exact AD Jacobian (SLOW)" :
                       mixed_coupling ? "quasi-Newton + C/B coupling blocks" :
                                        "quasi-Newton (block-diagonal, LEGACY)"))
+    broken && println("  Class-III: BROKEN / DISTRIBUTIONAL — cellwise Hessians + skeleton layer " *
+                      "(no projection, no auxiliary unknowns); " *
+                      (use_ad ? "exact AD Jacobian" : "quasi-Newton on the Class-III blocks"))
+    (cip_gamma_u > 0 || cip_gamma_eta > 0) &&
+        @printf("  C0-IP penalty: γ_u=%.3g (⟦∂ₙ𝖴⟧)  γ_η=%.3g (⟦∂ₙη⟧)  h_F^%.3g, τ_u=d√(gd), τ_η=√(gd)\n",
+                cip_gamma_u, cip_gamma_eta, cip_hexp)
     @printf("  Fields: %d (η + 2 stacked VectorValue{%d} + %d aux)   free DOFs: %d\n",
             3 + n_aux, vert.N_dof, n_aux, num_free_dofs(U(0.0)))
     @printf("  Wave: λ=%.2f m, kd=%.2f\n", 2pi/k_wave, k_wave*h_val)
@@ -911,6 +937,13 @@ function setup_and_run(;
                         relax_bc=use_relax,         # whether to use a relaxation zone at the inflow
                         relax_mu=relax_mu_fn,       # relaxation-zone damping profile μ(x,y)
                         relax_tg=relax_tg)          # incident wave target for the relaxation zone
+    #  Skeleton context: the broken Class-III path and/or the C⁰-IP penalty. `nothing`
+    #  (both off) keeps every residual path bit-identical to the Galerkin one.
+    attach_skeleton!(prob, model; broken=broken, cip_gamma_u=cip_gamma_u,
+                     cip_gamma_eta=cip_gamma_eta, cip_hexp=cip_hexp,
+                     degree=2*max(p_u, p_eta) + 2 + quad_extra)
+    prob.skel[] !== nothing &&
+        @printf("  Skeleton: %d interior facets\n", prob.skel[].nfacets)
 
     # Build problem TransientFEOperator ->  Wrap the residual (+ Jacobians) into a Gridap operator
     # `use_ad` swaps the hand Jacobians for AD-generated ones (cross-checking only).
@@ -979,7 +1012,7 @@ function setup_and_run(;
     #  ⚠ NOT on the mixed path: there are no frozen projections to build there, and doing so
     #  printed "Class-III projections: LAGGED one step (legacy)" directly under a banner that
     #  had just announced PROJECTION-FREE — two contradictory claims about the same run.
-    nlp = (nl_pressure == :full && !mixed) ?
+    nlp = (nl_pressure == :full && !mixed && !broken) ?
           (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh)) : nothing
     # ⚠ Attaching the context to the problem SELECTS in-loop (static-condensation) mode:
     #   `global_residual` then refreshes π𝖲, π𝖻 from the current Newton iterate.

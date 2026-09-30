@@ -30,6 +30,10 @@
 #  MIXED LAYOUT: the auxiliary 𝖦 is solved from its own constraint at t₀
 #  (mixed_consistent_ic), so the hot start is consistent.
 #
+#  BROKEN / C⁰-IP (src/broken.jl, markdown_files/BROKEN_FORMULATION_PLAN.md):
+#     BALFEM_BROKEN=1  Class-III 𝓚/𝓟 blocks by the distributional gradient (needs :full)
+#     BALFEM_CIP_GU    C⁰-IP γ_u on ⟦∂ₙ𝖴⟧   BALFEM_CIP_GE  γ_η on ⟦∂ₙη⟧   BALFEM_CIP_HEXP  s (2)
+#
 #  KNOBS (all BALFEM_*, as run_flume_1d.jl): NL_PRESSURE, MIXED, P_AUX, C3_MASK, FE_ORDER,
 #  P_ETA, AWAVE, TWAVE, D, DT, PERIODS, SOLVER/TABLEAU, USE_AD, NLP_INLOOP, plus
 #     BALFEM_NLAMBDA   wavelengths in the box          (default 1)
@@ -96,6 +100,11 @@ solver_sym() === :theta && push!(_extra, "theta")
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
 genv_b("BALFEM_NLP_INLOOP", 0) && push!(_extra, "inloop")
 genv_b("BALFEM_MIXED", 0) && push!(_extra, "mixed")
+genv_b("BALFEM_BROKEN", 0) && push!(_extra, "broken")
+_cgu = genv_f("BALFEM_CIP_GU", 0.0); _cge = genv_f("BALFEM_CIP_GE", 0.0)
+_cgu > 0 && push!(_extra, @sprintf("cipu%g", _cgu))
+_cge > 0 && push!(_extra, @sprintf("cipe%g", _cge))
+haskey(ENV, "BALFEM_CIP_HEXP") && push!(_extra, "hexp" * ENV["BALFEM_CIP_HEXP"])
 haskey(ENV, "BALFEM_P_AUX") && push!(_extra, "aux" * ENV["BALFEM_P_AUX"])
 let m = lowercase(genv("BALFEM_C3_MASK", "both")); m == "both" || push!(_extra, "c3" * m) end
 _name = output_dir_name(; M = M, p_vert = p_vert, ny = 1, y_wall_bc = :wall,
@@ -131,6 +140,9 @@ diags, vert, prob = setup_and_run(;
     use_ad = genv_b("BALFEM_USE_AD", 0),
     nlp_inloop = genv_b("BALFEM_NLP_INLOOP", 0),
     mixed = genv_b("BALFEM_MIXED", 0),
+    broken = genv_b("BALFEM_BROKEN", 0),
+    cip_gamma_u = _cgu, cip_gamma_eta = _cge,
+    cip_hexp = genv_f("BALFEM_CIP_HEXP", 2.0),
     p_aux = (haskey(ENV, "BALFEM_P_AUX") ? genv_i("BALFEM_P_AUX", feord) : nothing),
     c3_mask = (m -> m == "gs" ? (true, false) : m == "gb" ? (false, true) :
                     m == "none" ? (false, false) : (true, true))(lowercase(genv("BALFEM_C3_MASK", "both"))),

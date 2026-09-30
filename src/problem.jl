@@ -101,6 +101,14 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
                                       #   F = ∫(q Sη + Wx⋅Sx + Wy⋅Sy), making u* the exact solution
                                       #   of the forced problem. Independent of u ⇒ NO Jacobian
                                       #   contribution. See markdown_files/VERIFIED_SCOPE.md (the analytic-MMS plan itself is gone).
+    skel         :: Base.RefValue{Any} # skeleton (interior-facet) context, or `nothing` (default ⇒
+                                      #   every path bit-identical to the Galerkin residual). Set by
+                                      #   `attach_skeleton!` (src/broken.jl). Carries TWO orthogonal
+                                      #   options: `broken` (Class-III 𝓚/𝓟 blocks by the distributional
+                                      #   gradient — cellwise Hessians + skeleton layer — instead of the
+                                      #   projections) and the C⁰-IP penalty (`gu`, `ge` > 0).
+                                      #   LaTeX §"Broken Weak Formulation: Term-by-Term Audit";
+                                      #   markdown_files/BROKEN_FORMULATION_PLAN.md.
 end
 
 """
@@ -236,7 +244,7 @@ function build_problem_raw(vert;
                          P_full, nl_pressure68, nl_pressure_full, flat_bed,
                          Ref{Any}(nothing), WK3, WP3, c3_mask, Ref{Any}(nothing),
                          mu_sponge, wm_src,
-                         relax_bc, relax_mu, relax_tg, mms_src)
+                         relax_bc, relax_mu, relax_tg, mms_src, Ref{Any}(nothing))
 end
 
 """
@@ -469,6 +477,18 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh;
                     r = r + nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy,
                                                       GU, SD, N4, dΩh)
                     r = r + nlp_P_reduced_contrib(prob, H, DW, GU, SD, N4, dΩh)
+                elseif is_broken(prob)
+                    # ---- BROKEN (DISTRIBUTIONAL) FORMULATION — src/broken.jl -----------
+                    #  ∇𝖲, ∇𝖻 by their distributional gradients: cellwise Hessians (volume,
+                    #  through the SAME reduced contributors) + the skeleton layer. No
+                    #  projection, no lag, no auxiliary unknowns. Audit §"Class III", form (A).
+                    GU, SD, N4, _ = broken_class3_cell_fields(prob, d_cf, η, H, dHx, dHy,
+                                                              Ux, Uy, DU, S)
+                    r = r + nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy,
+                                                      GU, SD, N4, dΩh)
+                    r = r + nlp_P_reduced_contrib(prob, H, DW, GU, SD, N4, dΩh)
+                    r = r + broken_class3_skeleton_contrib(prob, prob.skel[], H, dHx, dHy,
+                                                           Ux, Uy, S, UgH, Wx, Wy, DW)
                 else
                     ctx = prob.nlp_ctx[]
                     if ctx !== nothing && nlp_plain_iterate(u)
@@ -486,6 +506,11 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh;
             end
         end
     end
+
+    # ---- C⁰ interior penalty (src/broken.jl) — any tier, any Class-III treatment ------
+    #  Sign-definite skeleton damping of the normal-derivative jumps; zero on the exact
+    #  solution. `nothing` on prob.skel (the default) ⇒ absent, bit-identical to main.
+    has_cip(prob) && (r = r + cip_contrib(prob, prob.skel[], η, Ux, Uy, q, Wx, Wy))
 
     # ---- analytic MMS forcing (verification only; `nothing` in every physical run) --
     #  Subtract F(t;q,vᵢ) = ∫(q Sη + Σᵢ Sᵢ·vᵢ) so that the manufactured field u* is the
@@ -705,6 +730,11 @@ function jacobian_u(t::Real, u, du, v, prob::BALFEMProblem, trian, dΩh)
                  + H*((alg_dc3(prob.M3, dTMx)) ⋅ Wx) + H*((alg_dc3(prob.M3, dTMy)) ⋅ Wy)
                  + ((alg_dc3(prob.G3, dTGx)) ⋅ Wx) + ((alg_dc3(prob.G3, dTGy)) ⋅ Wy) ) * dΩh
     end
+
+    # C⁰-IP penalty: LINEAR in (η,𝖴) ⇒ its exact derivative is the same form on (dη,d𝖴).
+    # (The broken Class-III skeleton layer is quasi-Newton, like every Class-III block —
+    #  rule 17b; `use_ad=true` gives its exact Jacobian.)
+    has_cip(prob) && (r = r + cip_contrib(prob, prob.skel[], dη, dUx, dUy, q, Wx, Wy))
 
     return r
 end
