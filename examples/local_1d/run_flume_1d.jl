@@ -280,6 +280,11 @@ genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
 genv_b("BALFEM_NLP_INLOOP", 0) && push!(_extra, "inloop")
 genv_b("BALFEM_MIXED", 0) && push!(_extra, "mixed")
 haskey(ENV, "BALFEM_P_AUX") && push!(_extra, "aux"*ENV["BALFEM_P_AUX"])
+genv_b("BALFEM_BROKEN", 0) && push!(_extra, "broken")
+genv_f("BALFEM_CIP_GU", 0.0) > 0 && push!(_extra, @sprintf("cipu%g", genv_f("BALFEM_CIP_GU", 0.0)))
+genv_f("BALFEM_CIP_GE", 0.0) > 0 && push!(_extra, @sprintf("cipe%g", genv_f("BALFEM_CIP_GE", 0.0)))
+genv_i("BALFEM_CIP_ORDER", 1) > 1 && push!(_extra, "cipord" * ENV["BALFEM_CIP_ORDER"])
+lowercase(genv("BALFEM_STAB", "jumpgrad")) == "ghostvolume" && push!(_extra, "ghost")
 let m = lowercase(genv("BALFEM_C3_MASK","both")); m == "both" || push!(_extra, "c3"*m) end
 genv_i("BALFEM_QUAD_EXTRA", 0) != 0 && push!(_extra, "q$(genv_i("BALFEM_QUAD_EXTRA",0))")
 
@@ -358,6 +363,8 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           div_factor=genv_f("BALFEM_DIV_FACTOR", 20.0))
 
 if use_mpi
+    (genv_b("BALFEM_BROKEN", 0) || genv_f("BALFEM_CIP_GU", 0.0) > 0 || genv_f("BALFEM_CIP_GE", 0.0) > 0) &&
+        error("run_flume_1d: BALFEM_BROKEN / BALFEM_CIP_* are sequential-only; set BALFEM_MPI=0")
     px = genv_i("BALFEM_PX", 12)
     nx % px == 0 || error("BALFEM_NX ($nx) must be divisible by BALFEM_PX ($px)")
     diags, vert, prob = setup_and_run_distributed(;
@@ -367,7 +374,18 @@ if use_mpi
 else
     diags, vert, prob = setup_and_run(;
         domain=((0.0, Lx), (0.0, Ly)), partition=(nx, ny),
-        gauges=gauges, common...)
+        gauges=gauges,
+        #  BALFEM_BROKEN=1: Class-III 𝓚/𝓟 blocks by the distributional gradient (cellwise
+        #  Hessians + skeleton layer; src/broken.jl). BALFEM_CIP_GU / _GE / _HEXP: the C⁰
+        #  interior penalty on ⟦∂ₙ𝖴⟧ / ⟦∂ₙη⟧ (BROKEN_FORMULATION_PLAN.md). SEQUENTIAL ONLY —
+        #  setup_and_run_distributed has neither option.
+        broken=genv_b("BALFEM_BROKEN", 0),
+        cip_gamma_u=genv_f("BALFEM_CIP_GU", 0.0),
+        cip_gamma_eta=genv_f("BALFEM_CIP_GE", 0.0),
+        cip_hexp=genv_f("BALFEM_CIP_HEXP", 2.0),
+        cip_order=genv_i("BALFEM_CIP_ORDER", 1),
+        stabilization=Symbol(lowercase(genv("BALFEM_STAB", "jumpgrad"))),
+        common...)
 end
 
 #  `tag` was a leftover from before the output_dir_name rename (rule 2c) and was defined

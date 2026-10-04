@@ -76,7 +76,8 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         #  (BROKEN_FORMULATION_PLAN.md §T8).
                         broken::Bool = false,
                         cip_gamma_u::Float64 = 0.0, cip_gamma_eta::Float64 = 0.0,
-                        cip_hexp::Float64 = 2.0,
+                        cip_hexp::Float64 = 2.0, cip_order::Int = 1,
+                        stabilization::Symbol = :jumpgrad,
                         verbose::Bool = true,
                         use_ad::Bool = false,   # AD Jacobians (3-arg TransientFEOperator)
                         output_dir::String = mktempdir(),
@@ -124,6 +125,7 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                          mms_src     = src)
     attach_skeleton!(prob, model; broken = broken, cip_gamma_u = cip_gamma_u,
                      cip_gamma_eta = cip_gamma_eta, cip_hexp = cip_hexp,
+                     cip_order = cip_order, stabilization = stabilization, p_u = p_u, p_eta = pe,
                      degree = 2*max(p_u, pe) + 2 + quad_extra)
 
     op     = use_ad ? build_ode_operator_ad(prob, U, V, trian, dΩh) :

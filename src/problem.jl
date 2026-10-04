@@ -510,7 +510,7 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh;
     # ---- C⁰ interior penalty (src/broken.jl) — any tier, any Class-III treatment ------
     #  Sign-definite skeleton damping of the normal-derivative jumps; zero on the exact
     #  solution. `nothing` on prob.skel (the default) ⇒ absent, bit-identical to main.
-    has_cip(prob) && (r = r + cip_contrib(prob, prob.skel[], η, Ux, Uy, q, Wx, Wy))
+    has_cip(prob) && (r = r + stab_contrib(prob, prob.skel[], η, Ux, Uy, q, Wx, Wy))
 
     # ---- analytic MMS forcing (verification only; `nothing` in every physical run) --
     #  Subtract F(t;q,vᵢ) = ∫(q Sη + Σᵢ Sᵢ·vᵢ) so that the manufactured field u* is the
@@ -734,7 +734,15 @@ function jacobian_u(t::Real, u, du, v, prob::BALFEMProblem, trian, dΩh)
     # C⁰-IP penalty: LINEAR in (η,𝖴) ⇒ its exact derivative is the same form on (dη,d𝖴).
     # (The broken Class-III skeleton layer is quasi-Newton, like every Class-III block —
     #  rule 17b; `use_ad=true` gives its exact Jacobian.)
-    has_cip(prob) && (r = r + cip_contrib(prob, prob.skel[], dη, dUx, dUy, q, Wx, Wy))
+    has_cip(prob) && (r = r + stab_contrib(prob, prob.skel[], dη, dUx, dUy, q, Wx, Wy))
+
+    # BROKEN Class-III 𝓚/𝓟 blocks (volume + skeleton layer): EXACT linearisation, added
+    # 2026-10-02. Unlike the projected path (frozen data ⇒ nothing to differentiate) these blocks
+    # depend on the current iterate through cellwise Hessians and facet jumps that scale like 1/h;
+    # leaving them out stalled Newton at 32 cells/λ (GHOST_PENALTY_PLAN.md §5.5). src/broken.jl.
+    if prob.nl_pressure_full && is_broken(prob) && any(prob.c3_mask)
+        r = r + broken_class3_jacobian(prob, prob.skel[], d_cf, η, Ux, Uy, dη, dUx, dUy, Wx, Wy, dΩh)
+    end
 
     return r
 end

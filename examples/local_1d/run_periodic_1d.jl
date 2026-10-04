@@ -105,6 +105,8 @@ _cgu = genv_f("BALFEM_CIP_GU", 0.0); _cge = genv_f("BALFEM_CIP_GE", 0.0)
 _cgu > 0 && push!(_extra, @sprintf("cipu%g", _cgu))
 _cge > 0 && push!(_extra, @sprintf("cipe%g", _cge))
 haskey(ENV, "BALFEM_CIP_HEXP") && push!(_extra, "hexp" * ENV["BALFEM_CIP_HEXP"])
+genv_i("BALFEM_CIP_ORDER", 1) > 1 && push!(_extra, "cipord" * ENV["BALFEM_CIP_ORDER"])
+lowercase(genv("BALFEM_STAB", "jumpgrad")) == "ghostvolume" && push!(_extra, "ghost")
 haskey(ENV, "BALFEM_P_AUX") && push!(_extra, "aux" * ENV["BALFEM_P_AUX"])
 let m = lowercase(genv("BALFEM_C3_MASK", "both")); m == "both" || push!(_extra, "c3" * m) end
 _name = output_dir_name(; M = M, p_vert = p_vert, ny = 1, y_wall_bc = :wall,
@@ -143,6 +145,8 @@ diags, vert, prob = setup_and_run(;
     broken = genv_b("BALFEM_BROKEN", 0),
     cip_gamma_u = _cgu, cip_gamma_eta = _cge,
     cip_hexp = genv_f("BALFEM_CIP_HEXP", 2.0),
+    cip_order = genv_i("BALFEM_CIP_ORDER", 1),
+    stabilization = Symbol(lowercase(genv("BALFEM_STAB", "jumpgrad"))),
     p_aux = (haskey(ENV, "BALFEM_P_AUX") ? genv_i("BALFEM_P_AUX", feord) : nothing),
     c3_mask = (m -> m == "gs" ? (true, false) : m == "gb" ? (false, true) :
                     m == "none" ? (false, false) : (true, true))(lowercase(genv("BALFEM_C3_MASK", "both"))),

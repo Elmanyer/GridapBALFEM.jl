@@ -658,6 +658,13 @@ function setup_and_run(;
                                           #   J_h = Σ_F ∫ γ_u d√(gd) h_F^s Σₐ⟦∂ₙ𝖴ₐ⟧·Mv⟦∂ₙ𝖵ₐ⟧. Any tier.
     cip_gamma_eta:: Float64 = 0.0,        # ⚠ C⁰-IP on ⟦∂ₙη⟧ in continuity (γ_η √(gd) h_F^s; 0 = off).
     cip_hexp     :: Float64 = 2.0,        # exponent s of h_F in the penalty.
+    stabilization:: Symbol  = :jumpgrad,  # ⚠ which skeleton stabilisation the γ knobs drive:
+                                          #   :jumpgrad    — normal-derivative jumps, orders ≤ cip_order
+                                          #   :ghostvolume — direct (volume) ghost penalty, every order
+                                          #                  0…p by polynomial extension (GHOST_PENALTY_PLAN.md)
+    cip_order    :: Int     = 1,          # hp-CIP: penalise ⟦∂ₙʲ·⟧ for j = 1..cip_order (capped at
+                                          #   each field's FE order; ≤ 2 — Gridap's derivative limit),
+                                          #   weight h_F^(s+2(j−1)). BROKEN_FORMULATION_PLAN.md §5.2.
     c3_mask      :: Tuple{Bool,Bool} = (true, true),
                                           # ⚠ WHICH Class-III object to assemble: (∇𝖲, ∇𝖻).
                                           #   (true,true) = ordinary :full. Used to isolate which
@@ -884,10 +891,13 @@ function setup_and_run(;
                                        "quasi-Newton (block-diagonal, LEGACY)"))
     broken && println("  Class-III: BROKEN / DISTRIBUTIONAL — cellwise Hessians + skeleton layer " *
                       "(no projection, no auxiliary unknowns); " *
-                      (use_ad ? "exact AD Jacobian" : "quasi-Newton on the Class-III blocks"))
-    (cip_gamma_u > 0 || cip_gamma_eta > 0) &&
-        @printf("  C0-IP penalty: γ_u=%.3g (⟦∂ₙ𝖴⟧)  γ_η=%.3g (⟦∂ₙη⟧)  h_F^%.3g, τ_u=d√(gd), τ_η=√(gd)\n",
-                cip_gamma_u, cip_gamma_eta, cip_hexp)
+                      (use_ad ? "exact AD Jacobian" : "exact hand Jacobian incl. the Class-III blocks (broken_class3_jacobian)"))
+    (cip_gamma_u > 0 || cip_gamma_eta > 0) && stabilization === :jumpgrad &&
+        @printf("  C0-IP penalty: γ_u=%.3g (⟦∂ₙʲ𝖴⟧, j≤%d)  γ_η=%.3g (⟦∂ₙʲη⟧, j≤%d)  h_F^(%.3g+2(j−1)), τ_u=d√(gd), τ_η=√(gd)\n",
+                cip_gamma_u, min(cip_order, p_u), cip_gamma_eta, min(cip_order, p_eta), cip_hexp)
+    (cip_gamma_u > 0 || cip_gamma_eta > 0) && stabilization === :ghostvolume &&
+        @printf("  GHOST-VOLUME penalty: γ_u=%.3g  γ_η=%.3g  — γ τ h^(%.3g−3) ∫_{T⁺∪T⁻} |E·⁺ − E·⁻|², every order 0…p (𝖴: %d, η: %d), τ_u=d√(gd), τ_η=√(gd)\n",
+                cip_gamma_u, cip_gamma_eta, cip_hexp, p_u, p_eta)
     @printf("  Fields: %d (η + 2 stacked VectorValue{%d} + %d aux)   free DOFs: %d\n",
             3 + n_aux, vert.N_dof, n_aux, num_free_dofs(U(0.0)))
     @printf("  Wave: λ=%.2f m, kd=%.2f\n", 2pi/k_wave, k_wave*h_val)
@@ -941,6 +951,7 @@ function setup_and_run(;
     #  (both off) keeps every residual path bit-identical to the Galerkin one.
     attach_skeleton!(prob, model; broken=broken, cip_gamma_u=cip_gamma_u,
                      cip_gamma_eta=cip_gamma_eta, cip_hexp=cip_hexp,
+                     cip_order=cip_order, stabilization=stabilization, p_u=p_u, p_eta=p_eta,
                      degree=2*max(p_u, p_eta) + 2 + quad_extra)
     prob.skel[] !== nothing &&
         @printf("  Skeleton: %d interior facets\n", prob.skel[].nfacets)

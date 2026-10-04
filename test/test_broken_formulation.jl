@@ -244,5 +244,173 @@ let x0 = get_free_dof_values(state(S1, 1.0; rough = 0.01)), d = randn(MersenneTw
         all(gaps[1:end-1] ./ gaps[2:end] .> 1.2))
 end
 
+# ---------------------------------------------------------------------------------------
+println("\n  G8 — hp-CIP, orders 1–2 (BROKEN_FORMULATION_PLAN.md §5.2)")
+let S2 = setup()
+    for ord in (1, 2)
+        p = build_problem(vert; h_bathy = bed, regime = :nonlinear, nl_pressure = :none, flat_bed = false)
+        attach_skeleton!(p, S2.model; cip_gamma_u = 1.0, cip_gamma_eta = 1.0, cip_order = ord,
+                         p_u = PU, p_eta = PE, degree = QDEG)
+        A  = cipmat(S2, p); Ad = Matrix(A)
+        λ  = eigvals(Symmetric(0.5 * (Ad + Ad')))
+        poly = interpolate_everywhere([x -> 0.3 + 0.2x[1] - 0.1x[2] + 0.05x[1]^2 - 0.07x[1] * x[2] + 0.04x[2]^2,
+            x -> VectorValue(ntuple(j -> 0.1j * x[1]^3 - 0.2x[1] * x[2]^2 + 0.3x[2]^3 + j * x[1] * x[2], Nσ)...),
+            x -> VectorValue(ntuple(j -> 0.2x[2]^3 - 0.1j * x[1]^2 * x[2] + 0.05x[1]^3, Nσ)...)], S2.U)
+        xp = get_free_dof_values(poly)
+        e  = norm(A * xp) / (opnorm(Ad) * norm(xp))
+        rk = count(λ .> 1e-10 * maximum(λ))
+        @printf("    order %d: orders (u,η) = (%d,%d)  asym %.1e  λmin/λmax %.1e  |A·poly| %.1e  rank %d/%d\n",
+                ord, p.skel[].order_u, p.skel[].order_eta, norm(Ad - Ad') / norm(Ad),
+                minimum(λ) / maximum(λ), e, rk, length(λ))
+        chk("G8 [order $ord] symmetric PSD, zero on a global polynomial of the trial degree",
+            norm(Ad - Ad') / norm(Ad) < 1e-12 && minimum(λ) > -1e-10 * maximum(λ) && e < 1e-12)
+        ord == 2 && (global RANK2 = rk)
+        ord == 1 && (global RANK1 = rk)
+    end
+    chk("G8 the order-2 terms are live: rank grows ($(RANK1) → $(RANK2))", RANK2 > RANK1)
+    refused = try
+        attach_skeleton!(mkprob(S2; nlp = :none), S2.model; cip_gamma_u = 1.0, cip_order = 3, degree = QDEG); false
+    catch
+        true
+    end
+    chk("G8 cip_order = 3 is refused (Gridap evaluates FE derivatives only up to order 2)", refused)
+end
+
+# =======================================================================================
+#  G9 — :ghostvolume, the direct (volume) ghost penalty (GHOST_PENALTY_PLAN.md §3)
+# =======================================================================================
+println("\n  G9 — ghost-volume stabilisation")
+"Problem with a given stabilisation attached (flat or sloping bed)."
+function gprob(Sm; stab = :ghostvolume, gu = 1.0, ge = 1.0, regime = :nonlinear, nlp = :none,
+               bedf = bed, flat_bed = false, pu = PU, pe = PE, order = 1)
+    p = build_problem(vert; h_bathy = bedf, regime = regime, nl_pressure = nlp, flat_bed = flat_bed)
+    attach_skeleton!(p, Sm.model; cip_gamma_u = gu, cip_gamma_eta = ge, stabilization = stab,
+                     cip_order = order, p_u = pu, p_eta = pe, degree = 2 * pu + 4)
+    return p
+end
+stabmat(Sm, p) = assemble_matrix((du, v) -> stab_contrib(p, p.skel[], du[1], du[2], du[3], v[1], v[2], v[3]), Sm.U, Sm.V)
+
+let S2 = setup()                                       # open 2-D mesh, Q3/Q2, sloping bed
+    p  = gprob(S2)
+    A  = stabmat(S2, p); Ad = Matrix(A)
+    λ  = eigvals(Symmetric(0.5 * (Ad + Ad')))
+    asym = norm(Ad - Ad') / norm(Ad)
+    poly = interpolate_everywhere([x -> 0.3 + 0.2x[1] - 0.1x[2] + 0.05x[1]^2 - 0.07x[1] * x[2] + 0.04x[2]^2,
+        x -> VectorValue(ntuple(j -> 0.1j * x[1]^3 - 0.2x[1] * x[2]^2 + 0.3x[2]^3 + j * x[1] * x[2], Nσ)...),
+        x -> VectorValue(ntuple(j -> 0.2x[2]^3 - 0.1j * x[1]^2 * x[2] + 0.05x[1]^3, Nσ)...)], S2.U)
+    xp = get_free_dof_values(poly)
+    e  = norm(A * xp) / (opnorm(Ad) * norm(xp))
+    z  = VectorValue(ntuple(_ -> 0.0, Nσ)...)
+    q1 = get_free_dof_values(interpolate_everywhere([x -> 1.0, x -> z, x -> z], S2.U))
+    xr = randn(MersenneTwister(5), length(xp)); m = abs(dot(q1, A * xr)) / norm(A * xr)
+    rk = count(λ .> 1e-10 * maximum(λ))
+    @printf("    Q3/Q2 open mesh: asym %.1e  λmin/λmax %.1e  |A·poly| %.1e  mass %.1e  rank %d/%d\n",
+            asym, minimum(λ) / maximum(λ), e, m, rk, length(λ))
+    chk("G9a kernel: zero on a global polynomial of the trial degree ($(round(e, sigdigits=2)))", e < 1e-12)
+    chk("G9b symmetric positive semidefinite", asym < 1e-12 && minimum(λ) > -1e-10 * maximum(λ))
+    chk("G9d the η-penalty conserves mass ($(round(m, sigdigits=2)))", m < 1e-12)
+    pj = gprob(S2; stab = :jumpgrad, order = 2); rj = count(eigvals(Symmetric(Matrix(stabmat(S2, pj)))) .> 1e-10 * maximum(λ))
+    chk("G9b the ghost penalty sees MORE than the order-≤2 jump penalty (rank $rj → $rk): it reaches order 3", rk > rj)
+end
+
+#  G9c — the closed form (★): for p ≤ 2 every jump is computable, so the ghost matrix must equal
+#  γ τ h^(s−3) Σ_{j,k} G_jk ∫_F ⟦∂ₙʲ·⟧⟦∂ₙᵏ·⟧,  G_jk = [1+(−1)^(j+k)] h^(j+k+1)/((j+k+1) j! k!)
+function star_matrix(Sm, p, hx, hy)
+    sk = p.skel[]; nx, ny = sk.nx, sk.ny
+    hn = hx * (nx * nx) + hy * (ny * ny)
+    Gjk(j, k) = Operation(h -> (1 + (-1)^(j + k)) * h^(j + k + 1) / ((j + k + 1) * factorial(j) * factorial(k)) *
+                               h^(sk.hexp - 3))(hn)
+    dn(f, j) = j == 1 ? (nx * (alg_dx(f).plus - alg_dx(f).minus) + ny * (alg_dy(f).plus - alg_dy(f).minus)) :
+        ((nx * nx) * (alg_hess(f, 1, 1).plus - alg_hess(f, 1, 1).minus) +
+         (2.0 * nx * ny) * (alg_hess(f, 1, 2).plus - alg_hess(f, 1, 2).minus) +
+         (ny * ny) * (alg_hess(f, 2, 2).plus - alg_hess(f, 2, 2).minus))
+    g = p.g; dval = 3.5
+    τu = dval * sqrt(g * dval); τη = sqrt(g * dval)
+    form(u, v) = ∫( sum(Gjk(j, k) * (τu * sk.gu) * ((alg_mul(p.Mv, dn(u[2], j)) ⋅ dn(v[2], k)) +
+                                                     (alg_mul(p.Mv, dn(u[3], j)) ⋅ dn(v[3], k)))
+                        for j in 1:2, k in 1:2) +
+                    (Gjk(1, 1) * (τη * sk.ge)) * (dn(u[1], 1) * dn(v[1], 1)) ) * sk.dΛ
+    return assemble_matrix(form, Sm.U, Sm.V)
+end
+for (lbl, Sm, hx, hy) in (("open 2-D mesh", nothing, 0.5, 0.5), ("x-periodic box (wrap facet)", nothing, 0.5, 0.5))
+    Sq = lbl == "open 2-D mesh" ?
+        (let (m, t) = build_horizontal_model(((0.0, 3.0), (0.0, 1.5)), (6, 3))
+             U, V = build_fe_spaces(m, 2, Nσ; y_wall_bc = :open, p_eta = 1)
+             (model = m, trian = t, dΩ = Measure(t, 8), U = U, V = V) end) :
+        (let (m, t) = build_horizontal_model(((0.0, 4.0), (0.0, 0.5)), (8, 1); x_periodic = true)
+             U, V = build_fe_spaces(m, 2, Nσ; y_wall_bc = :wall, p_eta = 1)
+             (model = m, trian = t, dΩ = Measure(t, 8), U = U, V = V) end)
+    p = gprob(Sq; bedf = flat, flat_bed = true, pu = 2, pe = 1, gu = 1.0, ge = 1.0)
+    A = stabmat(Sq, p); B = star_matrix(Sq, p, hx, hy)
+    e = norm(A - B) / norm(B)
+    @printf("    Q2/Q1 %-28s |A_ghost − A_(★)|/|A_(★)| = %.2e\n", lbl, e)
+    chk("G9c ghost ≡ closed form (★) on the $lbl ($(round(e, sigdigits=2)))", e < 1e-11)
+end
+
+let x0 = get_free_dof_values(state(S1, 1.0; rough = 0.01)), d = randn(MersenneTwister(9), length(x0))
+    gl = jac_fd_gap(gprob(S1; regime = :linear, gu = 0.3, ge = 0.3), S1, x0, d)
+    @printf("    linear + ghost: hand vs FD rel gap %.2e\n", gl)
+    chk("G9e linear regime + ghost: the Jacobian is exact", gl < 1e-6)
+end
+
+let pcp = gprob(SP; gu = 1.0, ge = 0.0, bedf = flat, flat_bed = true)
+    Ap = stabmat(SP, pcp)
+    Mm = assemble_matrix((du, v) -> ∫(du[2] ⋅ v[2]) * SP.dΩ, SP.U, SP.V)
+    z  = VectorValue(ntuple(_ -> 0.0, Nσ)...)
+    mode(k) = get_free_dof_values(interpolate_everywhere(
+        [x -> 0.0, x -> VectorValue(ntuple(j -> cos(k * x[1]), Nσ)...), x -> z], SP.U))
+    rq(x) = dot(x, Ap * x) / dot(x, Mm * x)
+    rc = rq(mode(2π / 4)); rg = rq(mode(π / 0.25))
+    @printf("    ghost Rayleigh quotient: carrier %.3e   λ = 2dx %.3e   ratio %.2e\n", rc, rg, rg / rc)
+    chk("G9f grid-scale selective (λ = 2dx / carrier > 1e4)", rg / rc > 1e4)
+end
+
+let uh = state(S1, 1.0; rough = 0.01)
+    p_def = build_problem(vert; h_bathy = bed, regime = :nonlinear, nl_pressure = :native, flat_bed = false)
+    attach_skeleton!(p_def, S1.model; cip_gamma_u = 0.3, cip_gamma_eta = 0.3, cip_order = 2, p_u = PU, p_eta = PE, degree = QDEG)
+    p_jg = gprob(S1; stab = :jumpgrad, nlp = :native, gu = 0.3, ge = 0.3, order = 2)
+    chk("G9g default stabilization is :jumpgrad, bitwise", resid(p_def, S1, uh) == resid(p_jg, S1, uh))
+    r1 = try gprob(S1; order = 2); false catch; true end
+    chk("G9g :ghostvolume with cip_order ≠ 1 is refused", r1)
+    nm = CartesianDiscreteModel((0.0, 1.0, 0.0, 1.0), (4, 2); map = x -> VectorValue(x[1]^2, x[2]))
+    r2 = try
+        pp = build_problem(vert; h_bathy = flat, regime = :nonlinear, nl_pressure = :none, flat_bed = true)
+        attach_skeleton!(pp, nm; cip_gamma_u = 1.0, stabilization = :ghostvolume, p_u = PU, p_eta = PE, degree = QDEG); false
+    catch
+        true
+    end
+    chk("G9g a non-uniform mesh is refused", r2)
+end
+
+# =======================================================================================
+#  G10 — the EXACT Jacobian of the broken Class-III blocks (volume + skeleton layer)
+#  Oracle: central FD of the Class-III residual ALONE, R_broken − R_(no Class III).
+# =======================================================================================
+println("\n  G10 — broken Class-III Jacobian vs FD")
+function c3_gap(Sm, x0, d; h = 1e-7, bedf = bed, flat_bed = false)
+    pb = build_problem(vert; h_bathy = bedf, regime = :nonlinear, nl_pressure = :full, flat_bed = flat_bed)
+    attach_skeleton!(pb, Sm.model; broken = true, degree = QDEG)
+    p0 = build_problem(vert; h_bathy = bedf, regime = :nonlinear, nl_pressure = :full, flat_bed = flat_bed)
+    ud = FEFunction(Sm.U, zeros(length(x0)))
+    R(p, x) = assemble_vector(v -> global_residual(0.0, TransientCellField(FEFunction(Sm.U, x), (ud,)), v,
+                                                   p, Sm.trian, Sm.dΩ), Sm.V)
+    Rc3(x) = R(pb, x) - R(p0, x)
+    fd = (Rc3(x0 .+ h .* d) .- Rc3(x0 .- h .* d)) ./ (2h)
+    uh = FEFunction(Sm.U, x0); d_cf = CellField(pb.h_bathy, Sm.trian)
+    J  = assemble_matrix((du, v) -> broken_class3_jacobian(pb, pb.skel[], d_cf, uh[1], uh[2], uh[3],
+                                                          du[1], du[2], du[3], v[2], v[3], Sm.dΩ), Sm.U, Sm.V)
+    return maximum(abs, J * d .- fd) / maximum(abs, fd)
+end
+let x0 = get_free_dof_values(state(S1, 1.0; rough = 0.01)), d = randn(MersenneTwister(7), length(x0))
+    g = c3_gap(S1, x0, d)
+    @printf("    open 2-D mesh, sloping bed, Q3/Q2: rel gap %.2e\n", g)
+    chk("G10 broken Class-III Jacobian = FD of the Class-III residual (sloping bed, 2-D)", g < 1e-6)
+    gp = let xp = get_free_dof_values(state(SP, 1.0; rough = 0.01)), dp = randn(MersenneTwister(8), length(xp))
+        c3_gap(SP, xp, dp; bedf = flat, flat_bed = true)
+    end
+    @printf("    x-periodic box, flat bed, Q3/Q2:   rel gap %.2e\n", gp)
+    chk("G10 broken Class-III Jacobian = FD of the Class-III residual (periodic box, wrap facet)", gp < 1e-6)
+end
+
 println("\n" * "="^70); @printf("  %d passed, %d failed\n", np, nf); println("="^70)
 nf == 0 || error("test_broken_formulation: $nf gate(s) failed")
