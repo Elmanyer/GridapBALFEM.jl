@@ -9,7 +9,9 @@
 #      Deliberately asymmetric layer coefficients to catch k/j slot swaps.
 #  G2  Structural: ∇h half ≡ 0 on a flat bed; continuity (q) rows untouched by
 #      every block; amplitude scaling of each block at small A
-#      (∇h-IBP ratio→4, ∇H-frozen ratio→8, 𝓟-frozen ratio→4).
+#      (∇h-IBP ratio→4; Class III, broken: 𝓚 ratio→8, 𝓟 ratio→4).
+#      v2 (2026-10-05): the Class-III blocks are the BROKEN ones (cellwise Hessians; the skeleton
+#      layer is checked by test_broken_formulation.jl).
 #  G3  Dynamics: short run over a tanh submerged bar with ALL pressure flags
 #      on — bounded, no NaN.
 #
@@ -143,36 +145,33 @@ check("G2: ∇h-IBP block ≡ 0 on flat bed", norm(r_flat) < 1e-13)
 
 # continuity rows untouched by every block
 r_nat = assemble_block((d_cf,η,Ux,Uy,H,dhx,dhy,dHx,dHy,DU,af,bf,S,q,Wx,Wy,DW) ->
-            nlp_native_contrib(vert_prob, d_cf, η, H, dhx, dhy, dHx, dHy, Ux, Uy, Wx, Wy, DW,
+            nlp_direct_contrib(vert_prob, d_cf, η, H, dhx, dhy, dHx, dHy, Ux, Uy, Wx, Wy, DW,
                                af, bf, S, DU, dΩh),
         uh, d_fun)
-check("G2: continuity rows zero (native block)",  norm(r_nat[1:nq]) < 1e-14)
+check("G2: continuity rows zero ({3,6,7,8} block)",  norm(r_nat[1:nq]) < 1e-14)
 check("G2: continuity rows zero (∇h-IBP block)",  norm(r_ibp[1:nq]) < 1e-14)
 
-# amplitude scaling at small A (blocks isolated; frozen projections from the SAME state)
+# amplitude scaling at small A (blocks isolated; Class III from the cellwise Hessians of the
+# SAME state — the broken formulation's volume part)
 function scaled_state(s)
     interpolate_everywhere([x -> s*eta_f(x),
                             stackf([x -> s*ujx(j)(x) for j in 1:Nσ]),
                             stackf([x -> s*ujy(j)(x) for j in 1:Nσ])], U)
 end
-ctx = build_nlp_ctx(model, 2, Nσ, trian, dΩh)
-
 function block_norms(s, dfun)
     uh_s = scaled_state(s)
-    update_nlp_state!(vert_prob, ctx, uh_s)
-    st = vert_prob.nlp_state[]
     r_h = assemble_block((d_cf,η,Ux,Uy,H,dhx,dhy,dHx,dHy,DU,af,bf,S,q,Wx,Wy,DW) ->
             nlp_gradh_contrib(vert_prob, d_cf, η, H, dhx, dhy, Ux, Uy, Wx, Wy, af, bf, S, DU, dΩh),
           uh_s, dfun)
     r_K = assemble_block((d_cf,η,Ux,Uy,H,dhx,dhy,dHx,dHy,DU,af,bf,S,q,Wx,Wy,DW) ->
             begin
-                N1,N2,N4,N5 = nlp_frozen_N(Ux, Uy, S, DU, st.piS, st.pib)
-                nlp_gradH_frozen_contrib(vert_prob, H, dHx, dHy, Wx, Wy, N1,N2,N4,N5, dΩh)
+                GU, SD, N4, _ = broken_class3_cell_fields(vert_prob, d_cf, η, H, dHx, dHy, Ux, Uy, DU, S)
+                nlp_gradH_reduced_contrib(vert_prob, H, dHx, dHy, Wx, Wy, GU, SD, N4, dΩh)
             end, uh_s, dfun)
     r_P = assemble_block((d_cf,η,Ux,Uy,H,dhx,dhy,dHx,dHy,DU,af,bf,S,q,Wx,Wy,DW) ->
             begin
-                N1,N2,N4,N5 = nlp_frozen_N(Ux, Uy, S, DU, st.piS, st.pib)
-                nlp_P_frozen_contrib(vert_prob, H, DW, N1,N2,N4,N5, dΩh)
+                GU, SD, N4, _ = broken_class3_cell_fields(vert_prob, d_cf, η, H, dHx, dHy, Ux, Uy, DU, S)
+                nlp_P_reduced_contrib(vert_prob, H, DW, GU, SD, N4, dΩh)
             end, uh_s, dfun)
     return norm(r_h), norm(r_K), norm(r_P)
 end
@@ -182,11 +181,11 @@ h1, K1f, P1f = block_norms(s1,  d_fun)     # sloped bed for the ∇h block
 h2, K2f, P2f = block_norms(2s1, d_fun)
 _,  K1, P1   = block_norms(s1,  d_flat)    # flat bed for the ∇H / 𝓟 blocks
 _,  K2, P2   = block_norms(2s1, d_flat)
-@printf("  ratios: ∇h-IBP %.4f (→4)   ∇H-frozen %.4f (→8)   𝓟-frozen %.4f (→4)\n",
+@printf("  ratios: ∇h-IBP %.4f (→4)   Class-III 𝓚 %.4f (→8)   Class-III 𝓟 %.4f (→4)\n",
         h2/h1, K2/K1, P2/P1)
-check("G2: ∇h-IBP block scales ~A² (ratio 4 ± 0.05)",   abs(h2/h1 - 4) < 0.05)
-check("G2: ∇H-frozen block scales ~A³ (ratio 8 ± 0.1)", abs(K2/K1 - 8) < 0.1)
-check("G2: 𝓟-frozen block scales ~A² (ratio 4 ± 0.05)", abs(P2/P1 - 4) < 0.05)
+check("G2: ∇h-IBP block scales ~A² (ratio 4 ± 0.05)",         abs(h2/h1 - 4) < 0.05)
+check("G2: Class-III 𝓚 block scales ~A³ (ratio 8 ± 0.1)",     abs(K2/K1 - 8) < 0.1)
+check("G2: Class-III 𝓟 block scales ~A² (ratio 4 ± 0.05)",    abs(P2/P1 - 4) < 0.05)
 
 # ==============================================================
 println("\n-- G3: dynamics over a submerged bar, ALL pressure flags on --")
@@ -198,14 +197,14 @@ diags, _, _ = setup_and_run(
     domain=((0.0,60.0),(0.0,2.0)), partition=(60,2), p_u=2,
     x_wm=8.0, sponge_wL=8.0, sponge_wR=8.0, mu_max=30.0,
     T_final=2.0, dt=0.05, h_bathy=bar,
-    regime=:nonlinear, nl_pressure=:full, flat_bed=false,   # tanh bar → variable bathymetry (∇h ON)
+    regime=:nonlinear, nl_pressure=true, flat_bed=false,    # tanh bar → variable bathymetry (∇h ON)
     gauges=[(26.0,1.0)], save_every=0)
 emax = maximum(d.eta_max for d in diags)
 @printf("  bar run: steps=%d  max η=%.7f m\n", length(diags), emax)
 check("G3: bounded over the bar (max η < 20A)", emax < 0.02)
 
 #  ⚠ G3 IS THE ONLY SEQUENTIAL CONFIGURATION THAT CAN SEE THE BED-SLOPE PHYSICS
-#  (:nonlinear + :full over a tanh bar with flat_bed=false), AND UNTIL 2026-08-19
+#  (:nonlinear + nl_pressure over a tanh bar with flat_bed=false), AND UNTIL 2026-08-19
 #  IT ASSERTED ONLY BOUNDEDNESS. That is why it passed 9/9 on 2026-08-17 while the
 #  quantity it computes moved by 58 % under the nonlinear-gravity fix: `emax < 20A`
 #  has ~7x headroom, so a wrong coefficient that leaves the run bounded sails
@@ -223,7 +222,12 @@ check("G3: bounded over the bar (max η < 20A)", emax < 0.02)
 #  now 1e-4 as that note instructed (was 1 %). Even the old 1 % bound would have
 #  caught the 58 % move the nonlinear-gravity fix produced; 1e-4 makes it a sharp
 #  regression detector rather than a coarse one.
-const REF_EMAX  = 0.0028640
+#  RE-MEASURED 2026-10-05 ON v2: 0.0031590 (nl_pressure=true, broken Class III). The old 0.0028640
+#  was STALE: measured 2026-08-19 on the equal-order pairing, before Taylor–Hood became the default
+#  (v1 already listed this gate as a known failure). Attribution measured, not assumed
+#  (output/v2_probe/g3_probe.jl): the same case with nl_pressure=FALSE gives 0.0031592, so the
+#  whole 𝓝 operator moves this number by ~6e-5 relative and the 10 % shift came from the pairing.
+const REF_EMAX  = 0.0031590
 const REF_RTOL  = 1e-4
 let rel = abs(emax - REF_EMAX) / REF_EMAX
     @printf("  G3 reference: %.7f vs %.5f  (rel %.2e, tol %.0e)\n",

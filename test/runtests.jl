@@ -52,9 +52,9 @@ const SUITE = [
     ("test_mms_forcing.jl",              :fast,   "MMS forcing gates, linear"),
     ("test_mms_forcing_nonlinear.jl",    :fast,   "MMS forcing gates, nonlinear"),
     ("test_linear_newton_gate.jl",       :medium, "linear ⇒ 1 Newton iter/stage (sloping bed)"),
-    ("test_jacobians_ad.jl",             :slow,   "hand ∂R/∂u, ∂R/∂u̇ vs AD, all 8 models"),
+    ("test_jacobians_ad.jl",             :slow,   "hand ∂R/∂u, ∂R/∂u̇ vs AD, all 6 models (v2)"),
     ("test_mms_convergence.jl",          :slow,   "order of accuracy, Model 1"),
-    ("test_mms_convergence_nonlinear.jl",:slow,   "order of accuracy, Models 3–4"),
+    ("test_mms_convergence_nonlinear.jl",:slow,   "order of accuracy, Models 3–4 (5–6 opt-in: MMS_NL_P=1)"),
     #  THE ONLY EXTERNAL ORACLE: p=1 BALFE-M collapses onto Yang & Liu's published LFE-M
     #  (stage 1, vertical velocity; stages 2–3 live in test/yl_collapse_wip/). Registered 2026-09-26.
     ("test_yl_collapse.jl",              :fast,   "Yang & Liu collapse, stage 1: w to round-off"),
@@ -65,23 +65,11 @@ const SUITE = [
     ("test_basic.jl",                    :medium, "smoke, linear + fully nonlinear"),
     ("test_dispersion.jl",               :medium, "phase speed vs linear theory, kd=3"),
     ("test_nlpressure.jl",               :medium, "nonlinear-pressure identities + dynamics"),
-    #  Class-III treatment (branches new-classIII-treatment → mixed-formulation-solver;
-    #  NEW_TREATMENT.md). The reduction is an EXACT identity, so it is a cheap algebra gate;
-    #  the others assemble or integrate. Tiers re-measured 2026-09-26 (wall time incl. compile).
+    #  Class III (v2: the broken formulation is the only treatment; markdown_files/V2_SOLVER_PLAN.md).
+    #  The {1,2,5} reduction is an EXACT identity, so it is a cheap algebra gate.
     ("test_class3_reduction.jl",         :fast,   "Class-III {1,2,5} reduction + no-transpose control"),
-    ("test_class3_residual_parity.jl",   :medium, "reduced ≡ direct as assembled residual vectors (~6 min)"),
-    ("test_class3_split.jl",             :slow,   "c3_mask arms partition the Class-III set exactly (~17 min)"),
-    #  ⚠ KNOWN FAILURE: G3 fails — the in-loop projection mode is IMPLEMENTED, BROKEN, OFF BY
-    #  DEFAULT (commit b8c93e2, NEW_TREATMENT.md §C). Kept so the failure stays visible.
-    ("test_nlp_inloop.jl",               :slow,   "in-loop projections [KNOWN FAIL G3: feature broken, off] (~2 h)"),
-    #  The mixed (projection-free) Class-III path, src/mixed.jl.
-    ("test_mixed_jacobian.jl",           :slow,   "mixed coupling blocks C, B vs FD oracle (~20 min)"),
-    ("test_diagnostics_mixed.jl",        :medium, "run diagnostics on 3/5/7-field layouts"),
-    #  BROKEN (skeleton) Class-III path + C⁰-IP penalty — markdown_files/BROKEN_FORMULATION_PLAN.md §T6
-    ("test_broken_formulation.jl",       :slow,   "broken layer identity, C⁰-IP algebra, Jacobian (~25 min)"),
-    #  ⚠ test_mixed_formulation.jl is NOT registered: its G1–G3 harness (6 m box, source
-    #  spanning the domain) kills even :native after 20 steps — NEW_TREATMENT.md §F.0. G4/G5
-    #  pass. Re-register once the harness is re-posed (TEST_SUITE.md §8).
+    ("test_broken_formulation.jl",       :slow,   "broken Class III: layer identity, Jacobian; skeleton stabilisers (~25 min)"),
+    ("test_skeleton_ad.jl",              :slow,   "AD through skeleton terms (Gridap fork patch): broken Class III, stabilisers, use_ad run"),
     ("test_sloshing.jl",                 :medium, "standing-wave period"),
     ("test_conservation.jl",             :medium, "mass conservation, closed basin"),
     # ---- physics / validation -------------------------------------------------
@@ -102,7 +90,7 @@ const SUITE = [
 
 const MPI_TESTS = [
     ("test_basic_distributed.jl",        4, "linear + nonlinear vs sequential refs"),
-    ("test_nlpressure_distributed.jl",   4, "full nonlinear pressure vs sequential"),
+    #  (a distributed nl_pressure=true parity test is added with V2_SOLVER_PLAN.md step 10)
     ("test_bc_generation_distributed.jl",4, "Dirichlet generation vs sequential"),
     #  Guards the 2026-08-19 defect: run_mms_case_distributed hard-coded Model 1,
     #  so a distributed 8-model campaign returned 8 copies of it, all passing.
@@ -165,6 +153,23 @@ for (i, (file, tier, what)) in enumerate(selected)
         if m !== nothing
             npass = parse(Int, m.captures[1])
             nfail = parse(Int, m.captures[2]) - npass
+        end
+    end
+    #  Third spelling: Julia's `Test` summary table (test_yl_collapse, test_class3_reduction).
+    #  Its header names the columns ("Pass  Fail  Error  Total  Time"), so the counts are read by
+    #  name from the line beneath. Until 2026-10-05 the runner did not read it and scored those
+    #  two passing files BLANK — a passing file reported as broken is a gate nobody trusts.
+    if npass == 0 && nfail == 0
+        lines = split(txt, '\n')
+        for (k, l) in enumerate(lines)
+            startswith(strip(l), "Test Summary:") && occursin('|', l) && k < length(lines) || continue
+            cols = split(strip(split(l, '|'; limit = 2)[2]))
+            vals = split(strip(split(lines[k + 1], '|'; limit = 2)[end]))
+            for (c, v) in zip(cols, vals)
+                n = tryparse(Int, v); n === nothing && continue
+                c == "Pass" && (npass += n)
+                c in ("Fail", "Error") && (nfail += n)
+            end
         end
     end
 

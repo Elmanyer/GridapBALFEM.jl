@@ -5,7 +5,7 @@
 #  residual/Jacobians are expressed entirely in Gridap CellField algebra
 #  (`Operation` is forwarded for `DistributedCellField`), the very same
 #  `global_residual`/`jacobian_*` run across MPI ranks unchanged — the full
-#  nonlinear physics (advection, slope pressure, P_full, nl_pressure68, flat_bed) is
+#  nonlinear physics (advection, slope pressure, P_full, flat_bed; 𝓝 pending step 10) is
 #  available distributed with no separate code path. This file provides the
 #  partitioned mesh builder, the scalable Krylov solver stack, and a rank-aware
 #  time loop.
@@ -169,7 +169,7 @@ end
 """
     run_time_loop_dist(ranks, op, solver, u0, t0, T_final; output_dir,
                            save_every, trian, Nσ, print_every, print_dt, recon,
-                           trial_space, dt, nlp, monitor, checker, check_every,
+                           trial_space, dt, monitor, checker, check_every,
                            check_tol)
 
 Distributed time loop. Returns `[(t, eta_max, nl_iters, res_nl, t_solve)]`
@@ -199,7 +199,6 @@ function run_time_loop_dist(ranks, op, solver, u0,
                                 recon                 = nothing,
                                 trial_space           = nothing,
                                 dt         :: Float64 = 0.0,
-                                nlp                   = nothing,   # (prob, ctx) for nl_pressure_full
                                 monitor               = nothing,   # SolverMonitor
                                 checker               = nothing,   # ResidualChecker
                                 check_every:: Int     = 0,
@@ -216,15 +215,6 @@ function run_time_loop_dist(ranks, op, solver, u0,
 
     odesol = solve(solver, op, t0, T_final, u0)
 
-    #  nl_pressure=:full — PRIME the frozen projections from the INITIAL CONDITION.
-    #  `update_nlp_state!` below runs only AFTER an accepted step, so without this
-    #  the first step assembles the {1,2,4,5} blocks with `nlp_state == nothing`,
-    #  i.e. as if starting from rest. That is exact for a rest start (u=0, η=0 ⇒
-    #  𝖲=𝖻=0 ⇒ zero projections, so this call is a no-op) but WRONG for any
-    #  non-trivial IC — which is exactly what the MMS driver uses (u0 = u*(t0)).
-    if nlp !== nothing
-        update_nlp_state!(nlp[1], nlp[2], u0)
-    end
 
     prev_vals    = nothing     # previous-step DOFs (PVector) → u̇ backward FD
     need_prev    = recon !== nothing || (checker !== nothing && check_every > 0)
@@ -326,14 +316,6 @@ function run_time_loop_dist(ranks, op, solver, u0,
                 prev_vals = copy(get_free_dof_values(u_n))
             end
 
-            # nl_pressure_full: refresh the frozen projections π𝖲, π𝖻 (CG+Jacobi
-            # distributed mass solve, see nlpressure.jl :: build_nlp_ctx)
-            if nlp !== nothing
-                # ⚠ Redundant in IN-LOOP mode — the residual already refreshed the
-                #   projections from the converged iterate. Skipping recovers two mass
-                #   solves per step (NEW_TREATMENT.md §B.4).
-                nlp[1].nlp_ctx[] === nothing && update_nlp_state!(nlp[1], nlp[2], u_n)
-            end
 
             # D1: RELATIVE divergence guard (see the sequential twin).
             div_limit = rundiag === nothing ? 1.0e4 : rundiag.div_limit

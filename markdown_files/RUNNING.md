@@ -13,7 +13,8 @@ using LinearAlgebra         # dot/norm are NOT re-exported
 
 diags, vert, prob = setup_and_run(
     M = 2, d_val = 3.5, T_wave = 1.6, A_wave = 0.001,
-    regime = :nonlinear, nl_pressure = :native, flat_bed = true,
+    regime = :nonlinear, nl_pressure = true, flat_bed = true,   # v2: all eight 𝓝 comps (Q3/Q2 + a
+    p_u = 3, stabilization = :ghostvolume, cip_gamma_u = 0.01, cip_gamma_eta = 0.01,  # stabiliser)
 )
 ```
 
@@ -53,44 +54,16 @@ disagree. The output directory is auto-tagged by configuration so cases do not c
 ## 3. Local launchers (`run/local/`, ≤ 6 cores)
 
 `balfem_local.sh` is the helper — project resolution, a hard rank cap, `balfem_local_run`
-(sequential) / `balfem_local_mpi` (MPI), and exit-143 handling.
+(sequential) / `balfem_local_mpi` (MPI), and exit-143 handling. A launcher is a few
+`export BALFEM_*=…` lines followed by the run line (rule 38h: overrides after it are no-ops).
 
-* **Stability campaigns (2026-09-15…26), all sequential 1-D:** `run_1dc3{v,q,r}_*.sh` (the mixed vs
-  projected flume factorial and its RK4/aux-order arms), `run_1dref_*.sh` (the `dx`×`dt`×Jacobian
-  factorial), and the **closed periodic box**: `run_1dper_batch_global.sh [MAXP]` (SDIRK_2_2) and
-  `run_1dper_batch_cn{,2,3}.sh [MAXP]` (Crank–Nicolson). The batch scripts count *all* running
-  `run_periodic_1d.jl` solvers against `MAXP` (default 4), skip a case whose log already exists, and
-  write logs to `output/local_1d/periodic/_logs/` (persistent disk, rule 47). Analyse each case with
-  `PG_NCELL=<n> PG_PU=<p> julia --project=postprocessing postprocessing/examples/periodic_growth.jl
-  output/local_1d/periodic/<case> [t0] [t1]`.
-* **7 × `run_1d_*.sh`** — **sequential**, because that was measured faster than any MPI split at
-  20 k DOFs (`CONFIGURATION.md` §6) and it restores point gauges.
-* **8 × `run_2d_*.sh`** — 12-rank MPI.
-* **9 × `run_1dprod_*.sh`** (added 2026-09-15) — the nonlinear production campaign of
-  `CLAUDE.md` §5.2b: `nl_{native,full}_{flat,bar}`, the bar-shoulder ladder
-  (`_bar_gentle`/`_bar_s10`/`_bar_s15`) and the `_ad` Jacobian diagnostic. `run_all_1dprod.sh`
-  launches four side by side at 3 BLAS threads each. 100 periods, VTK every 0.2 s.
-  * The bar shape is `BALFEM_HBAR`/`XBAR`/`WBAR` (height / centre / **half**-width) plus
-    **`BALFEM_SBAR`**, the shoulder length: `max|∇h| = hbar/(2·sramp)`, small ⇒ square cross-section.
-    A vertical step is refused — the residual carries ∇h explicitly, so a discontinuous bed is not
-    representable, only aliased by the mesh.
-  * ⚠ **`exit status 1` does NOT mean these failed.** `run_flume_1d.jl:350` references an undefined
-    `tag`, so every *successful* run throws `UndefVarError` after writing all of its output
-    (`CLAUDE.md` rule 38h). Read the gate output, never the exit code (rule 35).
-  * ⚠ **Never edit a launcher while it is running**, and never append an override *after* the
-    `balfem_local_run` line — both silently produce a different run than the one you think. Rule 38h
-    records what each cost.
-* `run_all_1d.sh` runs the 1-D set side by side; `bench_solver_config.sh` compares
-  preconditioner × `ls_rtol` configurations on one fixed case, reporting iterations, wall time
-  **and** `max|η|`.
-* `run/local/README.md` documents how to read `diagnostics.csv`.
-
-Deliberately shares no code with `run/balfem_env.sh`, which is cluster-only. The point is a
-minutes-long feedback loop instead of a multi-hour one.
+**v2 (2026-10-05):** the v1 campaign launchers (156, incl. `run/dist_small/`) were removed — they ran
+configurations that no longer exist. They remain in tag `v1_final_solver`; see `run/local/README.md`.
+v2 launchers are added as the v2 campaign needs them (`V2_SOLVER_PLAN.md` §4).
 
 ---
 
-## 4. Cluster launchers (`run/`, `run/dist_small/`)
+## 4. Cluster launchers (`run/`)
 
 > ### ⚠ JOB SIZING AND COST — read [`run/SNELLIUS_ROME_LAUNCH_CONFIGS.md`](../run/SNELLIUS_ROME_LAUNCH_CONFIGS.md) first
 >
@@ -136,7 +109,7 @@ back to a ~45 min/rank compile.
 
 **Contents:** 9 production cases in `run/` (plane / ring / periodic-plane wave, IC hump, bathymetry,
 irregular + directional sea, plus the DelftBlue `run_blue.sh`), and **20 small-domain
-observation/comparison cases** in `run/dist_small/`, each overriding only what changes (regime /
+observation/comparison cases** in `run/dist_small/` (v1 — removed in v2, tag `v1_final_solver`), each overriding only what changes (regime /
 `nl_pressure` / `flat_bed`→bar / amplitude / period). Small-domain geometry: 50×20 m, `d=3.5`,
 `T=2.0` (`kd≈3.5`), `save_every=10`, partition **8×4 = 32 ranks** (plane/irregular, 200×40) or
 **8×8 = 64** (directional 200×80; ring 160×160 on a 40×40 m domain — square cells throughout,
@@ -181,6 +154,9 @@ predating the stamp fall back to an mtime comparison (coarser, can cry wolf).
 
 | variable | selects |
 |---|---|
+| `BALFEM_NL_PRESSURE` | **v2: `0` / `1`** — the nonlinear pressure `𝓝`, all eight components off / on. ⚠ `1` is sequential-only until `V2_SOLVER_PLAN.md` step 10. The v1 values `none/native/full` are refused |
+| `BALFEM_STAB`, `BALFEM_CIP_GU`, `BALFEM_CIP_GE`, `BALFEM_CIP_HEXP`, `BALFEM_CIP_ORDER` | skeleton stabilisation: `jumpgrad` \| `ghostvolume`, γ_u, γ_η, the `h` exponent, the jump order (≤ 2) |
+| removed in v2 | `BALFEM_MIXED`, `BALFEM_P_AUX`, `BALFEM_C3_MASK`, `BALFEM_NLP_INLOOP`, `BALFEM_BROKEN` — **refused if set** (`check_v1_env`) |
 | `BALFEM_P_VERT` | vertical polynomial order (default 1); each parametric script derives `model_name = "P$(p_vert)LFE-$(M)"` for its banner and output directory |
 | `BALFEM_P_ETA` | surface FE order. **Default `BALFEM_FE_ORDER − 1` (Taylor-Hood).** `check_taylor_hood` RAISES on any other pairing — equal order is inf-sup deficient and caused the 2026-09 instability (`CLAUDE.md` rules 2b, 12b) |
 | `BALFEM_NX/NY`, `BALFEM_PX/PY` | mesh and partition — `NX % PX == 0`, `NY % PY == 0`, `-n == PX·PY` |

@@ -40,7 +40,7 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         hfun = nothing,            # bathymetry h(x,y); nothing ⇒ constant `d`
                         flat_bed::Bool = true,     # selects BOTH the solver model and the forcing
                         regime::Symbol = :linear,      # ) these three select BOTH sides too —
-                        nl_pressure::Symbol = :none,   # ) see ValidationTests.tex §subsec: mms model1–4
+                        nl_pressure = false,           # ) see ValidationTests.tex §subsec: mms model1–4
                         vert_override = nothing,   # substitute vertical tensors. Used to ISOLATE a
                                                    #   term: e.g. `merge(NamedTuple(pairs(v)),
                                                    #   (B=zeros(size(v.B)),))` drops R_P from the
@@ -69,12 +69,9 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         #  degradation (e_eta ratios 7.84 -> 5.46 while linear
                         #  holds 8.00). This kwarg is what tests it.
                         quad_extra::Int = 0,
-                        #  BROKEN Class-III path / C⁰-IP penalty (src/broken.jl, 2026-09-30).
-                        #  Off by default ⇒ every existing caller is byte-identical. The
-                        #  penalty is consistent (zero on the exact solution), so the MMS
-                        #  orders must survive it — that is what these knobs let us measure
-                        #  (BROKEN_FORMULATION_PLAN.md §T8).
-                        broken::Bool = false,
+                        #  Skeleton stabilisation (src/broken.jl). Off by default. The penalty
+                        #  is (weakly) consistent, so the MMS orders must survive it — that is
+                        #  what these knobs let us measure (V2_SOLVER_PLAN.md §4 item 3).
                         cip_gamma_u::Float64 = 0.0, cip_gamma_eta::Float64 = 0.0,
                         cip_hexp::Float64 = 2.0, cip_order::Int = 1,
                         stabilization::Symbol = :jumpgrad,
@@ -120,10 +117,12 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                          regime      = regime,       # SAME variables as the forcing above —
                          nl_pressure = nl_pressure,  # never two literals, or the two can drift
                          flat_bed    = flat_bed,
+                         model       = model,         # nl_pressure=true: the broken Class-III
+                         quad_degree = 2*max(p_u, pe) + 2 + quad_extra,  # layer's skeleton
                          mu_sponge   = (x -> 0.0),    # sponge OFF
                          wm_src      = ((x, t) -> 0.0),  # wavemaker OFF
                          mms_src     = src)
-    attach_skeleton!(prob, model; broken = broken, cip_gamma_u = cip_gamma_u,
+    attach_skeleton!(prob, model; cip_gamma_u = cip_gamma_u,
                      cip_gamma_eta = cip_gamma_eta, cip_hexp = cip_hexp,
                      cip_order = cip_order, stabilization = stabilization, p_u = p_u, p_eta = pe,
                      degree = 2*max(p_u, pe) + 2 + quad_extra)
@@ -137,16 +136,6 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
     solver = build_ode_solver(dt; solver_type=solver_type, tableau=tableau,
                               theta=theta, nl_iter=nl_iter, nl_tol=nl_tol,
                               monitor=monitor)
-
-    #  nl_pressure=:full needs the frozen-projection context, built here exactly as
-    #  the production driver builds it (utilities.jl, setup_and_run). WITHOUT IT the
-    #  `st !== nothing` gate in problem.jl never fires, the {1,2,4,5} blocks are
-    #  ABSENT rather than lagged, and on a FLAT BED the whole `nl_pressure_full`
-    #  branch adds nothing at all — `:full` silently degenerates to `:native` while
-    #  `mms_forcing` still forces all eight components. The three switches must
-    #  select the SOLVER WORKFLOW and the forcing together, never just the forcing.
-    nlp = (nl_pressure == :full && !broken) ?
-          (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh)) : nothing
 
     # --- IC = u*(t0), which satisfies the wall Dirichlet data exactly ------
     u0 = interpolate_everywhere([mms_exact_eta(f, t0),
@@ -169,7 +158,6 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                           # print_every must be > 0: run_time_loop does `step % print_every`,
                           # so 0 raises DivideError. typemax never matches ⇒ silent run.
                           print_every=typemax(Int), dt=dt, final_uh=final,
-                          nlp=nlp,                 # :full ⇒ frozen projections live
                           monitor=monitor, rundiag=rundiag,
                           diag_every=diag_every, check_every=0)
     final[] === nothing && error("run_mms_case: the time loop produced no solution")
@@ -280,7 +268,7 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
                                     hfun = nothing,            # bathymetry h(x,y); nothing ⇒ constant `d`
                                     flat_bed::Bool = true,     # ) the same three symbols select BOTH
                                     regime::Symbol = :linear,  # ) the forcing and the solver, exactly
-                                    nl_pressure::Symbol = :none, # ) as in run_mms_case above
+                                    nl_pressure = false,         # ) as in run_mms_case above
                                     vert_override = nothing,   # substitute vertical tensors (see run_mms_case)
                                     solver_type::Symbol = :sdirk, tableau::Symbol = :SDIRK_2_2,
                                     nl_tol::Float64 = 1e-13, nl_iter::Int = 50,
@@ -294,6 +282,9 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
     #  ONE bathymetry object and ONE set of switches for the forcing and the solver,
     #  built OUTSIDE the MPI block so every rank derives them from identical inputs.
     hf   = hfun === nothing ? ((xx, yy) -> d) : hfun
+    nl_pressure === true &&
+        error("run_mms_case_distributed: nl_pressure=true is not available distributed in v2 yet " *
+              "(the broken Class-III skeleton is not ported to MPI — V2_SOLVER_PLAN.md step 10)")
     src  = mms_forcing(f, vert, hf, g; regime = regime, flat_bed = flat_bed,
                                        nl_pressure = nl_pressure)
     with_mpi() do distribute
@@ -315,17 +306,6 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
                         nl_iter=nl_iter, nl_tol=nl_tol, ls_rtol=ls_rtol,
                         ls_maxiter=ls_maxiter, krylov_m=krylov_m)
 
-        #  nl_pressure=:full needs the frozen-projection context, built here exactly as
-        #  the production driver builds it (utilities.jl, setup_and_run). WITHOUT IT the
-        #  `st !== nothing` gate in problem.jl never fires, the {1,2,4,5} blocks are
-        #  ABSENT rather than lagged, and on a FLAT BED the whole `nl_pressure_full`
-        #  branch adds nothing at all — `:full` silently degenerates to `:native` while
-        #  `mms_forcing` still forces all eight components. The three switches must
-        #  select the SOLVER WORKFLOW and the forcing together, never just the forcing.
-        nlp = nl_pressure == :full ?
-              (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh;
-                                   distributed=true)) : nothing
-
         u0 = interpolate_everywhere([mms_exact_eta(f, t0),
                                      mms_exact_ux(f, t0),
                                      mms_exact_uy(f, t0)], U)
@@ -333,7 +313,6 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
         diags = run_time_loop_dist(ranks, op, solver, u0, t0, T_final;
                                    output_dir=output_dir, save_every=0, trian=trian,
                                    Nσ=vert.N_dof, print_every=typemax(Int), dt=dt,
-                                   nlp=nlp,        # :full ⇒ frozen projections live
                                    final_uh=final, diag_every=-1, check_every=0)
         uh  = final[]
         tF  = isempty(diags) ? t0 : diags[end].t
@@ -343,7 +322,7 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
                      l2_error(uh[3], mms_exact_uy(f, tF), trian, dΩe)^2)
         verbose && i_am_main(ranks) &&
             @printf("  [dist] nx=%-4d %s/%s/%s  e_eta=%.6e  e_u=%.6e\n",
-                    nx, regime, flat_bed ? "flat" : "varbed", nl_pressure, e_eta, e_u)
+                    nx, regime, flat_bed ? "flat" : "varbed", nl_pressure ? "nlp1" : "nlp0", e_eta, e_u)
         return (h=Lx/nx, dt=dt, e_eta=e_eta, e_u=e_u,
                 ndofs=num_free_dofs(U), steps=length(diags), t_final=tF)
     end
@@ -412,11 +391,10 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
                           distributed::Bool = false,
                           flat_bed::Bool = true, a_b::Float64 = 0.0,
                           #  Manufactured surface amplitude. DEFAULT 0.8 on d=1.0 is
-                          #  violently nonlinear (H_min = 0.2) and the quasi-Newton
-                          #  Jacobian cannot solve nl_pressure=:full there once its
-                          #  blocks are actually assembled. Drop it for :full studies.
+                          #  violently nonlinear (H_min = 0.2); use ≤ 0.4 with
+                          #  nl_pressure=true (quasi-Newton 𝓝 blocks).
                           a_eta::Float64 = 0.8,
-                          regime::Symbol = :linear, nl_pressure::Symbol = :none,
+                          regime::Symbol = :linear, nl_pressure = false,
                           kbx::Float64 = 1.3, kby::Float64 = 0.0,
                           cpu_grid::Tuple{Int,Int} = (2,2),
                           ls_rtol::Float64 = 1e-13, ls_maxiter::Int = 5000,
@@ -491,7 +469,7 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
     tag = "P$(p_vert)LFE-$(M) Q$(p_u)/Q$(p_e) $(quad_extra > 0 ? "q+$(quad_extra) " : "")$(domain == :d1 ? "1D" : "2D") " *
           "$(distributed ? "dist" : "seq") $(mode) $(flat_bed ? "flat" : "varbed") " *
           "$(regime === :linear ? "lin" : "nl")" *
-          "$(nl_pressure === :none ? "" : "/" * String(nl_pressure))"
+          "$(nl_pressure ? "/nlp1" : "")"
     if verbose
         println("  ── $tag ──")
         println("    pairwise eta: ", round.(pw_eta, digits=3), "   optimal $(p_e+1)")
@@ -504,7 +482,7 @@ function run_conv_study(; p_u::Int, domain::Symbol = :d2, mode::Symbol = :static
             pw_eta=pw_eta, pw_u=pw_u, fit_eta=p_eta_fit, fit_u=p_u_fit,
             opt_eta=Float64(p_e+1), opt_u=Float64(p_u+1),
             #  Vertical configuration, carried out so an (M,p) sweep can tabulate
-            #  against Nσ directly (COMPLETED_VBASIS_STUDY.md §1 tier 3 asks exactly that).
+            #  against Nσ directly.
             M=M, p_vert=p_vert, c_bdy=cb, Nsigma=vert.N_dof,
             regime=regime, nl_pressure=nl_pressure, flat_bed=flat_bed,
             domain=domain, mode=mode, distributed=distributed)
@@ -553,7 +531,7 @@ function run_model_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
     dΩh          = Measure(trian, 2*max(p_u, pe) + 2)
 
     prob = build_problem(vert; g = g, h_bathy = (x -> d),
-                         regime = :linear, nl_pressure = :none, flat_bed = true,
+                         regime = :linear, nl_pressure = false, flat_bed = true,
                          mu_sponge = (x -> 0.0), wm_src = ((x, t) -> 0.0),
                          mms_src = nothing)          # NO FORCING — that is the point
     op     = build_ode_operator(prob, U, V, trian, dΩh)

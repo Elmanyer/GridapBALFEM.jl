@@ -31,7 +31,7 @@
 #                        bc    = Dirichlet boundary, regular wave
 #                        sea   = Dirichlet boundary, WaveSpec JONSWAP sea
 #    BALFEM_REGIME       linear | nonlinear             linear
-#    BALFEM_NL_PRESSURE  none | native | full           none
+#    BALFEM_NL_PRESSURE  0 | 1 (all eight 𝓝 comps)     0
 #    BALFEM_FLAT_BED     1 flat | 0 submerged bar       1
 #    BALFEM_PX/BALFEM_PY   MPI grid (px·py = mpiexec -n)  4 / 3      (= 12 ranks)
 #    BALFEM_LX/LY        domain [m]                     40 / 15
@@ -49,7 +49,7 @@
 include(joinpath(@__DIR__, "..", "distributed", "_dist_common.jl"))
 
 get!(ENV, "BALFEM_REGIME",      "linear")
-get!(ENV, "BALFEM_NL_PRESSURE", "none")
+get!(ENV, "BALFEM_NL_PRESSURE", "0")
 get!(ENV, "BALFEM_FLAT_BED",    "1")
 
 kind = lowercase(genv("BALFEM_WAVE_GEN", "line"))
@@ -152,7 +152,7 @@ solver_sym() === :theta && push!(_extra, "theta")
 
 _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=ybc,
                            wave_kind=_wavekind, wave_gen=_gen,
-                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           regime=regime_sym(), nl_pressure=nl_pressure_flag(),
                            bed=bedtag, p_u=feord, p_eta=p_eta,
                            amplitude=_amp, period=_per, irregular=_is_sea,
                            extra=_extra)
@@ -163,7 +163,7 @@ outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
 if is_rank0()
     @printf("############################################################\n")
     @printf("# SMALL 2-D (local) | gen=%s | %s %s %s | A=%g T=%g\n",
-            kind, regime_sym(), nl_pressure_sym(), bedtag, Awave, Twave)
+            kind, regime_sym(), nl_pressure_flag(), bedtag, Awave, Twave)
     @printf("#   %s | M=%d | domain %.0f×%.0f m | mesh %d×%d (dx=%.2f, dy=%.2f) | %s\n",
             model_name, M, Lx, Ly, nx, ny, Lx/nx, Ly/ny,
             use_mpi ? "MPI $(px)×$(py) = $(px*py) ranks (NO gauges)" : "sequential")
@@ -180,7 +180,7 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           x_wm=x_wm, y_wm=y_wm,
           sponge_wL=spL, sponge_wR=spR, sponge_wB=spB, sponge_wT=spT, mu_max=mumax,
           T_final=Tfinal, dt=dt,
-          regime=regime_sym(), nl_pressure=nl_pressure_sym(), flat_bed=flat_bed_flag(1),
+          regime=regime_sym(), nl_pressure=nl_pressure_flag(), flat_bed=flat_bed_flag(1),
           y_wall_bc=ybc, x_wall_bc=false,
           wave_bc=wave_bc, bc_side=bc_side_sym(), bc_profile=bc_profile_sym(),
           relax_bc=use_relax, relax_width=relax_w_val(),

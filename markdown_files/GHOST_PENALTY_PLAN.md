@@ -1,5 +1,10 @@
 # GHOST_PENALTY_PLAN.md — the direct (volume) ghost penalty as a second stabilisation
 
+> **⚙ v1 RECORD (2026-10-05).** This file documents the ghost-volume penalty, implemented on v1 and carried unchanged into v2; every campaign result here used `C3_MASK=gs` (component 4 omitted) and is to be repeated on v2 (`V2_SOLVER_PLAN.md` §4). It is kept as the record of how v1 reached its results;
+> the v2 solver (branch `v2-solver`) differs — one Class-III formulation (broken), `nl_pressure::Bool`
+> with all eight `𝓝` components, no component mask (`V2_SOLVER_PLAN.md`). Paths `output/…` here are
+> now under `output_v1/`.
+
 *Branch `broken-formulation-solver`, 2026-10-02. Companion to `BROKEN_FORMULATION_PLAN.md`
 (§5.2 high-order jump penalty, §5.5 the direct ghost penalty, §5.8 the eigen-analysis that found
 the jump-penalty window). This file is the design, the task list and the results record for the

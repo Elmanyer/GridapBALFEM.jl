@@ -191,24 +191,27 @@ prefactors:
 `C⁰` spaces admit only **first** derivatives of the unknowns, which splits the components into
 classes:
 
-* **Native, `c ∈ {3,6,7,8}`** (`nl_pressure=:native`) — first-order everywhere. `{6,7,8}` are outer
-  products of the building blocks `𝖺, 𝖻, 𝖲` (the `1/H` cancels one prefactor `H`); `c=3`'s only
-  second derivative is the **analytic** bed Hessian. Assembled directly in all three blocks,
-  sequential and distributed.
-* **`c ∈ {1,2,4,5}`** (`nl_pressure=:full`) carry second derivatives of the unknowns and are handled
-  by half:
-  * **∇h half → exact integration by parts onto the test** (§5.1). Uses the analytic bed Hessian;
-    machine-verified at 4.0e-15.
-  * **∇H half + 𝓟 part → frozen L² projections.** The `∂²η` factor is irreducible, so per step
-    project `𝖲` and `𝖻` onto the velocity FE space (SPD mass solves — direct factorisation
-    sequentially, CG + Jacobi distributed) and use `∂_a(π𝖲), ∂_a(π𝖻)` **lagged one step**.
+**v2: `nl_pressure=true` assembles ALL EIGHT components; `false` assembles none.** There is no
+partial tier (v1's `:native` = `{3,6,7,8}` was a numerical cut, not a physical model —
+`V2_SOLVER_PLAN.md` §0).
 
-All `𝓝` blocks are `O(A²–A³)` and treated **quasi-Newton** (they enter the residual, not the
-Jacobian).
+* **`c ∈ {3,6,7,8}`** — first-order everywhere. `{6,7,8}` are outer products of the building blocks
+  `𝖺, 𝖻, 𝖲` (the `1/H` cancels one prefactor `H`); `c=3`'s only second derivative is the
+  **analytic** bed Hessian. Assembled directly in all three blocks (`nlp_direct_contrib`).
+* **`c ∈ {1,2,4,5}`** carry second derivatives of the unknowns and are handled by half:
+  * **∇h half → exact integration by parts onto the test** (§5.1, `nlp_gradh_contrib`). Uses the
+    analytic bed Hessian; machine-verified at 4.0e-15.
+  * **∇H half + 𝓟 part (Class III) → the BROKEN formulation** (`src/broken.jl`,
+    `broken_class3_residual`). The distributional gradient of the broken fields,
+    `∇𝖲 = ∇_𝒯𝖲 − Σ_F ⟦𝖲⟧_F n_F δ_F` (and the same for `𝖻`): cellwise Hessians of the unknowns
+    plus one skeleton integral of the jumps, both arms always. The `{1,2,5}` components collapse
+    onto one contraction (`W ⊙ Σ_a ∂_a𝖲 ⊗ U_a`, exact 4.4e-16). Consistent on `C⁰` (LaTeX broken
+    audit); the leading-pressure skeleton term `⟦𝒫⟧` is excluded on purpose.
 
-> ⚠ **The frozen projections mean `:full` implements a different operator from the exact one.**
-> That is a deliberate, now-quantified approximation — see `VERIFIED_SCOPE.md` §4. Do not treat its
-> flat MMS rate as a bug.
+Jacobians: the Class-III blocks are linearised **exactly** (`broken_class3_jacobian`, gated against
+FD); `{3,6,7,8}` and the ∇h half stay **quasi-Newton** (`O(A²)`; they enter the residual, not the
+Jacobian). v1's frozen-projection and mixed treatments of Class III are documented in
+`NEW_TREATMENT.md` and `HISTORY_V1.md`.
 
 ### 5.1 Exact-IBP algebra for the ∇h half
 
@@ -233,14 +236,13 @@ deliberately asymmetric state. The boundary integrals `∮ (g⋅q) n_a` vanish o
 
 ## 6. Physics selection — three orthogonal controls
 
-`resolve_physics` (`src/problem.jl`) maps three high-level controls onto the seven internal booleans
-stored on `BALFEMProblem` (`linearised, advection, lin_pressure, P_full, nl_pressure68,
-nl_pressure_full, flat_bed`):
+`resolve_physics` (`src/problem.jl`) maps three high-level controls onto the six internal booleans
+stored on `BALFEMProblem` (`linearised, advection, lin_pressure, P_full, nl_pressure, flat_bed`):
 
 | control | values | meaning |
 |---|---|---|
 | `regime` | `:linear` \| `:nonlinear` | linearised core, no advection / full nonlinear core + advection |
-| `nl_pressure` | `:none` \| `:native` \| `:full` | 𝓝 off / `{3,6,7,8}` / `+{1,2,4,5}` |
+| `nl_pressure` | `false` \| `true` | 𝓝 off / all eight components (v2; a `Symbol` is refused) |
 | `flat_bed` | `Bool` | `true` ⇔ **`∇h ≡ 0`**; `false` = variable bathymetry |
 
 Pressure content is intrinsic to the model: `P_full = advection`,
@@ -256,7 +258,7 @@ the seven booleans, for combinations the high-level interface deliberately does 
 **Single point of control:** `dhx, dhy = flat_bed ? (0,0) : (∂ₓh, ∂ᵧh)` in `global_residual`,
 `jacobian_u`, `jacobian_u_t`. Then `∇H → ∇η`, `L¹ = 0`, `a = u·∇h = 0`, and every `∇h`-prefixed
 block vanishes automatically. Two extra touches: zero the analytic bed Hessian inside
-`nlp_native_contrib` (kills `N³`), and skip `nlp_gradh_contrib` when `flat_bed`.
+`nlp_direct_contrib` (kills `N³`), and skip `nlp_gradh_contrib` when `flat_bed`.
 
 | residual piece | `∇h` dependence | `flat_bed=true` |
 |---|---|---|
@@ -301,10 +303,12 @@ Coverage differs by regime, **deliberately**:
   derivative. Standing consequence and gate: **Newton must converge in ONE iteration per implicit
   stage**, at any amplitude, on any bathymetry (`test/test_linear_newton_gate.jl`).
 * **`∂R/∂u̇`: EXACT IN BOTH REGIMES.** Every `u̇`-dependent term is differentiated exactly; the `𝓝`
-  blocks carry no `u̇`-dependence. Verified `0.000e+00` against AD in all eight models.
-* **Nonlinear `∂R/∂u`: QUASI-NEWTON BY CHOICE.** Advection is differentiated in full; the leading-
-  and slope-pressure packages contribute no η-derivative and `𝓝` is absent. Measured gap `2.9e-2`
-  (`:none`) to `8.3e-1` (`:full`), **vanishing at order 1.11–1.16 in state amplitude**. Benign
+  blocks carry no `u̇`-dependence. Verified `0.000e+00` against AD in all eight v1 models (v2: six,
+  re-measured in `test_jacobians_ad.jl`).
+* **Nonlinear `∂R/∂u`: QUASI-NEWTON BY CHOICE.** Advection and (v2) the Class-III `𝓝` blocks are
+  differentiated in full; the leading- and slope-pressure packages contribute no η-derivative and
+  the other `𝓝` blocks are absent. v1 measured the gap `2.9e-2` (`:none`) to `8.3e-1` (`:full`,
+  projected), **vanishing at order 1.11–1.16 in state amplitude**. Benign
   because it costs Newton iterations, never accuracy — Newton drives the *residual* to zero.
 
 > **The distinction that matters: an omission is benign only if it is HIGHER ORDER IN AMPLITUDE.**

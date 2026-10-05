@@ -133,7 +133,7 @@ end
 """
     run_time_loop(op, solver, u0, t0, T_final; output_dir, save_every,
                       trian, Nσ, print_every, print_dt, gauges, recon,
-                      trial_space, dt, nlp, monitor, checker, check_every,
+                      trial_space, dt, monitor, checker, check_every,
                       check_tol)
 
 Time loop from t0 to T_final. Returns `[(t, eta_max, gauge_vals, nl_iters,
@@ -163,7 +163,6 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                            recon                 = nothing,
                            trial_space           = nothing,
                            dt         :: Float64 = 0.0,
-                           nlp                   = nothing,   # (prob, ctx) for nl_pressure_full
                            monitor               = nothing,   # SolverMonitor
                            checker               = nothing,   # ResidualChecker
                            check_every:: Int     = 0,
@@ -185,15 +184,6 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
     mkpath(output_dir)
     odesol = solve(solver, op, t0, T_final, u0)
 
-    #  nl_pressure=:full — PRIME the frozen projections from the INITIAL CONDITION.
-    #  `update_nlp_state!` below runs only AFTER an accepted step, so without this
-    #  the first step assembles the {1,2,4,5} blocks with `nlp_state == nothing`,
-    #  i.e. as if starting from rest. That is exact for a rest start (u=0, η=0 ⇒
-    #  𝖲=𝖻=0 ⇒ zero projections, so this call is a no-op) but WRONG for any
-    #  non-trivial IC — which is exactly what the MMS driver uses (u0 = u*(t0)).
-    if nlp !== nothing
-        update_nlp_state!(nlp[1], nlp[2], u0)
-    end
 
     # previous-step DOFs → u̇ backward FD (reconstructed pressure + residual check)
     prev_vals = nothing
@@ -302,13 +292,6 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                 prev_vals = copy(get_free_dof_values(u_n))
             end
 
-            # nl_pressure_full: refresh the frozen projections π𝖲, π𝖻 for the next step
-            if nlp !== nothing
-                # ⚠ Redundant in IN-LOOP mode — the residual already refreshed the
-                #   projections from the converged iterate. Skipping recovers two mass
-                #   solves per step (NEW_TREATMENT.md §B.4).
-                nlp[1].nlp_ctx[] === nothing && update_nlp_state!(nlp[1], nlp[2], u_n)
-            end
 
             # D1: RELATIVE divergence guard. With a reference amplitude the limit
             # is div_factor·η_ref, so a linear A=1e-3 run is stopped at ~2 cm

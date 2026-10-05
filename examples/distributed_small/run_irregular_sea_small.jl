@@ -8,7 +8,7 @@
 #
 #  Config via env (base = nonlinear / full pressure / flat bed / Hs=0.2):
 #    BALFEM_REGIME       linear | nonlinear                    (default nonlinear)
-#    BALFEM_NL_PRESSURE  none | native | full                  (default full)
+#    BALFEM_NL_PRESSURE  0 | 1 (all eight 𝓝 comps)            (default 0; 1 is not yet distributed)
 #    BALFEM_FLAT_BED     1 flat | 0 variable (=> submerged bar built here)   (1)
 #    BALFEM_HS / BALFEM_TP     sea state Hs [m], Tp [s]          (default 0.2 / 2.0)
 #    BALFEM_HBAR/XBAR/WBAR   bar shape, used only when FLAT_BED=0   1.5 / 26 / 6
@@ -29,7 +29,7 @@
 
 include(joinpath(@__DIR__, "..", "distributed", "_dist_common.jl"))
 
-get!(ENV, "BALFEM_REGIME", "nonlinear"); get!(ENV, "BALFEM_NL_PRESSURE", "full")
+get!(ENV, "BALFEM_REGIME", "nonlinear"); get!(ENV, "BALFEM_NL_PRESSURE", "0")   # v2: nl_pressure=true not yet distributed (V2 plan step 10)
 get!(ENV, "BALFEM_FLAT_BED", "1")
 get!(ENV, "BALFEM_HS", "0.2"); get!(ENV, "BALFEM_TP", "2.0")
 get!(ENV, "BALFEM_NFREQ", "15")
@@ -80,7 +80,7 @@ bedtag  = usebar ? "bar" : "flat"
 #  (small_bcplane_, small_ring_, …) named the SCRIPT, not the case.
 _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
                            wave_kind="irr", wave_gen=:bc,
-                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           regime=regime_sym(), nl_pressure=nl_pressure_flag(),
                            bed=bedtag, p_u=feord, p_eta=p_eta,
                            amplitude=hs_val(), period=tp_val(), irregular=true,
                            extra=name_extra())
@@ -88,7 +88,7 @@ _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
 outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
          unique_output_dir(joinpath(ROOT, "output"), _name)
 
-banner("SMALL | irregular sea (Dirichlet BC) | $(regime_sym()) $(nl_pressure_sym()) $bedtag Hs=$(hs_val())",
+banner("SMALL | irregular sea (Dirichlet BC) | $(regime_sym()) $(nl_pressure_flag()) $bedtag Hs=$(hs_val())",
        M, (px,py), (nx,ny), nx*ny, outdir)
 is_rank0() && @printf("#   Hs=%.4g m Tp=%.3g s | bed=%s bc_side=%s profile=%s seed=%d\n",
                       hs_val(), Tp, bedtag, string(bc_side_sym()),
@@ -105,7 +105,7 @@ diags, vert, prob = setup_and_run_distributed(
     relax_width=genv_f("BALFEM_RELAX_W", 6.0),
     sponge_wL=0.0, sponge_wR=spR, sponge_wB=0.0, sponge_wT=0.0, mu_max=mumax,
     T_final=Tfinal, dt=dt, h_bathy=h_bathy,
-    regime=regime_sym(), nl_pressure=nl_pressure_sym(), flat_bed=flat_bed_flag(1),
+    regime=regime_sym(), nl_pressure=nl_pressure_flag(), flat_bed=flat_bed_flag(1),
     y_wall_bc=:wall, x_wall_bc=false,                              # long-crested => Uy == 0
     output_dir=outdir, save_every=save_ev,
     write_w=genv_b("BALFEM_WRITE_W", 0), write_pressure=genv_b("BALFEM_WRITE_PRESSURE", 0),

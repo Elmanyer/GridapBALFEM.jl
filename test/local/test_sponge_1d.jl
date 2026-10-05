@@ -124,7 +124,7 @@ for mu_max in mu_sweep
         p_u=FLUME.p, h_val=FLUME.d, flat_bed=true,
         T_wave=FLUME.T, A_wave=FLUME.A, x_wm=x_wm, y_wm=nothing,
         sponge_wL=w_spL, sponge_wR=w_sp, mu_max=mu_max,
-        T_final=Tf, dt=FLUME.dt, regime=:linear, nl_pressure=:none,
+        T_final=Tf, dt=FLUME.dt, regime=:linear, nl_pressure=false,
         y_wall_bc=:periodic, x_wall_bc=false,
         save_every=0, gauges=gauges, print_every=100, check_every=0, diag_every=5,
         output_dir=outdir)

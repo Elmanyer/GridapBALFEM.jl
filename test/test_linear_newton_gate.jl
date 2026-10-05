@@ -63,7 +63,7 @@ function linear_newton_counts(; hfun, flat_bed, solver_type, nsteps = 4, dt = 2e
     src  = mms_forcing(f, vert, (x, y) -> hfun(VectorValue(x, y)), G;
                        regime = :linear, flat_bed = flat_bed)
     prob = build_problem(vert; g = G, h_bathy = hfun,
-                         regime = :linear, nl_pressure = :none, flat_bed = flat_bed,
+                         regime = :linear, nl_pressure = false, flat_bed = flat_bed,
                          mu_sponge = (x -> 0.0), wm_src = ((x, t) -> 0.0),
                          mms_src = src)
 

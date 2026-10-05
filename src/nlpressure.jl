@@ -1,31 +1,29 @@
 # ==============================================================
-#  nlpressure.jl — FULL nonlinear pressure blocks (𝓐 / 𝓚 / 𝓟 families)
+#  nlpressure.jl — the nonlinear pressure operator 𝓝 (𝓐 / 𝓚 / 𝓟 families)
 #
-#  Completes the model physics: all eight 𝓝_kj components in the three
-#  residual blocks of main.tex §8 (bed-slope 𝓐, surface-slope 𝓚, leading 𝓟).
+#  All eight 𝓝_kj components in the three residual blocks of the derivation (bed-slope 𝓐,
+#  surface-slope 𝓚, leading 𝓟), assembled whenever `prob.nl_pressure` (all eight, or none).
 #
-#  Admissibility classes (main.tex ground rules) and treatments:
-#    NATIVE  c ∈ {3,6,7,8}  first-order everywhere (c=3's only 2nd derivative
-#            is the ANALYTIC bed Hessian) → direct, all blocks, all paths.
-#    ∇h half c ∈ {1,2,4,5}  EXACT integration by parts onto the test function
-#            (Ψ ∝ ∂_αh smooth; ∂Ψ gives first test derivatives + bed Hessian)
-#            → nlp_gradh_contrib, residual-only, serial + distributed.
-#    ∇H half + 𝓟 part, c ∈ {1,2,4,5}  irreducible (∂²η resp. ∂²(test)) →
-#            FROZEN L²-PROJECTIONS: per step project 𝖲 and 𝖻 onto the velocity
-#            FE space (π𝖲, π𝖻; SPD mass solves) and use ∂_a(π𝖲), ∂_a(π𝖻) lagged
-#            one step. O(dt) on an O(A³) term. Serial (direct factorisation) and
-#            distributed (CG + Jacobi mass solve) — see `build_nlp_ctx`.
+#  Treatments, by the regularity each term demands on C⁰ spaces:
+#    c ∈ {3,6,7,8}           first-order everywhere (c=3's only 2nd derivative is the
+#                            ANALYTIC bed Hessian) → direct, all three blocks
+#                            (`nlp_direct_contrib`).
+#    c ∈ {1,2,4,5}, 𝓐 half   EXACT integration by parts onto the test function
+#                            (Ψ ∝ ∂_αh smooth; ∂Ψ gives first test derivatives + bed Hessian)
+#                            → `nlp_gradh_contrib`.
+#    c ∈ {1,2,4,5}, 𝓚, 𝓟     irreducible second derivatives of the unknowns (Class III) → the
+#                            BROKEN formulation (src/broken.jl): the reduced contractions below
+#                            (`_c3_sum`, `nlp_gradH_reduced_contrib`, `nlp_P_reduced_contrib`)
+#                            fed with the cellwise Hessians, plus the skeleton layer.
 #
-#  All blocks are O(A²–A³) and treated quasi-Newton (they add to the residual
-#  but not to the Jacobian — their contribution to convergence is negligible at
-#  these amplitudes). Slot bookkeeping (a⊗b)[k,j]=a[k]b[j]:
-#    N¹,N² carry the differentiated divergence in the k slot (Ψ·U_a),
-#    N³,N⁴,N⁵ carry the velocity in the k slot (U_a·Ψ).
-#  Verified at machine precision by test_nlpressure.jl gate G1.
+#  Only `broken_class3_jacobian` linearises 𝓝 exactly; the {3,6,7,8} and 𝓐 blocks stay
+#  quasi-Newton (O(A²), benign — rule 5). Slot bookkeeping
+#  (a⊗b)[k,j]=a[k]b[j]: N¹,N² carry the differentiated divergence in the k slot (Ψ·U_a),
+#  N³,N⁴,N⁵ carry the velocity in the k slot (U_a·Ψ).
 # ==============================================================
 
 "Contract the test layer-vector into the FIRST index of a constant 3-tensor:
-(W ⋅ 𝓣)[k,j] = Σᵢ W[i]𝓣[i,k,j] → TensorValue{Nσ,Nσ}-CellField (native).
+(W ⋅ 𝓣)[k,j] = Σᵢ W[i]𝓣[i,k,j] → TensorValue{Nσ,Nσ}-CellField.
 Linear in W ⇒ ∂_a(W ⋅ 𝓣) = (∂_aW) ⋅ 𝓣 — used to keep ∇ off composed test
 expressions (∇ of an Operation-of-basis is not implemented for block arrays)."
 alg_cont1(T::ThirdOrderTensorValue, W) = Operation(w -> w ⋅ T)(W)
@@ -40,17 +38,17 @@ function alg_bed_hessian(d_cf)
 end
 
 """
-    nlp_native_contrib(prob, d_cf, η, H, dhx, dhy, dHx, dHy, Ux, Uy, Wx, Wy, DW,
+    nlp_direct_contrib(prob, d_cf, η, H, dhx, dhy, dHx, dHy, Ux, Uy, Wx, Wy, DW,
                        af, bf, S, DU, dΩh)
 
-First-order (native) nonlinear-pressure components c ∈ {3,6,7,8} in ALL THREE
+First-order nonlinear-pressure components c ∈ {3,6,7,8}, assembled directly in ALL THREE
 blocks. `af = u·∇h`, `bf = u·∇H`, `S = ∇·(Hu)`, `DU = ∇·u` (stacked). The 1/H
 of c ∈ {6,7,8} is cancelled analytically against one prefactor H (M_c ≡ H·N_c).
 ∂_a(𝖺) is expanded by hand so ∇ acts only on raw fields:
     ∂_a𝖺 = (∂_a∂_x h)𝖴x + (∂_xh)∂_a𝖴x + (∂_a∂_y h)𝖴y + (∂_yh)∂_a𝖴y.
 Every term is subtracted (momentum RHS).
 """
-function nlp_native_contrib(prob::BALFEMProblem, d_cf, η, H, dhx, dhy, dHx, dHy,
+function nlp_direct_contrib(prob::BALFEMProblem, d_cf, η, H, dhx, dhy, dHx, dHy,
                             Ux, Uy, Wx, Wy, DW, af, bf, S, DU, dΩh)
     # M_c = H·N_c for c = 6,7,8 (first slot carries k = the u_k-type factor)
     M6 = (-1.0)*alg_outer(af, S)
@@ -110,7 +108,7 @@ function nlp_gradh_contrib(prob::BALFEMProblem, d_cf, η, H, dhx, dhy,
     hxx, hxy, hyy = alg_bed_hessian(d_cf)
     ddx = dhx + alg_dx(η)                       # ∂_x H
     ddy = dhy + alg_dy(η)                       # ∂_y H
-    SD  = alg_outer(S, DU)                      # native remainder of N²
+    SD  = alg_outer(S, DU)                      # first-order remainder of N²
     r = nothing
     for (sα, hαx, hαy, Wα) in ((dhx, hxx, hxy, Wx), (dhy, hxy, hyy, Wy))
         Hs = H * sα
@@ -144,187 +142,26 @@ function nlp_gradh_contrib(prob::BALFEMProblem, d_cf, η, H, dhx, dhy,
     return r
 end
 
-"""
-    nlp_frozen_N(Ux, Uy, S, DU, piS, pib) -> (N1, N2, N4, N5)
-
-Components c ∈ {1,2,4,5} as TensorValue{Nσ,Nσ} fields with the irreducible
-second derivatives replaced by derivatives of the FROZEN projections
-`π𝖲, π𝖻` (previous-step FEFunctions on the velocity space):
-    N¹ = −[(∂ₓπ𝖲)⊗Ux + (∂ᵧπ𝖲)⊗Uy]        N² = −N¹ + 𝖲⊗DU
-    N⁴ = +[Ux⊗(∂ₓπ𝖻) + Uy⊗(∂ᵧπ𝖻)]        N⁵ = −[Ux⊗(∂ₓπ𝖲) + Uy⊗(∂ᵧπ𝖲)]
-"""
-function nlp_frozen_N(Ux, Uy, S, DU, piS, pib)
-    dSx = alg_dx(piS); dSy = alg_dy(piS)
-    dbx = alg_dx(pib); dby = alg_dy(pib)
-    N1 = (-1.0)*(alg_outer(dSx, Ux) + alg_outer(dSy, Uy))
-    N2 = (-1.0)*N1 + alg_outer(S, DU)
-    N4 = alg_outer(Ux, dbx) + alg_outer(Uy, dby)
-    N5 = (-1.0)*(alg_outer(Ux, dSx) + alg_outer(Uy, dSy))
-    return N1, N2, N4, N5
-end
-
-"""
-    nlp_gradH_frozen_contrib(prob, H, dHx, dHy, Wx, Wy, N1, N2, N4, N5, dΩh)
-
-Surface-slope (𝓚, ∇H-prefactored) half of c ∈ {1,2,4,5} using the frozen
-projections (irreducible ∂²η — IBP does not help here).
-"""
-function nlp_gradH_frozen_contrib(prob::BALFEMProblem, H, dHx, dHy,
-                                  Wx, Wy, N1, N2, N4, N5, dΩh)
-    NK = alg_dc3(prob.K3[1], N1) + alg_dc3(prob.K3[2], N2) +
-         alg_dc3(prob.K3[4], N4) + alg_dc3(prob.K3[5], N5)
-    return ∫( (-1.0)*H*( dHx*(Wx ⋅ NK) + dHy*(Wy ⋅ NK) ) ) * dΩh
-end
-
-"""
-    nlp_P_frozen_contrib(prob, H, DW, N1, N2, N4, N5, dΩh)
-
-Leading-pressure (𝓟) part of c ∈ {1,2,4,5} using the frozen projections
-(IBP unusable — it would need second TEST derivatives through D_W).
-"""
-function nlp_P_frozen_contrib(prob::BALFEMProblem, H, DW, N1, N2, N4, N5, dΩh)
-    NP = alg_dc3(prob.P3[1], N1) + alg_dc3(prob.P3[2], N2) +
-         alg_dc3(prob.P3[4], N4) + alg_dc3(prob.P3[5], N5)
-    return ∫( (-1.0)*(H*H)*(NP ⋅ DW) ) * dΩh
-end
-
-# ----------------------------------------------------------
-#  Frozen-projection machinery (sequential AND distributed time loop)
-# ----------------------------------------------------------
-
-"""
-    build_nlp_ctx(model, p_u, Nσ, trian, dΩh; distributed=false,
-                  cg_rtol=1e-10, cg_maxiter=500)
-
-Projection context for `nl_pressure_full`: an UNCONSTRAINED VectorValue{Nσ}
-FE space (same reffe as the velocities) and its mass matrix, solved ONCE per
-step for two right-hand sides (`π𝖲, π𝖻`). The mass matrix is SPD and
-well-conditioned (unlike the advection-dominated Jacobian), so:
-  * `distributed=false` (sequential): direct `lu` factorisation, ONE-OFF.
-  * `distributed=true`: `CGSolver(JacobiLinearSolver())` from GridapSolvers —
-    the same Jacobi-preconditioned Krylov family as the main distributed
-    Newton solve (`build_ode_solver_distributed`), since base `lu` has no
-    method for a partitioned `PSparseMatrix`. `numerical_setup` is built ONCE
-    from the assembled mass matrix and reused every step (`solve!`).
-
-RHS/solution vectors are allocated from the matrix itself (`allocate_in_range`/
-`allocate_in_domain`) and the RHS is assembled IN-PLACE into that buffer
-(`assemble_vector!`) — required distributed: an `assemble_vector(f, V)` result
-and `allocate_in_domain(A)` are only isomorphic, not the SAME `PRange` object
-(distinct ghost/assembly-cache layout), and `mul!`/CG inside `solve!` asserts
-exact partition equality. `allocate_in_range`/`allocate_in_domain` are the
-matrix-derived vector types that are *guaranteed* compatible with `A` on both
-paths.
-"""
-function build_nlp_ctx(model, p_u::Int, Nσ::Int, trian, dΩh;
-                       distributed::Bool = false,
-                       cg_rtol::Float64 = 1e-10, cg_maxiter::Int = 500)
-    reffe = ReferenceFE(lagrangian, VectorValue{Nσ,Float64}, p_u)
-    Vp = FESpace(model, reffe; conformity=:H1)
-    Up = TrialFESpace(Vp)
-    a(u, v) = ∫( u ⋅ v ) * dΩh
-    Mmass = assemble_matrix(a, Up, Vp)
-    if distributed
-        ls = CGSolver(JacobiLinearSolver(); rtol=cg_rtol, atol=1e-14, maxiter=cg_maxiter)
-        ns = numerical_setup(symbolic_setup(ls, Mmass), Mmass)
-        solvefun = (x, r) -> solve!(x, ns, r)
-    else
-        Mlu = lu(Mmass)
-        solvefun = (x, r) -> ldiv!(x, Mlu, r)
-    end
-    return (Vp=Vp, Up=Up, dΩh=dΩh, trian=trian, Mmass=Mmass, solve=solvefun)
-end
-
-"""
-    update_nlp_state!(prob, ctx, u_n)
-
-After an accepted step: project `𝖲 = ∇·(Hu)` and `𝖻 = u·∇H` (from `u_n`) onto
-the projection space and store `(π𝖲, π𝖻)` on `prob.nlp_state[]` for the next
-step's residual (project-then-differentiate, one-step lag). Uses `ctx.solve`
-(direct `lu` sequential / `CGSolver` distributed — set by `build_nlp_ctx`);
-RHS/solution vectors are matrix-derived (see `build_nlp_ctx` docstring) so
-they are exactly compatible with `ctx.Mmass`'s partition on both paths.
-"""
-function update_nlp_state!(prob::BALFEMProblem, ctx, u_n)
-    η  = u_n[1];  Ux = u_n[2];  Uy = u_n[3]
-    d_cf = CellField(prob.h_bathy, ctx.trian)
-    H  = d_cf + η
-    dHx = alg_dx(d_cf) + alg_dx(η);  dHy = alg_dy(d_cf) + alg_dy(η)
-    DU = alg_dx(Ux) + alg_dy(Uy)
-    b  = dHx*Ux + dHy*Uy
-    S  = H*DU + b
-
-    rS = allocate_in_range(ctx.Mmass); fill!(rS, zero(eltype(rS)))
-    rb = allocate_in_range(ctx.Mmass); fill!(rb, zero(eltype(rb)))
-    assemble_vector!(v -> ∫( S ⋅ v ) * ctx.dΩh, rS, ctx.Vp)
-    assemble_vector!(v -> ∫( b ⋅ v ) * ctx.dΩh, rb, ctx.Vp)
-
-    piS_vec = allocate_in_domain(ctx.Mmass); fill!(piS_vec, zero(eltype(piS_vec)))
-    pib_vec = allocate_in_domain(ctx.Mmass); fill!(pib_vec, zero(eltype(pib_vec)))
-    ctx.solve(piS_vec, rS)
-    ctx.solve(pib_vec, rb)
-    piS = FEFunction(ctx.Up, piS_vec)
-    pib = FEFunction(ctx.Up, pib_vec)
-    prob.nlp_state[] = (piS=piS, pib=pib)
-    return nothing
-end
-
 # ==============================================================
-#  REDUCED Class-III assembly + IN-LOOP (static-condensation) projections
-#  Added on branch `new-classIII-treatment`.
-#  Full derivation, verification and rationale: markdown_files/NEW_TREATMENT.md
+#  REDUCED Class-III contractions (NEW_TREATMENT.md §A.2): components {1,2,5} collapse EXACTLY
+#  onto one contraction in ∇𝖲 (verified 4.4e-16). Fed by src/broken.jl with the cellwise parts
+#  of the distributional gradients.
 # ==============================================================
-
-"""
-    nlp_class3_reduced_fields(Ux, Uy, S, DU, piS, pib) -> (GU, SD, N4)
-
-The three TensorValue{Nσ,Nσ} objects the REDUCED Class-III assembly needs:
-
-    GU = Σₐ ∂ₐ(π𝖲) ⊗ Uₐ     the single ∇𝖲-carrying object for components {1,2,5}
-    SD = 𝖲 ⊗ DU              the ADMISSIBLE remainder of 𝓝² (first-order product)
-    N4 = Σₐ Uₐ ⊗ ∂ₐ(π𝖻)      component 4, which needs ∇𝖻 and cannot join the others
-
-Replaces the four-object `nlp_frozen_N` for the two PROJECTED blocks. `nlp_frozen_N`
-is deliberately KEPT as the reference implementation that
-`test_class3_residual_parity.jl` compares against — it is not dead code.
-"""
-function nlp_class3_reduced_fields(Ux, Uy, S, DU, piS, pib)
-    dSx = alg_dx(piS); dSy = alg_dy(piS)
-    dbx = alg_dx(pib); dby = alg_dy(pib)
-    GU = alg_outer(dSx, Ux) + alg_outer(dSy, Uy)
-    SD = alg_outer(S, DU)
-    N4 = alg_outer(Ux, dbx) + alg_outer(Uy, dby)
-    return GU, SD, N4
-end
-
 
 """
     _c3_sum(prob, W, T2, T4, GU, SD, N4)
 
-Assemble the Class-III contraction for ONE residual block, honouring `prob.c3_mask`.
+The Class-III contraction for ONE residual block — both irreducible objects the algebraic
+reduction leaves (NEW_TREATMENT.md §A.2):
 
-The two mask bits are the two irreducible objects the algebraic reduction leaves
-(NEW_TREATMENT.md §A.2):
+  * the ∇𝖲 family — `W ⊙ GU` (components {1,2,5} collapsed) **plus** `T² ⊙ SD`, the
+    first-order remainder `s_k ∇·u_j` that 𝓝² contributes;
+  * ∇𝖻 — `T⁴ ⊙ N4`, component 4.
 
-  [1] ∇𝖲 family — `W ⊙ GU` (components {1,2,5} collapsed) **plus** `T² ⊙ SD`, the
-      first-order remainder `s_k ∇·u_j` that 𝓝² contributes. SD travels with bit 1
-      because it IS part of 𝓝²; splitting it off would make neither arm a clean subset
-      of the operator.
-  [2] ∇𝖻 — `T⁴ ⊙ N4`, component 4, the only term needing the second object.
-
-⚠ Callers must check `any(prob.c3_mask)` first: with both bits off this has nothing to
-return, and an empty Gridap contribution is not a thing. `global_residual` does that.
+Both are always assembled.
 """
-function _c3_sum(prob::BALFEMProblem, W, T2, T4, GU, SD, N4)
-    use_gs, use_gb = prob.c3_mask
-    if use_gs && use_gb
-        return alg_dc3(W, GU) + alg_dc3(T2, SD) + alg_dc3(T4, N4)
-    elseif use_gs
-        return alg_dc3(W, GU) + alg_dc3(T2, SD)
-    else
-        return alg_dc3(T4, N4)
-    end
-end
+_c3_sum(prob::BALFEMProblem, W, T2, T4, GU, SD, N4) =
+    alg_dc3(W, GU) + alg_dc3(T2, SD) + alg_dc3(T4, N4)
 
 """
     nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy, GU, SD, N4, dΩh)
@@ -346,87 +183,4 @@ Leading-pressure (𝓟) part of c ∈ {1,2,4,5}, reduced. EXACT — NEW_TREATMEN
 function nlp_P_reduced_contrib(prob::BALFEMProblem, H, DW, GU, SD, N4, dΩh)
     NP = _c3_sum(prob, prob.WP3, prob.P3[2], prob.P3[4], GU, SD, N4)
     return ∫( (-1.0)*(H*H)*(NP ⋅ DW) ) * dΩh
-end
-
-"""
-    nlp_enable_inloop!(prob, ctx)
-
-Switch `prob` into IN-LOOP (static-condensation) mode: the Class-III `L²` projections
-are refreshed from the CURRENT Newton iterate inside `global_residual` instead of being
-frozen from the previous accepted step. Pass `nothing` to return to lagged mode.
-"""
-function nlp_enable_inloop!(prob::BALFEMProblem, ctx)
-    prob.nlp_ctx[] = ctx
-    return prob
-end
-
-"""
-    nlp_plain_iterate(u) -> Bool
-
-⚠ THE AD GUARD, AND IT IS LOAD-BEARING.
-
-`global_residual` is called in two very different situations:
-  * **residual assembly** — `u` carries genuine `Float64` free values (the Newton iterate).
-    This is the ONLY case in which a mass solve makes sense, and the only case that occurs
-    at all on the default hand-Jacobian path (`TransientFEOperator(r,j,jt,U,V)` never
-    differentiates `r`).
-  * **AD Jacobian assembly** (`use_ad=true` ⇒ `TransientFEOperator(r,U,V)`) — Gridap
-    differentiates `r`, so the cell data carries `ForwardDiff.Dual` numbers. Assembling a
-    `Float64` RHS from those would throw, or silently truncate.
-
-Returning `false` there makes the refresh a no-op, so the AD Jacobian is taken with `π`
-held at the value the preceding residual evaluation computed — i.e. the SAME quasi-Newton
-treatment these blocks already receive (rule 17b: the Jacobian sets the path, not the root).
-
-Anything unexpected also returns `false`: failing safe here degrades to the legacy lagged
-behaviour rather than throwing inside an assembly loop.
-"""
-function nlp_plain_iterate(u)
-    try
-        for k in 1:3
-            v = get_free_dof_values(u[k])
-            eltype(v) === Float64 || return false
-        end
-        return true
-    catch
-        return false
-    end
-end
-
-"Diagnostic counter: how many times the in-loop refresh has actually fired.
-Reset it before a run and read it after to check WHEN the refresh happens
-(expect ~ Newton iterations x stages per step, not once per step)."
-const NLP_REFRESH_COUNT = Ref(0)
-
-"""
-    refresh_nlp_state!(prob, ctx, S, b) -> Float64
-
-Project `𝖲` and `𝖻` — as evaluated at the CURRENT Newton iterate — onto the projection
-space and store them on `prob.nlp_state[]`. Returns the `∞`-norm change in `π𝖲`, which
-`test_nlp_inloop.jl` G1 uses to assert the knob is live (rule 38d) and G2 to assert the
-fixed point is reached.
-
-This is `update_nlp_state!` without the one-step lag. Same mass matrix, same factorisation,
-same cost per solve — only the state it is evaluated at differs. See NEW_TREATMENT.md §B.1
-for why removing the lag costs no unknowns: the projection is static condensation of the
-mixed formulation, and the freezing was only ever a decoupling convenience.
-"""
-function refresh_nlp_state!(prob::BALFEMProblem, ctx, S, b)
-    NLP_REFRESH_COUNT[] += 1
-    rS = allocate_in_range(ctx.Mmass); fill!(rS, zero(eltype(rS)))
-    rb = allocate_in_range(ctx.Mmass); fill!(rb, zero(eltype(rb)))
-    assemble_vector!(v -> ∫( S ⋅ v ) * ctx.dΩh, rS, ctx.Vp)
-    assemble_vector!(v -> ∫( b ⋅ v ) * ctx.dΩh, rb, ctx.Vp)
-
-    piS_vec = allocate_in_domain(ctx.Mmass); fill!(piS_vec, zero(eltype(piS_vec)))
-    pib_vec = allocate_in_domain(ctx.Mmass); fill!(pib_vec, zero(eltype(pib_vec)))
-    ctx.solve(piS_vec, rS)
-    ctx.solve(pib_vec, rb)
-
-    st  = prob.nlp_state[]
-    chg = st === nothing ? Inf :
-          maximum(abs, get_free_dof_values(st.piS) .- piS_vec)
-    prob.nlp_state[] = (piS = FEFunction(ctx.Up, piS_vec),
-                        pib = FEFunction(ctx.Up, pib_vec))
-    return chg
 end

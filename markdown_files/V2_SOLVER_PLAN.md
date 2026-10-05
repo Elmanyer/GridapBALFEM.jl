@@ -90,7 +90,7 @@ When `nl_pressure=true`, the eight `𝓝` components are assembled as follows:
 
 | block | {3,6,7,8} | {1,2,4,5} |
 |---|---|---|
-| bed-slope `𝓐` (prefactor `H∂h`) | direct (`nlp_native_contrib`) | exact integration by parts onto the test (`nlp_gradh_contrib`) |
+| bed-slope `𝓐` (prefactor `H∂h`) | direct (`nlp_direct_contrib`) | exact integration by parts onto the test (`nlp_gradh_contrib`) |
 | surface-slope `𝓚` (prefactor `H∂H`) | direct | **broken**: cellwise `∇∇` + skeleton layer, **both arms** `∇𝖲` and `∇𝖻` |
 | leading `𝓟` (prefactor `H²`, tested by `∇·V`) | direct | **broken**, both arms |
 
@@ -157,7 +157,7 @@ Measure the reference numbers that must survive the refactor, on the current tre
 * **Files:** `src/problem.jl` (`global_residual`, `jacobian_u`), `src/broken.jl`,
   `src/nlpressure.jl`.
 * The Class-III branch in `global_residual` becomes a single path: if `prob.nl_pressure` is set,
-  assemble `nlp_native_contrib`, then `nlp_gradh_contrib` (unless `flat_bed`), then the broken
+  assemble `nlp_direct_contrib`, then `nlp_gradh_contrib` (unless `flat_bed`), then the broken
   `𝓚`/`𝓟` blocks. The `mixed → broken → projected` cascade is deleted.
 * Remove `c3_mask` from `BALFEMProblem` and from every signature. `_c3_sum`, `_c3_layer` and
   `broken_class3_cell_fields` assemble both arms unconditionally.
@@ -204,7 +204,7 @@ Measure the reference numbers that must survive the refactor, on the current tre
   * `src/nlpressure.jl`: delete `build_nlp_ctx`, `update_nlp_state!`, `refresh_nlp_state!`,
     `nlp_enable_inloop!`, `nlp_plain_iterate`, `NLP_REFRESH_COUNT`, `nlp_frozen_N`,
     `nlp_gradH_frozen_contrib` and `nlp_P_frozen_contrib`;
-  * keep `nlp_native_contrib`, `nlp_gradh_contrib`, `alg_bed_hessian`, `nlp_class3_reduced_fields`,
+  * keep `nlp_direct_contrib`, `nlp_gradh_contrib`, `alg_bed_hessian`, `nlp_class3_reduced_fields`,
     `_c3_sum`, `nlp_gradH_reduced_contrib` and `nlp_P_reduced_contrib`, which the broken path uses;
     rename where "reduced" no longer contrasts with anything;
   * `src/timeloop.jl`, `src/timeloop_dist.jl`: the nlp-context priming and the per-step refresh;
@@ -341,3 +341,58 @@ In order; each depends on the previous one:
   tag), or move them to `run/v1/`.
 * **D-d.** Whether `nl_pressure=true` without a stabiliser is allowed. Proposed: allowed with a
   banner warning, because chapter 8 needs unstabilised runs.
+
+---
+
+## 6. Execution record (2026-10-05)
+
+**Decisions adopted** (the proposals of §5, applied as written):
+* **D-a.** `nl_pressure` defaults to `false`.
+* **D-b.** `build_problem(…; model, quad_degree)` builds the skeleton when `nl_pressure=true`. A
+  full-pressure problem without it is refused.
+* **D-c.** The v1 launchers were removed: 120 in `run/local/` and the 34 in `run/dist_small/`. So
+  were the v1 campaign scripts in `examples/local_mms/`: the vbasis campaign/shard/report, the
+  Phase-B shard and supervisors, the quadrature probe and the broken-MMS check. All remain in the
+  tag. Generic drivers were ported.
+* **D-d.** `nl_pressure=true` without a stabiliser runs, with a banner warning.
+
+**Deviation from the step order.** Steps 1–4 could not each compile on their own: `mixed.jl` and the
+projection code read the very struct fields steps 1–2 remove (`c3_mask`, `nl_pressure_full`,
+`nlp_state`, `nlp_ctx`). They were therefore done as ONE source change, gated by the stronger
+criterion: every configuration of the regression snapshot reproduces v1 entry by entry.
+Steps 5–9 and 11 followed in the same pass; step 10 is open.
+
+**What changed, by file.**
+* **`src/problem.jl`.** `BALFEMProblem` now has `nl_pressure::Bool` in place of
+  `nl_pressure68`/`_full`, and no `nlp_state`, `c3_mask` or `nlp_ctx`. `resolve_physics` refuses a
+  `Symbol`. `build_problem` takes `model`/`quad_degree`. The residual has a single Class-III path
+  (`broken_class3_residual`), and `jacobian_u` always adds `broken_class3_jacobian` when
+  `nl_pressure` is set.
+* **`src/broken.jl`.** One skeleton record (`skeleton_nt`). `attach_skeleton!` has no `broken`
+  keyword, and both arms are always on. New: `broken_class3_residual`.
+* **`src/nlpressure.jl`.** The projection machinery is deleted.
+* **`src/mixed.jl`.** Deleted.
+* **`src/horizontal.jl`, `src/monitor.jl`.** No auxiliary fields.
+* **Time loops.** No projection hooks.
+* **`src/utilities.jl`.**
+  * `setup_and_run` takes the Boolean switch and loses the mixed/broken/mask/in-loop options; it
+    warns on unstabilised full-pressure runs.
+  * New `check_v1_env` and `write_run_manifest`.
+  * The `nlp0`/`nlp1` naming token.
+* **`src/utilities_dist.jl`.** Refuses `nl_pressure=true`; writes the manifest on rank 0.
+* **`src/mms.jl`, `src/mms_driver.jl`.** Boolean switch; all eight components when on; no projection
+  context.
+* **Tests.**
+  * Deleted: mixed formulation / mixed Jacobian / mixed diagnostics, in-loop projections, the mask
+    split, projected parity.
+  * Ported: Jacobians vs AD (six models), the nonlinear MMS (models 3–6, with 5–6 rate-gated at
+    `a_eta = 0.4`), the nonlinear MMS forcing, nlpressure, selfconsistency, broken formulation,
+    distributed parity, and the local and cluster tests.
+  * `test_nlpressure_distributed` disabled until step 10.
+* **Drivers.** `check_v1_env` on load; `nl_pressure_flag()`; the validation examples moved to
+  Q3/Q2 plus the ghost penalty; `stability_eig.jl` ported to models `:off`/`:on` with a
+  skeleton-aware FD sparsity pattern.
+* **Docs.** `CLAUDE.md` rebuilt for v2, with the v1 version preserved as `HISTORY_V1.md`. MODEL,
+  ARCHITECTURE, RUNNING, CONFIGURATION and INDEX updated. The v1-record banners added to
+  VERIFIED_SCOPE, TEST_SUITE, OPEN_ISSUES, PLANNED_CAMPAIGNS, NEW_TREATMENT,
+  BROKEN_FORMULATION_PLAN and GHOST_PENALTY_PLAN.

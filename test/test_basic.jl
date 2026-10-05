@@ -38,13 +38,13 @@ A_wave = 0.001
 T_wave = 1.6                 # d = 3.5 ⇒ kd = 5.5, λ ≈ 4 m
 
 function run_mode(regime, label)
-    println("\n--- $label (regime=:$regime, nl_pressure=:none) ---")
+    println("\n--- $label (regime=:$regime, nl_pressure=false) ---")
     diags, vert, prob = setup_and_run(
         M=2, h_val=3.5, T_wave=T_wave, A_wave=A_wave,
         domain=((0.0,16.0),(0.0,2.0)), partition=(16,2), p_u=2,
         x_wm=4.0, y_wm=nothing,
         sponge_wL=4.0, sponge_wR=4.0, sponge_wB=0.0, sponge_wT=0.0, mu_max=50.0,
-        T_final=4.8, dt=0.04, regime=regime, nl_pressure=:none,
+        T_final=4.8, dt=0.04, regime=regime, nl_pressure=false,
         gauges=[(8.0, 1.0)], save_every=0,
     )
     emax = maximum(d.eta_max for d in diags)

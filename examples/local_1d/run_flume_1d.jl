@@ -31,7 +31,7 @@
 #                        bc    = Dirichlet boundary generation, regular wave
 #                        sea   = Dirichlet boundary generation, WaveSpec JONSWAP
 #    BALFEM_REGIME       linear | nonlinear          linear
-#    BALFEM_NL_PRESSURE  none | native | full        none
+#    BALFEM_NL_PRESSURE  0 | 1  (all eight 𝓝 comps)  0
 #    BALFEM_FLAT_BED     1 flat | 0 submerged bar    1
 #    BALFEM_MPI          0 sequential | 1 MPI        1   (sequential keeps GAUGES;
 #                                                       the distributed driver
@@ -65,7 +65,7 @@ include(joinpath(@__DIR__, "..", "distributed", "_dist_common.jl"))
 # base-case physics (launchers override; get! ⇒ the banner and the solver can
 # never disagree, because both read the same resolved ENV)
 get!(ENV, "BALFEM_REGIME",      "linear")
-get!(ENV, "BALFEM_NL_PRESSURE", "none")
+get!(ENV, "BALFEM_NL_PRESSURE", "0")
 get!(ENV, "BALFEM_FLAT_BED",    "1")
 
 wave_gen_kind = lowercase(genv("BALFEM_WAVE_GEN", "inner"))
@@ -277,20 +277,15 @@ solver_sym() === :theta && push!(_extra, "theta")
 (solver_sym() === :sdirk && tableau_sym() !== :SDIRK_2_2) &&
     push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
-genv_b("BALFEM_NLP_INLOOP", 0) && push!(_extra, "inloop")
-genv_b("BALFEM_MIXED", 0) && push!(_extra, "mixed")
-haskey(ENV, "BALFEM_P_AUX") && push!(_extra, "aux"*ENV["BALFEM_P_AUX"])
-genv_b("BALFEM_BROKEN", 0) && push!(_extra, "broken")
 genv_f("BALFEM_CIP_GU", 0.0) > 0 && push!(_extra, @sprintf("cipu%g", genv_f("BALFEM_CIP_GU", 0.0)))
 genv_f("BALFEM_CIP_GE", 0.0) > 0 && push!(_extra, @sprintf("cipe%g", genv_f("BALFEM_CIP_GE", 0.0)))
 genv_i("BALFEM_CIP_ORDER", 1) > 1 && push!(_extra, "cipord" * ENV["BALFEM_CIP_ORDER"])
 lowercase(genv("BALFEM_STAB", "jumpgrad")) == "ghostvolume" && push!(_extra, "ghost")
-let m = lowercase(genv("BALFEM_C3_MASK","both")); m == "both" || push!(_extra, "c3"*m) end
 genv_i("BALFEM_QUAD_EXTRA", 0) != 0 && push!(_extra, "q$(genv_i("BALFEM_QUAD_EXTRA",0))")
 
 _name = output_dir_name(; M = M, p_vert = p_vert, ny = ny, y_wall_bc = ybc_sym,
                           wave_kind = _wavekind, wave_gen = _gen,
-                          regime = regime_sym(), nl_pressure = nl_pressure_sym(),
+                          regime = regime_sym(), nl_pressure = nl_pressure_flag(),
                           bed = bedtag, p_u = feord, p_eta = p_eta,
                           amplitude = _amp, period = _per, irregular = _is_sea,
                           nx = nx, nx_in_name = haskey(ENV, "BALFEM_NX"),
@@ -303,7 +298,7 @@ outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
 if is_rank0()
     @printf("############################################################\n")
     @printf("# QUASI-1D FLUME | gen=%s | %s %s %s | A=%g T=%g\n",
-            wave_gen_kind, regime_sym(), nl_pressure_sym(), bedtag, Awave, Twave)
+            wave_gen_kind, regime_sym(), nl_pressure_flag(), bedtag, Awave, Twave)
     @printf("#   %s | M=%d | domain %.0f×%.0f m | mesh %d×%d (dx=%.3f) | %s\n",
             model_name, M, Lx, Ly, nx, ny, Lx/nx,
             use_mpi ? "MPI $(genv_i("BALFEM_PX",12))×1 ranks" : "sequential (+gauges)")
@@ -321,7 +316,7 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           x_wm=x_wm, y_wm=nothing,
           sponge_wL=spL, sponge_wR=spR, sponge_wB=0.0, sponge_wT=0.0, mu_max=mumax,
           T_final=Tfinal, dt=dt,
-          regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+          regime=regime_sym(), nl_pressure=nl_pressure_flag(),
           flat_bed=flat_bed_flag(1),
           y_wall_bc=ybc_sym, x_wall_bc=false,
           wave_bc=wave_bc, bc_side=bc_side_sym(), bc_profile=bc_profile_sym(),
@@ -334,25 +329,6 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           #  SEQUENTIAL ONLY -- there is no use_ad on the distributed path -- and
           #  substantially slower per assembly, so use it to diagnose, not to run.
           use_ad=genv_b("BALFEM_USE_AD", 0),
-          #  BALFEM_NLP_INLOOP=1 evaluates the Class-III L2 projections from the CURRENT
-          #  Newton iterate (static condensation) instead of freezing them one step behind.
-          #  Removes the O(dt) lag error; only meaningful with nl_pressure=:full.
-          nlp_inloop=genv_b("BALFEM_NLP_INLOOP", 0),
-          #  BALFEM_MIXED=1 replaces the Class-III L2 projections with GENUINE UNKNOWNS
-          #  (5 fields for grad-S only, 7 with grad-b). Projection-free and lag-free, but
-          #  AD Jacobians and sequential only -- a DIAGNOSTIC, far slower per step.
-          mixed=genv_b("BALFEM_MIXED", 0),
-          #  BALFEM_P_AUX sets the FE order of the mixed auxiliary unknowns (𝖦, 𝖥).
-          #  Unset → the velocity order (every mixed run before 2026-09-23).
-          p_aux=(haskey(ENV, "BALFEM_P_AUX") ? genv_i("BALFEM_P_AUX", feord) : nothing),
-          #  BALFEM_C3_MASK isolates WHICH Class-III object is assembled, to answer
-          #  which of the two carries the :full instability:
-          #    "both" (default) = ordinary :full
-          #    "gs"   = the ∇𝖲 family only  (components {1,2,5}, collapsed + 𝓝²'s remainder)
-          #    "gb"   = component 4 only    (the ∇𝖻 carrier)
-          #    "none" = Class-III suppressed; NOT :native ({3,6,7,8} still assembled)
-          c3_mask=(m -> m == "gs" ? (true,false) : m == "gb" ? (false,true) :
-                        m == "none" ? (false,false) : (true,true))(lowercase(genv("BALFEM_C3_MASK","both"))),
           output_dir=outdir, save_every=save_ev,
           write_w=write_w_flag(), write_pressure=write_p_flag(), rho=rho_val(),
           solver_type=solver_sym(), tableau=tableau_sym(),
@@ -363,8 +339,9 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           div_factor=genv_f("BALFEM_DIV_FACTOR", 20.0))
 
 if use_mpi
-    (genv_b("BALFEM_BROKEN", 0) || genv_f("BALFEM_CIP_GU", 0.0) > 0 || genv_f("BALFEM_CIP_GE", 0.0) > 0) &&
-        error("run_flume_1d: BALFEM_BROKEN / BALFEM_CIP_* are sequential-only; set BALFEM_MPI=0")
+    (nl_pressure_flag() || genv_f("BALFEM_CIP_GU", 0.0) > 0 || genv_f("BALFEM_CIP_GE", 0.0) > 0) &&
+        error("run_flume_1d: BALFEM_NL_PRESSURE=1 and BALFEM_CIP_* are sequential-only in v2 " *
+              "(skeleton terms not yet distributed — V2_SOLVER_PLAN.md step 10); set BALFEM_MPI=0")
     px = genv_i("BALFEM_PX", 12)
     nx % px == 0 || error("BALFEM_NX ($nx) must be divisible by BALFEM_PX ($px)")
     diags, vert, prob = setup_and_run_distributed(;
@@ -375,11 +352,8 @@ else
     diags, vert, prob = setup_and_run(;
         domain=((0.0, Lx), (0.0, Ly)), partition=(nx, ny),
         gauges=gauges,
-        #  BALFEM_BROKEN=1: Class-III 𝓚/𝓟 blocks by the distributional gradient (cellwise
-        #  Hessians + skeleton layer; src/broken.jl). BALFEM_CIP_GU / _GE / _HEXP: the C⁰
-        #  interior penalty on ⟦∂ₙ𝖴⟧ / ⟦∂ₙη⟧ (BROKEN_FORMULATION_PLAN.md). SEQUENTIAL ONLY —
-        #  setup_and_run_distributed has neither option.
-        broken=genv_b("BALFEM_BROKEN", 0),
+        #  Skeleton stabilisation: BALFEM_STAB (jumpgrad | ghostvolume), BALFEM_CIP_GU / _GE
+        #  (γ_u, γ_η), _HEXP, _ORDER. SEQUENTIAL ONLY — setup_and_run_distributed has none.
         cip_gamma_u=genv_f("BALFEM_CIP_GU", 0.0),
         cip_gamma_eta=genv_f("BALFEM_CIP_GE", 0.0),
         cip_hexp=genv_f("BALFEM_CIP_HEXP", 2.0),

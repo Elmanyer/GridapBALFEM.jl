@@ -11,8 +11,8 @@
 #  WHAT IT COMPARES, AND WHY THAT IS THE RIGHT OBJECT. It evaluates both
 #  formulations AT A PRESCRIBED STATE: an arbitrary smooth (u_j, H, h) supplied
 #  directly, with no solve, no horizontal mesh, no time stepping and no assembly.
-#  It therefore tests the OPERATOR alone. In particular the Class-III frozen L2
-#  projections play no part, so a projection error cannot mask or mimic a
+#  It therefore tests the OPERATOR alone. In particular no assembly choice for the Class-III
+#  terms plays a part, so an assembly error cannot mask or mimic a
 #  derivation error here -- the two failure modes are separated by construction.
 #
 #  STAGE 1 (this file): the vertical velocity w, our

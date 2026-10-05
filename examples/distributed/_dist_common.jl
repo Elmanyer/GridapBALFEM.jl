@@ -28,7 +28,7 @@
 #    BALFEM_RHO         water density [kg/m³]              1025
 #    BALFEM_PRINT_EVERY solver progress report every N steps    (default 10)
 #    BALFEM_REGIME      physics regime: linear|nonlinear   nonlinear
-#    BALFEM_NL_PRESSURE nonlinear pressure: none|native|full  none
+#    BALFEM_NL_PRESSURE nonlinear pressure 𝓝, all 8 comps (0/1)  0
 #    BALFEM_FLAT_BED    flat sea bed ∇h≡0 (1/0)  1 flat scripts / 0 bathymetry script
 #
 #  The algebraic solver runs the FULL physics distributed through the one
@@ -42,6 +42,7 @@
 const ROOT = normpath(joinpath(@__DIR__, "..", ".."))
 using GridapBALFEM
 using Printf
+check_v1_env()      # v2: refuse removed v1 knobs before anything runs
 
 genv(k, d)   = get(ENV, k, string(d))
 genv_i(k, d) = parse(Int,     genv(k, d))
@@ -57,7 +58,9 @@ write_w_flag()  = genv_b("BALFEM_WRITE_W", 1)
 write_p_flag()  = genv_b("BALFEM_WRITE_PRESSURE", 1)
 rho_val()       = genv_f("BALFEM_RHO", 1025.0)
 regime_sym()         = Symbol(genv("BALFEM_REGIME", "nonlinear"))
-nl_pressure_sym()    = Symbol(genv("BALFEM_NL_PRESSURE", "none"))
+#  v2: BALFEM_NL_PRESSURE is 0/1 (all eight 𝓝 components off/on). check_v1_env() (run on load,
+#  below) refuses the v1 tier names and every removed v1 knob instead of ignoring them.
+nl_pressure_flag()   = genv_b("BALFEM_NL_PRESSURE", 0)
 # Sea-bed geometry: false = variable bathymetry (∇h≠0), true = flat bed (∇h≡0).
 # Default per script (BALFEM_FLAT_BED): flat-bed cases pass 1, the bathymetry case passes 0.
 flat_bed_flag(default::Int=1) = genv_b("BALFEM_FLAT_BED", default)
@@ -256,7 +259,7 @@ function banner(title, M, cpu_grid, partition, ncells, outdir)
     @printf("#   M=%d layers | cpu_grid=%s (%d ranks) | mesh=%s = %d cells\n",
             M, string(cpu_grid), prod(cpu_grid), string(partition), ncells)
     @printf("#   regime=%s nl_pressure=%s flat_bed=%s\n",
-            string(regime_sym()), string(nl_pressure_sym()), string(flat_bed_flag()))
+            string(regime_sym()), string(nl_pressure_flag()), string(flat_bed_flag()))
     @printf("#   write_w=%s write_pressure=%s | out=%s\n",
             string(write_w_flag()), string(write_p_flag()), outdir)
     @printf("############################################################\n")

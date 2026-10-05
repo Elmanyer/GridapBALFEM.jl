@@ -1,5 +1,10 @@
 # OPEN_ISSUES.md — open work, each with its decisive next step
 
+> **⚙ v1 RECORD (2026-10-05).** The issues here were recorded on v1; those about the projected/mixed treatments or the tiers are closed by removal in v2, the rest (§0b order reduction, §0d bathymetry, §0e stability) carry over. It is kept as the record of how v1 reached its results;
+> the v2 solver (branch `v2-solver`) differs — one Class-III formulation (broken), `nl_pressure::Bool`
+> with all eight `𝓝` components, no component mask (`V2_SOLVER_PLAN.md`). Paths `output/…` here are
+> now under `output_v1/`.
+
 > **Scope — what belongs here.** *Known defects and gaps in work already done*, each with its
 > decisive next step. Answers **"what is known to be wrong, missing, or unexplained?"**
 >

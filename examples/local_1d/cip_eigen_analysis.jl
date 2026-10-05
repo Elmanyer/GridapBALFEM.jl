@@ -9,7 +9,7 @@
 #  ENERGY damping rate 2·Re(−λ) is reported per band, against γ and the penalty order.
 #
 #  THE WINDOW the screening needs (§5.2):
-#     mid-band damping  ≳ 0.13 s⁻¹   (the late :full growth rate it must beat)
+#     mid-band damping  ≳ 0.13 s⁻¹   (the late nonlinear-pressure growth rate it must beat)
 #     carrier damping   ≪ 1/T_run ≈ 0.006 s⁻¹   (no locking)
 #  ⚠ The linear operator has no instability: these are the dissipation budgets available
 #  against the nonlinear growth, not stability verdicts.
@@ -43,7 +43,7 @@ function bands(B)
 end
 
 function operator(B, γu, γe, order; stab = :jumpgrad)
-    p = build_problem(VERT; h_bathy = x -> D0, regime = :linear, nl_pressure = :none, flat_bed = true)
+    p = build_problem(VERT; h_bathy = x -> D0, regime = :linear, nl_pressure = false, flat_bed = true)
     (γu > 0 || γe > 0) && attach_skeleton!(p, B.model; cip_gamma_u = γu, cip_gamma_eta = γe,
                                            cip_order = (stab === :ghostvolume ? 1 : order),
                                            stabilization = stab, p_u = B.pu, p_eta = B.pe,

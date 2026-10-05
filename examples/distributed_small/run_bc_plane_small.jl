@@ -10,7 +10,7 @@
 #
 #  Config via env (base = nonlinear / full pressure / flat bed / A=0.1 / T=2.0):
 #    BALFEM_REGIME       linear | nonlinear                    (default nonlinear)
-#    BALFEM_NL_PRESSURE  none | native | full                  (default full)
+#    BALFEM_NL_PRESSURE  0 | 1 (all eight 𝓝 comps)            (default 0; 1 is not yet distributed)
 #    BALFEM_FLAT_BED     1 flat | 0 variable (=> submerged bar built here)   (1)
 #    BALFEM_AWAVE        wave amplitude [m]                    (default 0.1)
 #    BALFEM_TWAVE        wave period [s]                       (default 2.0)
@@ -37,7 +37,7 @@ include(joinpath(@__DIR__, "..", "distributed", "_dist_common.jl"))
 
 # base-case physics (launcher overrides; get! => banner and solver stay consistent)
 get!(ENV, "BALFEM_REGIME", "nonlinear")
-get!(ENV, "BALFEM_NL_PRESSURE", "full")
+get!(ENV, "BALFEM_NL_PRESSURE", "0")   # v2: nl_pressure=true not yet distributed (V2 plan step 10)
 get!(ENV, "BALFEM_FLAT_BED", "1")
 get!(ENV, "BALFEM_RELAX", "1"); get!(ENV, "BALFEM_RELAX_W", "6")
 
@@ -100,14 +100,14 @@ bedtag  = usebar ? "bar" : "flat"
 #  (small_bcplane_, small_ring_, …) named the SCRIPT, not the case.
 _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:periodic,
                            wave_kind="plane", wave_gen=:bc,
-                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           regime=regime_sym(), nl_pressure=nl_pressure_flag(),
                            bed=bedtag, p_u=feord, p_eta=p_eta,
                            amplitude=Awave, period=Twave, irregular=false)
 #  Never overwrite an existing run (suffixes _v2, _v3 …).
 outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
          unique_output_dir(joinpath(ROOT, "output"), _name)
 
-banner("SMALL | BC plane wave (Dirichlet left) | $(regime_sym()) $(nl_pressure_sym()) $bedtag A=$Awave T=$Twave",
+banner("SMALL | BC plane wave (Dirichlet left) | $(regime_sym()) $(nl_pressure_flag()) $bedtag A=$Awave T=$Twave",
        M, (px,py), (nx,ny), nx*ny, outdir)
 
 diags, vert, prob = setup_and_run_distributed(
@@ -121,7 +121,7 @@ diags, vert, prob = setup_and_run_distributed(
     relax_width=genv_f("BALFEM_RELAX_W", 6.0),
     sponge_wL=0.0, sponge_wR=spR, sponge_wB=0.0, sponge_wT=0.0, mu_max=mumax,
     T_final=Tfinal, dt=dt, h_bathy=h_bathy,
-    regime=regime_sym(), nl_pressure=nl_pressure_sym(), flat_bed=flat_bed_flag(1),
+    regime=regime_sym(), nl_pressure=nl_pressure_flag(), flat_bed=flat_bed_flag(1),
     y_wall_bc=:periodic, x_wall_bc=false,
     output_dir=outdir, save_every=save_ev,
     write_w=write_w_flag(), write_pressure=write_p_flag(), rho=rho_val(),

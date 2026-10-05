@@ -12,7 +12,7 @@
 #
 #  Layout:  MultiField = [η, 𝖴x, 𝖴y]  with 𝖴x,𝖴y ∈ VectorValue{Nσ}
 #  (3 fields total). Stacking the vertical/layer index into the FE value type
-#  turns every layer sum into a native constant-tensor contraction, so the
+#  turns every layer sum into a single constant-tensor contraction, so the
 #  residual contains no per-layer loops and touches the MultiField only through
 #  u[1]=η, u[2]=𝖴x, u[3]=𝖴y. This keeps the assembly well-typed and compact,
 #  and lets the identical code run sequentially and distributed.
@@ -70,9 +70,8 @@ include("vertical.jl")       # Stage 1: σ-mesh + full vertical tensor set (incl
 include("tensors.jl")        # constant-tensor constructors + pointwise Operation helpers
 include("horizontal.jl")     # Stage 2: 2D mesh + stacked [η,𝖴x,𝖴y] FE spaces + wall BCs
 include("problem.jl")        # BALFEMProblem struct + loop-free residual + hand Jacobians
-include("nlpressure.jl")     # FULL nonlinear pressure (native / ∇h exact-IBP / frozen proj.)
-include("mixed.jl")          # MIXED (projection-free) Class-III formulation — DIAGNOSTIC
-include("broken.jl")         # BROKEN (skeleton) Class-III formulation + C⁰-IP penalty
+include("nlpressure.jl")     # nonlinear pressure 𝓝: {3,6,7,8} direct, ∇h half by exact IBP
+include("broken.jl")         # Class III by the BROKEN formulation + skeleton stabilisation
 include("reconstruct.jl")    # w / total-pressure σ-level VTK fields (serial + distributed)
 include("monitor.jl")        # solver monitor + governing-eq residual checker + reports
 include("timeloop.jl")       # ODE solver factory + sequential time loop (VTK + recon)
@@ -97,26 +96,19 @@ export alg_dx, alg_dy, alg_mul, alg_dot, alg_dc3, alg_outer, alg_vec2
 export build_horizontal_model
 export build_fe_spaces, check_taylor_hood
 export output_dir_name, unique_output_dir, model_token, domain_token, wave_token,
-       regime_token, discr_token
+       regime_token, nlp_token, discr_token, check_v1_env, write_run_manifest
 
 # Problem
 export BALFEMProblem, build_problem, build_problem_raw, resolve_physics
 export global_residual, jacobian_u, jacobian_u_t
 export build_ode_operator, build_ode_operator_ad
-# Mixed (projection-free) Class-III formulation — diagnostic, see src/mixed.jl
-export global_residual_mixed, build_ode_operator_mixed, make_initial_conditions_mixed
-export mixed_n_aux, mixed_coupling_jacobian, mixed_delta_S, mixed_consistent_ic
-# Broken (skeleton) Class-III formulation + C⁰ interior penalty — see src/broken.jl
-export alg_hess, build_skeleton_ctx, attach_skeleton!, is_broken, has_cip
-export broken_class3_cell_fields, broken_class3_skeleton_contrib, cip_contrib
-export ghost_contrib, stab_contrib, build_ghost_ctx, broken_class3_jacobian
+# Broken (skeleton) Class-III formulation + skeleton stabilisation — see src/broken.jl
+export alg_hess, build_skeleton_ctx, skeleton_nt, attach_skeleton!, has_cip
+export broken_class3_cell_fields, broken_class3_skeleton_contrib, broken_class3_residual
+export cip_contrib, ghost_contrib, stab_contrib, build_ghost_ctx, broken_class3_jacobian
 
 # Nonlinear pressure (full physics)
-export nlp_native_contrib, nlp_gradh_contrib, nlp_frozen_N
-export nlp_gradH_frozen_contrib, nlp_P_frozen_contrib
-export nlp_class3_reduced_fields, nlp_gradH_reduced_contrib, nlp_P_reduced_contrib, nlp_plain_iterate
-export build_nlp_ctx, update_nlp_state!, refresh_nlp_state!, nlp_enable_inloop!
-export NLP_REFRESH_COUNT
+export nlp_direct_contrib, nlp_gradh_contrib, nlp_gradH_reduced_contrib, nlp_P_reduced_contrib
 export SigmaBasis, vopt_tensors, vopt_weight, polarization, profile_errors
 export raw_errors, vopt_medians, total_error, optimise_cbdy, vopt_selfcheck
 
@@ -132,7 +124,7 @@ export print_solver_banner, step_report, check_report, final_report
 # Field diagnostics: max|η| location + interior/damped split, |u|/|η|, mass and
 # energy invariants, per-rank RSS, relative divergence guard, CSV step log.
 export RunDiagnostics, build_run_diagnostics, field_diagnostics
-export resolve_eta_ref, rss_bytes, masked_max, x_at_max, _n_multifields
+export resolve_eta_ref, rss_bytes, masked_max, x_at_max
 
 # --- L² errors / convergence (errors.jl) ------------------------------------
 export l2, l2_error, l2_norm_exact, error_measure

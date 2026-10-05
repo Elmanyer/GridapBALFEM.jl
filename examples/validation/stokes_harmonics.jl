@@ -39,10 +39,12 @@ x_g = x_wm + 4lam; y_g = Ly/2
 
 diags, _, _ = setup_and_run(
     M=2, c_bdy=[0.0,0.728,1.0], domain=((0.0,Lx),(0.0,Ly)), partition=(nx,ny),
-    p_u=2, h_val=d, T_wave=T, A_wave=A, x_wm=x_wm, y_wm=nothing,
+    p_u=3, h_val=d,      # v2: the full nonlinear pressure needs Q3/Q2 and a skeleton stabiliser (V2_SOLVER_PLAN.md §4); not yet re-run on v2
+    T_wave=T, A_wave=A, x_wm=x_wm, y_wm=nothing,
     sponge_wL=12.0, sponge_wR=12.0, mu_max=20.0, T_final=T_final, dt=dt,
     save_every=0, gauges=[(x_g, y_g)],
-    regime=:nonlinear, nl_pressure=:full, flat_bed=true,   # constant-depth Stokes wave (flat bed)
+    regime=:nonlinear, nl_pressure=true, flat_bed=true,    # constant-depth Stokes wave (flat bed)
+    stabilization=:ghostvolume, cip_gamma_u=0.01, cip_gamma_eta=0.01,
     print_every=200)
 
 # DFT the steady (second-half) gauge signal at ω and 2ω

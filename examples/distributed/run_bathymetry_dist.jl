@@ -68,7 +68,7 @@ save_ev  = genv_i("BALFEM_SAVE_EVERY", 25)
 #  below: it is what makes the <domain> token truthful.
 _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
                            wave_kind="plane", wave_gen=(:inner),
-                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           regime=regime_sym(), nl_pressure=nl_pressure_flag(),
                            bed="bathy", p_u=feord, p_eta=p_eta,
                            amplitude=Awave, period=Twave, irregular=false)
 outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
@@ -88,7 +88,7 @@ diags, vert, prob = setup_and_run_distributed(
     sponge_wL=sponge, sponge_wR=sponge, sponge_wB=0.0, sponge_wT=0.0, mu_max=mumax,
     T_final=Tfinal, dt=dt,
     h_bathy=h_bathy,                                   # ★ variable bathymetry
-    regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+    regime=regime_sym(), nl_pressure=nl_pressure_flag(),
     flat_bed=flat_bed_flag(0),                         # ★ variable bathymetry on the bar: ∇h terms ON (default)
     y_wall_bc=:wall, x_wall_bc=false,
     output_dir=outdir, save_every=save_ev,

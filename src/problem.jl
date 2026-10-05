@@ -51,15 +51,13 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
     lin_pressure :: Bool              # A/K linear slope-pressure package (needs a sloped bed)
     P_full       :: Bool              # keep all three slope components P¹L¹+P²L²+P³L³ in R_P
                                       #   (false = the P³L³ dispersion carrier alone)
-    nl_pressure68:: Bool              # nonlinear pressure, native first-order set c∈{3,6,7,8}
-                                      #   (𝓐/𝓚 slope halves + 𝓟 leading part; all paths)
-    nl_pressure_full :: Bool          # + comps c∈{1,2,4,5}: 𝓐 half by exact IBP; 𝓚/𝓟 halves via
-                                      #   per-step frozen L²-projections (finite-amplitude, O(A³))
+    nl_pressure  :: Bool              # 𝓝, ALL EIGHT components on, or none. {3,6,7,8} direct; the 𝓐
+                                      #   (∇h) half of {1,2,4,5} by exact IBP; the 𝓚/𝓟 halves (Class III)
+                                      #   by the BROKEN formulation (src/broken.jl).
     flat_bed     :: Bool              # flat sea-bed assumption ∇h ≡ 0: drops every term carrying a
                                       #   factor ∇h (bed-slope 𝓐 packages, L¹=−u̇·∇h, N{3,6}, the
                                       #   bed-slope IBP half). ∇H = ∇h+∇η → ∇η, so surface-slope
                                       #   (∇η) and dispersion terms are kept. false = variable bathymetry.
-    nlp_state    :: Base.RefValue{Any} # (π𝖲, π𝖻) FEFunctions; nothing before the first step/refresh
     WK3          :: ThirdOrderTensorValue  # reduced Class-III weight for the 𝓚 (surface-slope) block:
     WP3          :: ThirdOrderTensorValue  # …and for the 𝓟 (leading-pressure) block.
                                       #   W[i,k,j] = −T¹[i,k,j] + T²[i,k,j] − T⁵[i,j,k] collapses the
@@ -67,29 +65,6 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
                                       #   EXACT (verified 4.4e-16) — see NEW_TREATMENT.md §A.2 and
                                       #   `alg_class3_weight`. The 𝓐 (∇h) block is NOT reduced: it is
                                       #   handled by exact IBP and vanishes on a flat bed (§A.5).
-    c3_mask      :: Tuple{Bool,Bool}  # ⚠ WHICH Class-III OBJECT IS ASSEMBLED: (∇𝖲, ∇𝖻).
-                                      #   After the algebraic reduction (NEW_TREATMENT.md §A.2)
-                                      #   Class III is exactly TWO contractions, so this is a
-                                      #   clean split of the {1,2,4,5} set into its two
-                                      #   irreducible objects:
-                                      #     [1] the ∇𝖲 family — components {1,2,5} collapsed onto
-                                      #         `W ⊙ GU`, plus 𝓝²'s admissible `T² ⊙ SD` remainder
-                                      #     [2] component 4 — `T⁴ ⊙ N4`, the only carrier of ∇𝖻
-                                      #   (true,true) = the full set, i.e. ordinary `:full`.
-                                      #   (false,false) is NOT `:native`: the {3,6,7,8} package is
-                                      #   still assembled by `nlp_native_contrib`; only the
-                                      #   Class-III half is suppressed.
-                                      #   EXISTS TO ANSWER: which of the two carries the `:full`
-                                      #   instability? (PLANNED_CAMPAIGNS.md §6b item 2 — designed
-                                      #   long ago, never runnable this cleanly before the
-                                      #   reduction made the split two-way instead of four-way.)
-    nlp_ctx      :: Base.RefValue{Any} # projection context, or `nothing`.
-                                      #   ⚠ PRESENCE OF A CTX SELECTS IN-LOOP (static-condensation)
-                                      #   MODE: the L² projections are then refreshed from the CURRENT
-                                      #   Newton iterate inside `global_residual`, instead of being
-                                      #   frozen from the previous accepted step. `nothing` keeps the
-                                      #   legacy lagged behaviour, so the default is unchanged.
-                                      #   See NEW_TREATMENT.md Part B.
     mu_sponge    :: Function
     wm_src       :: Function
     relax_bc     :: Bool              # generation/absorption relaxation zone (Dirichlet inflow)
@@ -101,76 +76,75 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
                                       #   F = ∫(q Sη + Wx⋅Sx + Wy⋅Sy), making u* the exact solution
                                       #   of the forced problem. Independent of u ⇒ NO Jacobian
                                       #   contribution. See markdown_files/VERIFIED_SCOPE.md (the analytic-MMS plan itself is gone).
-    skel         :: Base.RefValue{Any} # skeleton (interior-facet) context, or `nothing` (default ⇒
-                                      #   every path bit-identical to the Galerkin residual). Set by
-                                      #   `attach_skeleton!` (src/broken.jl). Carries TWO orthogonal
-                                      #   options: `broken` (Class-III 𝓚/𝓟 blocks by the distributional
-                                      #   gradient — cellwise Hessians + skeleton layer — instead of the
-                                      #   projections) and the C⁰-IP penalty (`gu`, `ge` > 0).
-                                      #   LaTeX §"Broken Weak Formulation: Term-by-Term Audit";
-                                      #   markdown_files/BROKEN_FORMULATION_PLAN.md.
+    skel         :: Base.RefValue{Any} # skeleton (interior-facet) context, or `nothing`. ALWAYS present
+                                      #   when `nl_pressure` (the broken Class-III layer lives on it; built
+                                      #   by `build_problem_raw`); otherwise present only if a stabilisation
+                                      #   is attached (`attach_skeleton!`, γ > 0). `nothing` ⇒ the residual
+                                      #   has no skeleton term at all. src/broken.jl.
 end
 
 """
-    resolve_physics(; regime=:nonlinear, nl_pressure=:none, flat_bed=false) → NamedTuple
+    resolve_physics(; regime=:nonlinear, nl_pressure=false, flat_bed=false) → NamedTuple
 
-Translate the high-level physics selection into the seven internal boolean flags
-(`linearised, advection, lin_pressure, P_full, nl_pressure68, nl_pressure_full, flat_bed`).
-This is the single place the flag couplings are defined and validated:
+Translate the high-level physics selection into the internal boolean flags
+(`linearised, advection, lin_pressure, P_full, nl_pressure, flat_bed`). This is the single
+place the flag couplings are defined and validated:
 
   * `regime`      — `:linear` (⇒ `linearised`, no advection) or `:nonlinear`
                     (⇒ full nonlinear core with advection);
-  * `nl_pressure` — `:none` / `:native` ({3,6,7,8}) / `:full` (+ Class-III {1,2,4,5});
+  * `nl_pressure` — `Bool`: the nonlinear pressure operator 𝓝, all eight components, on or off;
   * `flat_bed`    — the sea-bed geometry: `false` = variable bathymetry (∇h≠0, full
                     model), `true` = flat bed (∇h≡0, every ∇h-term dropped; ∇η-terms kept).
 
-The model's pressure content is intrinsic to `regime`/`nl_pressure` (the leading pressure
-is always complete for the nonlinear core, `P_full`; the `A/K` linear slope package,
-`lin_pressure`, is part of the nonlinear model and of the linear model over a sloped bed);
-`flat_bed` then selects whether the bed-slope (∇h) part of those terms is assembled. It is
-orthogonal to `regime`/`nl_pressure` and never rejected — a consistency **warning** (bed
-varies vs constant) is emitted by the drivers, which know the domain.
+A `Symbol` (the v1 tiers `:none / :native / :full`) is REFUSED rather than translated: a
+silently converted `:native` would run the full operator under a name promising a partial one.
 
 Nonlinear pressure is meaningful only in the `:nonlinear` regime, so
-`regime=:linear` with `nl_pressure≠:none` is rejected.
+`regime=:linear` with `nl_pressure=true` is rejected.
 """
 function resolve_physics(; regime::Symbol = :nonlinear,
-                             nl_pressure::Symbol = :none,
+                             nl_pressure = false,
                              flat_bed::Bool = false)
     regime in (:linear, :nonlinear) ||
         error("resolve_physics: regime must be :linear or :nonlinear (got :$regime)")
-    nl_pressure in (:none, :native, :full) ||
-        error("resolve_physics: nl_pressure must be :none, :native or :full (got :$nl_pressure)")
-    regime == :linear && nl_pressure != :none &&
-        error("resolve_physics: nl_pressure=:$nl_pressure requires regime=:nonlinear " *
+    nl_pressure isa Bool ||
+        error("resolve_physics: nl_pressure must be a Bool (got $(repr(nl_pressure))). v2 has no " *
+              "tiers: true = all eight 𝓝 components, false = none. The v1 symbols :none/:native/:full " *
+              "are gone (markdown_files/V2_SOLVER_PLAN.md).")
+    regime == :linear && nl_pressure &&
+        error("resolve_physics: nl_pressure=true requires regime=:nonlinear " *
               "(a linear model carries no nonlinear pressure)")
     advection = regime == :nonlinear
-    return (linearised       = regime == :linear,
-            advection        = advection,
-            lin_pressure     = advection || !flat_bed,   # nonlinear: always; linear: variable-bed only
-            P_full           = advection,                # the nonlinear leading pressure is always complete
-            nl_pressure68    = nl_pressure in (:native, :full),
-            nl_pressure_full = nl_pressure == :full,
-            flat_bed         = flat_bed)
+    return (linearised   = regime == :linear,
+            advection    = advection,
+            lin_pressure = advection || !flat_bed,   # nonlinear: always; linear: variable-bed only
+            P_full       = advection,                # the nonlinear leading pressure is always complete
+            nl_pressure  = nl_pressure,
+            flat_bed     = flat_bed)
 end
 
 """
-    build_problem(vert; g, h_bathy, regime=:nonlinear, nl_pressure=:none,
-                        flat_bed=false, mu_sponge, wm_src, relax_*) → BALFEMProblem
+    build_problem(vert; g, h_bathy, regime=:nonlinear, nl_pressure=false, flat_bed=false,
+                        model=nothing, quad_degree=nothing, mu_sponge, wm_src, relax_*) → BALFEMProblem
 
 Assemble the problem bundle from the high-level physics selection (see
 [`resolve_physics`](@ref) for the `regime`/`nl_pressure`/`flat_bed` semantics).
 `flat_bed=true` solves the chosen model over a flat sea bed (∇h≡0); `false` over
 variable bathymetry. For fine-grained control of the individual boolean flags —
 e.g. `lin_pressure` without `P_full` — call [`build_problem_raw`](@ref) directly.
+
+⚠ `nl_pressure=true` REQUIRES `model` and `quad_degree`: the Class-III terms are assembled
+by the broken formulation, whose skeleton layer lives on the mesh's interior facets. The
+skeleton context is built here, so a full-pressure problem can never exist without it.
 """
 function build_problem(vert;
         g            :: Float64  = g,
         h_bathy      :: Function = (x -> 3.5),
         regime       :: Symbol   = :nonlinear,
-        nl_pressure  :: Symbol   = :none,
+        nl_pressure              = false,
         flat_bed     :: Bool     = false,
-        c3_mask      :: Tuple{Bool,Bool} = (true, true),
+        model                    = nothing,
+        quad_degree              = nothing,
         mu_sponge    :: Function = (x -> 0.0),
         wm_src       :: Function = ((x, t) -> 0.0),
         relax_bc     :: Bool     = false,
@@ -179,27 +153,29 @@ function build_problem(vert;
         mms_src                  = nothing)
     phys = resolve_physics(; regime=regime, nl_pressure=nl_pressure,
                              flat_bed=flat_bed)
-    return build_problem_raw(vert; g=g, h_bathy=h_bathy, c3_mask=c3_mask,
+    return build_problem_raw(vert; g=g, h_bathy=h_bathy,
         linearised=phys.linearised, advection=phys.advection,
         lin_pressure=phys.lin_pressure, P_full=phys.P_full,
-        nl_pressure68=phys.nl_pressure68, nl_pressure_full=phys.nl_pressure_full,
-        flat_bed=phys.flat_bed,
+        nl_pressure=phys.nl_pressure, flat_bed=phys.flat_bed,
+        model=model, quad_degree=quad_degree,
         mu_sponge=mu_sponge, wm_src=wm_src,
         relax_bc=relax_bc, relax_mu=relax_mu, relax_tg=relax_tg,
         mms_src=mms_src)
 end
 
 """
-    build_problem_raw(vert; g, h_bathy, <7 boolean flags>, mu_sponge, wm_src, relax_*) → BALFEMProblem
+    build_problem_raw(vert; g, h_bathy, <6 boolean flags>, model, quad_degree, mu_sponge,
+                      wm_src, relax_*) → BALFEMProblem
 
 Low-level constructor taking the individual physics booleans directly
-(`linearised, advection, lin_pressure, P_full, nl_pressure68, nl_pressure_full, flat_bed`).
+(`linearised, advection, lin_pressure, P_full, nl_pressure, flat_bed`).
 Use [`build_problem`](@ref) for the ordinary high-level interface; this raw form
 exists for the cases that need a flag combination the high-level interface
 deliberately does not expose (e.g. `lin_pressure` without `P_full`, used by the
 oracle-equivalence test). `flat_bed=false` (default) assembles the bed-slope (∇h)
 terms; `true` drops them. Reshapes the `assemble_vertical_tensors` NamedTuple
-into constant Gridap tensors and bundles the flags.
+into constant Gridap tensors and bundles the flags. With `nl_pressure=true` it also builds
+the skeleton context (`model`, `quad_degree` required).
 """
 function build_problem_raw(vert;
         g            :: Float64  = g,
@@ -208,10 +184,10 @@ function build_problem_raw(vert;
         advection    :: Bool     = true,
         lin_pressure :: Bool     = false,
         P_full       :: Bool     = false,
-        nl_pressure68:: Bool     = false,
-        nl_pressure_full :: Bool = false,
+        nl_pressure  :: Bool     = false,
         flat_bed     :: Bool     = false,
-        c3_mask      :: Tuple{Bool,Bool} = (true, true),
+        model                    = nothing,
+        quad_degree              = nothing,
         mu_sponge    :: Function = (x -> 0.0),
         wm_src       :: Function = ((x, t) -> 0.0),
         relax_bc     :: Bool     = false,
@@ -229,8 +205,8 @@ function build_problem_raw(vert;
     A3 = ntuple(c -> alg_to_tensor3(vert.Acal[:, :, :, c]), 8)
     K3 = ntuple(c -> alg_to_tensor3(vert.Kcal[:, :, :, c]), 8)
     P3 = ntuple(c -> alg_to_tensor3(vert.Pcal[:, :, :, c]), 8)
-    # Reduced Class-III weights for the two PROJECTED blocks (𝓚, 𝓟). Built from the raw
-    # arrays before tensorisation so the (k,j) transpose of component 5 is explicit.
+    # Reduced Class-III weights for the 𝓚 and 𝓟 blocks. Built from the raw arrays before
+    # tensorisation so the (k,j) transpose of component 5 is explicit.
     WK3 = alg_to_tensor3(alg_class3_weight(vert.Kcal[:, :, :, 1],
                                            vert.Kcal[:, :, :, 2],
                                            vert.Kcal[:, :, :, 5]))
@@ -239,12 +215,19 @@ function build_problem_raw(vert;
                                            vert.Pcal[:, :, :, 5]))
     relax_bc && relax_tg === nothing &&
         error("build_problem: relax_bc=true requires relax_tg (incident_fields NamedTuple)")
-    return BALFEMProblem(g, h_bathy, vert.N_dof, Φ, Mv, Bv, P, Av, Kv, M3, G3,
+    nl_pressure && linearised &&
+        error("build_problem_raw: nl_pressure=true with linearised=true — a linear model carries no 𝓝")
+    nl_pressure && (model === nothing || quad_degree === nothing) &&
+        error("build_problem: nl_pressure=true needs `model` and `quad_degree` — the Class-III " *
+              "terms are assembled by the broken formulation, whose skeleton layer lives on the " *
+              "mesh's interior facets (src/broken.jl)")
+    prob = BALFEMProblem(g, h_bathy, vert.N_dof, Φ, Mv, Bv, P, Av, Kv, M3, G3,
                          A3, K3, P3, linearised, advection, lin_pressure,
-                         P_full, nl_pressure68, nl_pressure_full, flat_bed,
-                         Ref{Any}(nothing), WK3, WP3, c3_mask, Ref{Any}(nothing),
+                         P_full, nl_pressure, flat_bed, WK3, WP3,
                          mu_sponge, wm_src,
                          relax_bc, relax_mu, relax_tg, mms_src, Ref{Any}(nothing))
+    nl_pressure && (prob.skel[] = skeleton_nt(build_skeleton_ctx(model; degree = quad_degree)))
+    return prob
 end
 
 """
@@ -253,8 +236,7 @@ end
 Single scalar Gridap residual, stacked layout. `u` is a TransientCellField
 (`∂t(u)` available); `u[1]=η`, `u[2]=𝖴x`, `u[3]=𝖴y`. No per-layer loops.
 """
-function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh;
-                         aux = nothing)
+function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
     ut = ∂t(u)
     η,  Ux,  Uy  = u[1], u[2], u[3]
     ηt, Uxt, Uyt = ut[1], ut[2], ut[3]
@@ -280,25 +262,16 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh;
     ub  = alg_vec2(alg_dot(prob.Φ, Ux), alg_dot(prob.Φ, Uy))   # depth-averaged velocity
 
     # ---- mass continuity + wavemaker source ----------------------------------
-    #  LINEARISED regime uses the STILL-WATER depth h(x,y) in the flux, ∇·(h ū):
-    #  the amplitude linearisation drops ∇·(η ū) as O(ε²), exactly like the
-    #  H-weighting dropped from acceleration and gravity below. See LinearModel.tex
-    #  `eq: linearised system continuity` and GridapImplementation.tex §8. (Fixed
-    #  2026-08-12: this line previously used H unconditionally, so `regime=:linear`
-    #  silently retained the nonlinear flux — negligible at wave amplitude,
-    #  O(η/d)≈3e-4 at A=1e-3, but fatal for the analytic MMS, whose manufactured
-    #  amplitudes are O(1) and whose result is a convergence RATE. The unaccounted
-    #  term is h-independent, so it would stall the L² error and read as a wrong
-    #  coefficient.) `h_cf` is the bathymetry function, not necessarily constant.
+    #  LINEARISED regime: still-water depth h(x,y) in the flux, ∇·(h ū) — ∇·(η ū) is O(ε²),
+    #  dropped like the H-weighting of acceleration and gravity (LinearModel.tex). Keeping H
+    #  here is invisible at wave amplitude but stalls the analytic MMS rate.
     h_cf = lin ? d_cf : H
     r = ∫( q*ηt - h_cf*(∇(q) ⋅ ub) - q*src_cf ) * dΩh
 
     # ---- acceleration ----------------------------------------------------------
     accx = alg_mul(prob.Mv, Uxt); accy = alg_mul(prob.Mv, Uyt)
-    #  LINEAR: h-WEIGHTED, per LinearModel.tex `eq: linearised system momentum`
-    #  (Σⱼ h Mᵢⱼ u̇ⱼ). The h-DIVIDED form used previously is exact ONLY on a flat bed,
-    #  where it is a mere rescaling; over variable bathymetry it is a different model.
-    #  See markdown_files/VERIFIED_SCOPE.md (the varbed plan itself is gone) §0.A (audit + derivation).
+    #  LINEAR: h-WEIGHTED (Σⱼ h Mᵢⱼ u̇ⱼ, LinearModel.tex). An h-divided form would be a different
+    #  model over variable bathymetry.
     r = lin ? r + ∫( d_cf*((Wx ⋅ accx) + (Wy ⋅ accy)) ) * dΩh :
               r + ∫( H*(Wx ⋅ accx) + H*(Wy ⋅ accy) ) * dΩh
 
@@ -313,14 +286,8 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh;
     #  The linear case is the same identity with H→h: h∇η = ∇(hη) − η∇h.
     #  The SECOND piece is therefore IDENTICAL in the two regimes — only the first
     #  differs (h η vs (H²−h²)/2) — so it is assembled once, outside the branch.
-    #
-    #  ⚠ It was previously present in the LINEAR branch only. Missing from the
-    #  nonlinear branch it is an O(∇h) defect in the MOMENTUM equation, invisible
-    #  on a flat bed and invisible to η: measured as a velocity error that
-    #  converged to a CONSTANT 4.400e-4 (rate 0.00) while e_η kept its optimal
-    #  order 2.99 — the analytic-MMS signature of a genuinely wrong operator, not
-    #  of under-resolution. Model 2 (linear, sloping) and Model 3 (nonlinear,
-    #  flat) both pass precisely because each is blind to this term.
+    #  ⚠ It is needed in BOTH regimes: without it the nonlinear momentum carries an O(∇h)
+    #  error that only a variable-bed nonlinear MMS can see.
     PhiDW = alg_dot(prob.Φ, DW)
     r = lin ? r + ∫( (-g)*η*d_cf*PhiDW ) * dΩh :
               r + ∫( (-0.5*g)*(H*H - d_cf*d_cf)*PhiDW ) * dΩh
@@ -332,23 +299,20 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh;
     if lin
         #  Full linearised leading pressure ∇(h²Σⱼ𝓛ⱼ·Pᵢⱼ), IBP'd onto the test
         #  divergence, with the LINEARISED 𝓛ⱼ = [−u̇ⱼ·∇h, u̇ⱼ·∇h, −∇·(h u̇ⱼ)]
-        #  (LinearModel.tex `eq: linearised linear pressure operator`). Note L2 = −L1
-        #  in the linearised model. All three components collapse to P³L³ on a flat
-        #  bed, recovering the previous expression times h.
+        #  (LinearModel.tex `eq: linearised linear pressure operator`). All three components
+        #  collapse to P³L³ on a flat bed.
         LgT = dhx*Uxt + dhy*Uyt                       # u̇ⱼ·∇h, stacked
         Ll1 = (-1.0)*LgT
         Ll2 = LgT
         Ll3 = (-1.0)*(d_cf*DUt + LgT)                 # −∇·(h u̇ⱼ)
-        #  L² = −L¹ EXACTLY in the linearised model, so P¹L¹+P²L² = (P¹−P²)L¹.
-        #  Collapsing 3 contractions to 2 (and 6 to 2 for A/K below) keeps the
-        #  operator tree shallow — the deep nesting is what broke sAK assembly.
+        #  L² = −L¹ EXACTLY in the linearised model, so P¹L¹+P²L² = (P¹−P²)L¹. Collapsing
+        #  3 contractions to 2 (and 6 to 2 for A/K below) keeps the operator tree shallow.
         Pm  = prob.P[1] - prob.P[2]
         sPl = alg_mul(Pm, Ll1) + alg_mul(prob.P[3], Ll3)
         r = r + ∫( (-1.0)*(d_cf*d_cf)*(sPl ⋅ DW) ) * dΩh
         #  Bed-slope pressure package  −h ∇h Σⱼ𝓛ⱼ·(Aᵢⱼ+Kᵢⱼ). Carries an explicit ∇h,
         #  so it exists only over a non-flat bed — `lin_pressure` is exactly that
-        #  condition (resolve_physics: advection || !flat_bed). Previously the flag
-        #  was set but had NO consumer here.
+        #  condition (resolve_physics: advection || !flat_bed).
         if prob.lin_pressure
             AKm = (prob.Av[1] + prob.Kv[1]) - (prob.Av[2] + prob.Kv[2])
             AK3 =  prob.Av[3] + prob.Kv[3]
@@ -406,15 +370,10 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh;
     end
 
     # ---- linear non-hydrostatic pressure (A/K slope package) --------------------
-    #  This is the NONLINEAR representation of the 𝓐/𝓚 slope package — rows M14–M18
-    #  of the term classification (GridapImplementation.tex, `tab: term classification`):
-    #  the un-expanded H[∇h(𝓛·A) + ∇H(𝓛·K)], which CONTAINS the linearised form.
-    #  The LINEAR representation is the `sAK` block inside the `if lin` branch above
-    #  (row M14 alone, h∇h·𝓛ˡⁱⁿ·(A+K)). The two are ALTERNATIVES, never addends, so
-    #  this guard must be the CONJUNCTION with `!lin`: `lin_pressure` alone is TRUE in
-    #  the linear variable-bed case (lin_pressure = advection ∨ ¬flat_bed), which
-    #  assembled the package twice — an O(ε) error invisible to every flat-bed test
-    #  because both forms vanish when ∇h ≡ 0. See markdown_files/MODEL.md §7 (the term-audit plan itself is gone).
+    #  The NONLINEAR representation of the 𝓐/𝓚 slope package, H[∇h(𝓛·A) + ∇H(𝓛·K)], which
+    #  CONTAINS the linearised `sAK` block above. ⚠ The two are ALTERNATIVES, never addends, so
+    #  the guard is the CONJUNCTION with `!lin` (`lin_pressure` alone is also true in the linear
+    #  variable-bed case). Assembly invariant: CLAUDE.md rule 4, MODEL.md §7.
     if !lin && prob.lin_pressure
         UgHt = dHx*Uxt + dHy*Uyt
         L1 = (-1.0)*(dhx*Uxt + dhy*Uyt)
@@ -426,90 +385,29 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh;
                             + dhy*(Wy ⋅ LA) + dHy*(Wy ⋅ LK) ) ) * dΩh
     end
 
-    # ---- nonlinear pressure (nlpressure.jl) ---------------------------------
-    #  nl_pressure68:   native first-order set c∈{3,6,7,8}, all three blocks
-    #                   (𝓐/𝓚 slope halves + 𝓟 leading part).
-    #  nl_pressure_full: + c∈{1,2,4,5}: 𝓐 half via EXACT IBP onto the test;
-    #                   𝓚/𝓟 halves via the frozen projections π𝖲,π𝖻 (previous
-    #                   step; zero before the first step — exact from rest).
-    if prob.nl_pressure68 || prob.nl_pressure_full
+    # ---- nonlinear pressure 𝓝 — all eight components (nlpressure.jl, broken.jl) -----
+    #  {3,6,7,8}: first-order everywhere, assembled directly in all three blocks.
+    #  {1,2,4,5}, bed-slope 𝓐 half: EXACT integration by parts onto the test (pure ∇h;
+    #             skipped on a flat bed).
+    #  {1,2,4,5}, surface-slope 𝓚 and leading 𝓟 halves (Class III): the BROKEN formulation —
+    #             the distributional gradients of 𝖲 and 𝖻, i.e. cellwise Hessians + the skeleton
+    #             layer. Both the ∇𝖲 and the ∇𝖻 arm, always.
+    if prob.nl_pressure
         DU  = alg_dx(Ux) + alg_dy(Uy)
         UgH = dHx*Ux + dHy*Uy
         Ugh = dhx*Ux + dhy*Uy
         S   = H*DU + UgH
-        r = r + nlp_native_contrib(prob, d_cf, η, H, dhx, dhy, dHx, dHy,
+        r = r + nlp_direct_contrib(prob, d_cf, η, H, dhx, dhy, dHx, dHy,
                                    Ux, Uy, Wx, Wy, DW, Ugh, UgH, S, DU, dΩh)
-        if prob.nl_pressure_full
-            # Class-III bed-slope (𝓐, ∇h) IBP half — pure ∇h; skipped on a flat bed.
-            prob.flat_bed || (r = r + nlp_gradh_contrib(prob, d_cf, η, H, dhx, dhy,
-                                      Ux, Uy, Wx, Wy, Ugh, UgH, S, DU, dΩh))
-            # ⚠ IN-LOOP (STATIC-CONDENSATION) MODE, if a projection context is attached:
-            #   refresh π𝖲, π𝖻 from the CURRENT Newton iterate before they are used,
-            #   instead of reading the pair frozen at the previous accepted step. That
-            #   removes the O(dt) lag entirely — at convergence the projections are
-            #   evaluated at the same state the residual is (NEW_TREATMENT.md Part B).
-            #   `nlp_plain_iterate` skips the refresh under AD (Dual-valued cell data),
-            #   so the AD Jacobian differentiates the residual with π held fixed — the
-            #   same quasi-Newton treatment these blocks already get (rule 17b).
-            # c3_mask selects WHICH of the two Class-III objects is assembled;
-            # (false,false) suppresses the Class-III half entirely (NOT :native —
-            # the {3,6,7,8} package above is still in).
-            if any(prob.c3_mask)
-                if aux !== nothing
-                    # ---- MIXED FORMULATION -------------------------------------------
-                    #  ∇𝖲 and ∇𝖻 are GENUINE UNKNOWNS (aux.Gx/Gy, aux.Fx/Fy), defined by
-                    #  their own weak equations in `global_residual_mixed` with the
-                    #  integration by parts built in. No projection, no lag, no frozen
-                    #  state: the Class-III blocks are consistent at the current iterate
-                    #  and enter the Jacobian like any other term.
-                    #  The reduced assembly is REUSED VERBATIM — the algebraic reduction
-                    #  (NEW_TREATMENT.md §A.2) is what makes 𝖦 enter through a single
-                    #  contraction instead of three.
-                    GU = alg_outer(aux.Gx, Ux) + alg_outer(aux.Gy, Uy)
-                    SD = alg_outer(S, DU)
-                    #  ⚠ 𝖥 EXISTS ONLY WHEN COMPONENT 4 IS ACTIVE. With c3_mask=(true,false)
-                    #  the mixed layout is 5 fields and `aux` has no Fx/Fy, so building N4
-                    #  unconditionally threw `NamedTuple has no field Fx`. `_c3_sum` never
-                    #  reads N4 in that case, so SD is a never-consumed placeholder passed
-                    #  only to keep one call signature for both layouts.
-                    N4 = prob.c3_mask[2] ?
-                         (alg_outer(Ux, aux.Fx) + alg_outer(Uy, aux.Fy)) : SD
-                    r = r + nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy,
-                                                      GU, SD, N4, dΩh)
-                    r = r + nlp_P_reduced_contrib(prob, H, DW, GU, SD, N4, dΩh)
-                elseif is_broken(prob)
-                    # ---- BROKEN (DISTRIBUTIONAL) FORMULATION — src/broken.jl -----------
-                    #  ∇𝖲, ∇𝖻 by their distributional gradients: cellwise Hessians (volume,
-                    #  through the SAME reduced contributors) + the skeleton layer. No
-                    #  projection, no lag, no auxiliary unknowns. Audit §"Class III", form (A).
-                    GU, SD, N4, _ = broken_class3_cell_fields(prob, d_cf, η, H, dHx, dHy,
-                                                              Ux, Uy, DU, S)
-                    r = r + nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy,
-                                                      GU, SD, N4, dΩh)
-                    r = r + nlp_P_reduced_contrib(prob, H, DW, GU, SD, N4, dΩh)
-                    r = r + broken_class3_skeleton_contrib(prob, prob.skel[], H, dHx, dHy,
-                                                           Ux, Uy, S, UgH, Wx, Wy, DW)
-                else
-                    ctx = prob.nlp_ctx[]
-                    if ctx !== nothing && nlp_plain_iterate(u)
-                        refresh_nlp_state!(prob, ctx, S, UgH)
-                    end
-                    st = prob.nlp_state[]
-                    if st !== nothing
-                        # REDUCED assembly from the FROZEN projections (legacy path).
-                        GU, SD, N4 = nlp_class3_reduced_fields(Ux, Uy, S, DU, st.piS, st.pib)
-                        r = r + nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy,
-                                                          GU, SD, N4, dΩh)
-                        r = r + nlp_P_reduced_contrib(prob, H, DW, GU, SD, N4, dΩh)
-                    end
-                end
-            end
-        end
+        prob.flat_bed || (r = r + nlp_gradh_contrib(prob, d_cf, η, H, dhx, dhy,
+                                  Ux, Uy, Wx, Wy, Ugh, UgH, S, DU, dΩh))
+        r = r + broken_class3_residual(prob, prob.skel[], d_cf, η, H, dHx, dHy,
+                                       Ux, Uy, DU, S, UgH, Wx, Wy, DW, dΩh)
     end
 
-    # ---- C⁰ interior penalty (src/broken.jl) — any tier, any Class-III treatment ------
-    #  Sign-definite skeleton damping of the normal-derivative jumps; zero on the exact
-    #  solution. `nothing` on prob.skel (the default) ⇒ absent, bit-identical to main.
+    # ---- skeleton stabilisation (src/broken.jl): :jumpgrad or :ghostvolume, any model ------
+    #  Sign-definite damping of the inter-element mismatch; consistent (weakly). Absent unless a
+    #  γ > 0 is attached (`attach_skeleton!`).
     has_cip(prob) && (r = r + stab_contrib(prob, prob.skel[], η, Ux, Uy, q, Wx, Wy))
 
     # ---- analytic MMS forcing (verification only; `nothing` in every physical run) --
@@ -536,7 +434,7 @@ end
 #  the time integrator form its per-stage system J = ∂R/∂u + (1/aΔt)∂R/∂u̇
 #  directly.
 #
-#  COVERAGE — differs by regime, deliberately (see markdown_files/MODEL.md §7 (the term-audit plan itself is gone)):
+#  COVERAGE — differs by regime, deliberately (MODEL.md §6–7):
 #
 #   * LINEAR branch (`prob.linearised`): the Jacobians are EXACT. The residual is
 #     affine in (u,u̇) there, so every assembled row has its exact derivative here —
@@ -546,26 +444,21 @@ end
 #     (test/test_linear_newton_gate.jl). Any excess iteration is proof of a
 #     residual↔Jacobian inconsistency.
 #
-#   * NONLINEAR branch: ∂R/∂u̇ is now EXACT; ∂R/∂u remains QUASI-NEWTON by choice.
+#   * NONLINEAR branch: ∂R/∂u̇ is EXACT; ∂R/∂u is QUASI-NEWTON by choice.
 #
-#     ∂R/∂u̇ (jacobian_u_t): every u̇-dependent term of the residual is differentiated
-#     exactly — mass, the H-weighted acceleration, the leading pressure R_P, and (since
-#     2026-08-17) the 𝓐/𝓚 slope-pressure package. The 𝓝 blocks carry no u̇-dependence
-#     at all (they are built from u, not u̇), so nothing is missing. See the note at the
-#     𝓐/𝓚 block below for why its omission was NOT a benign quasi-Newton choice.
+#     ∂R/∂u̇ (jacobian_u_t): every u̇-dependent term is differentiated exactly — mass, the
+#     H-weighted acceleration, the leading pressure R_P and the 𝓐/𝓚 slope-pressure package.
+#     The 𝓝 blocks carry no u̇-dependence.
 #
 #     ∂R/∂u (jacobian_u): still quasi-Newton, deliberately. Advection is differentiated
-#     in full (so Newton stays quadratic on the dominant nonlinearity), but the
-#     leading- and slope-pressure packages contribute no η-derivative (their dependence
-#     through H and ∇H is frozen) and the 𝓝 blocks add to the residual but not here.
+#     in full (so Newton stays quadratic on the dominant nonlinearity), and so are the
+#     Class-III 𝓚/𝓟 blocks (broken_class3_jacobian); the leading- and slope-pressure
+#     packages contribute no η-derivative (their dependence through H and ∇H is frozen) and
+#     the other 𝓝 blocks ({3,6,7,8}, the ∇h IBP half) add to the residual but not here.
 #
-#     THE DISTINCTION THAT MATTERS, and that was previously blurred: an omission is
-#     benign only if it is HIGHER ORDER IN AMPLITUDE, so that it vanishes as the state
-#     is refined — then it costs Newton iterations and never accuracy, because Newton
-#     drives the RESIDUAL to zero. An omission whose prefactor is O(1) in amplitude
-#     (H·∇h, as the 𝓐/𝓚 block's was) is a different animal: it can prevent convergence
-#     outright. Verify the distinction with test_jacobians_ad.jl, which measures how the
-#     hand↔AD gap scales with amplitude, rather than assuming it.
+#     An omission is benign only if it is HIGHER ORDER IN AMPLITUDE (it costs iterations,
+#     never accuracy); one with an O(1) prefactor (e.g. H·∇h) makes Newton converge to the
+#     wrong map. Measure it with test_jacobians_ad.jl (rule 5); never assume it.
 #
 #     Do not extend the remaining ∂R/∂u omissions without re-measuring every nonlinear
 #     reference value.
@@ -625,26 +518,11 @@ function jacobian_u_t(t::Real, u, dut, v, prob::BALFEMProblem, trian, dΩh)
         else
             r = r + ∫( (-1.0)*(H*H)*((alg_mul(prob.Bv, H*dDUt + dUgHt)) ⋅ DW) ) * dΩh
         end
-        #  ---- 𝓐/𝓚 slope-pressure package (rows M14–M18) ------------------------
-        #  ADDED 2026-08-17. This block was previously omitted from ∂R/∂u̇ in the
-        #  nonlinear branch, on the stated grounds that the quasi-Newton omissions
-        #  "cost Newton iterations, never accuracy". That reasoning is valid only
-        #  for omissions of HIGHER ORDER IN AMPLITUDE, and this one is not: its
-        #  prefactor is H·∇h, which does not scale with the solution. Measured with
-        #  test_jacobians_ad.jl, the hand↔AD gap in ∂R/∂u̇ was 1.11e-2 and did NOT
-        #  shrink when the state amplitude was halved (order 0.03) over a sloping
-        #  bed, against order 0.95 on a flat bed where ∇h ≡ 0 kills the 𝓐 half.
-        #  An O(1) error in the effective mass matrix is what stalls Newton for the
-        #  nonlinear variable-bed model (MMS_NONLINEAR_PLAN.md blocker B2): the
-        #  iteration converges to a fixed point of the WRONG map, so no iteration
-        #  budget can rescue it.
-        #
-        #  The term is EXACTLY LINEAR IN u̇ — L1,L2,L3 are linear in u̇ and the
-        #  prefactors H, ∇h, ∇H depend only on η — so its exact derivative is the
-        #  residual expression with u̇ → du̇, contraction for contraction. Kept in
-        #  the same 6-contraction form as the residual (lines ~350–359): the
-        #  2-contraction collapse used in the LINEAR branch relies on L2 = −L1 and
-        #  ∇H → ∇h, neither of which holds here.
+        #  ---- 𝓐/𝓚 slope-pressure package ----------------------------------------
+        #  MANDATORY here: its prefactor H·∇h does not scale with the solution, so leaving it
+        #  out is an O(1) error in the effective mass and Newton converges to the wrong map
+        #  (rule 5). It is EXACTLY LINEAR IN u̇, so its derivative is the residual expression
+        #  with u̇ → du̇, in the same 6-contraction form (L2 ≠ −L1 in the nonlinear branch).
         if prob.lin_pressure
             dLA = alg_mul(prob.Av[1], dL1) + alg_mul(prob.Av[2], dL2) + alg_mul(prob.Av[3], dL3)
             dLK = alg_mul(prob.Kv[1], dL1) + alg_mul(prob.Kv[2], dL2) + alg_mul(prob.Kv[3], dL3)
@@ -731,16 +609,14 @@ function jacobian_u(t::Real, u, du, v, prob::BALFEMProblem, trian, dΩh)
                  + ((alg_dc3(prob.G3, dTGx)) ⋅ Wx) + ((alg_dc3(prob.G3, dTGy)) ⋅ Wy) ) * dΩh
     end
 
-    # C⁰-IP penalty: LINEAR in (η,𝖴) ⇒ its exact derivative is the same form on (dη,d𝖴).
-    # (The broken Class-III skeleton layer is quasi-Newton, like every Class-III block —
-    #  rule 17b; `use_ad=true` gives its exact Jacobian.)
+    # Skeleton stabilisation: LINEAR in (η,𝖴) ⇒ its exact derivative is the same form on (dη,d𝖴).
     has_cip(prob) && (r = r + stab_contrib(prob, prob.skel[], dη, dUx, dUy, q, Wx, Wy))
 
-    # BROKEN Class-III 𝓚/𝓟 blocks (volume + skeleton layer): EXACT linearisation, added
-    # 2026-10-02. Unlike the projected path (frozen data ⇒ nothing to differentiate) these blocks
-    # depend on the current iterate through cellwise Hessians and facet jumps that scale like 1/h;
-    # leaving them out stalled Newton at 32 cells/λ (GHOST_PENALTY_PLAN.md §5.5). src/broken.jl.
-    if prob.nl_pressure_full && is_broken(prob) && any(prob.c3_mask)
+    # Class-III 𝓚/𝓟 blocks (broken: volume + skeleton layer): EXACT linearisation. They depend on
+    # the iterate through cellwise Hessians and facet jumps that scale like 1/h; leaving them out
+    # stalled Newton at 32 cells/λ (GHOST_PENALTY_PLAN.md §5.5). The other 𝓝 blocks ({3,6,7,8} and
+    # the ∇h IBP half) stay quasi-Newton — O(A²) and benign (rule 5). src/broken.jl.
+    if prob.nl_pressure
         r = r + broken_class3_jacobian(prob, prob.skel[], d_cf, η, Ux, Uy, dη, dUx, dUy, Wx, Wy, dΩh)
     end
 

@@ -72,7 +72,7 @@ diags, vert, prob = setup_and_run(
     dt          = dt,
     regime      = :linear,          # :linear | :nonlinear  (replaces the retired
                                     #   linearised=/advection= kwarg pair)
-    nl_pressure = :none,            # 𝓝 blocks off — meaningless in :linear
+    nl_pressure = false,            # 𝓝 blocks off — meaningless in :linear
     save_every  = 30,
     output_dir  = joinpath(@__DIR__, "..", "output", "ring_wave"),
     gauges      = gauges,

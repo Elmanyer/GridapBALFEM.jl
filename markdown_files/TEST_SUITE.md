@@ -1,5 +1,10 @@
 # TEST_SUITE.md — the test campaigns and what each one can and cannot detect
 
+> **⚙ v1 RECORD (2026-10-05).** Scores here are v1's. v2 removed the mixed/projection/mask tests and renumbered the models to six; the v2 rebaseline is `V2_SOLVER_PLAN.md` step 8. It is kept as the record of how v1 reached its results;
+> the v2 solver (branch `v2-solver`) differs — one Class-III formulation (broken), `nl_pressure::Bool`
+> with all eight `𝓝` components, no component mask (`V2_SOLVER_PLAN.md`). Paths `output/…` here are
+> now under `output_v1/`.
+
 > **Scope — what belongs here.** The *gate inventory*: every test file, its measured score, and —
 > the part that matters — **what it would fail to notice**. Answers **"what is actually checked,
 > and what would slip through?"**

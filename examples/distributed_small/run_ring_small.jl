@@ -7,7 +7,7 @@
 #
 #  Config via env (base = nonlinear / full pressure / flat bed / A=0.1):
 #    BALFEM_REGIME       linear | nonlinear                    (default nonlinear)
-#    BALFEM_NL_PRESSURE  none | native | full                  (default full)
+#    BALFEM_NL_PRESSURE  0 | 1 (all eight 𝓝 comps)            (default 0; 1 is not yet distributed)
 #    BALFEM_AWAVE        wave amplitude [m]                    (default 0.1)
 #    BALFEM_TWAVE        wave period [s]                       (default 2.0)
 #
@@ -31,7 +31,7 @@
 include(joinpath(@__DIR__, "..", "distributed", "_dist_common.jl"))
 
 get!(ENV, "BALFEM_REGIME", "nonlinear")
-get!(ENV, "BALFEM_NL_PRESSURE", "full")
+get!(ENV, "BALFEM_NL_PRESSURE", "0")   # v2: nl_pressure=true not yet distributed (V2 plan step 10)
 get!(ENV, "BALFEM_FLAT_BED", "1")
 
 M       = genv_i("BALFEM_M", 2)
@@ -81,7 +81,7 @@ save_ev = genv_i("BALFEM_SAVE_EVERY", 10)
 #  (small_bcplane_, small_ring_, …) named the SCRIPT, not the case.
 _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
                            wave_kind="ring", wave_gen=:inner,
-                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           regime=regime_sym(), nl_pressure=nl_pressure_flag(),
                            bed="flat", p_u=feord, p_eta=p_eta,
                            amplitude=Awave, period=Twave, irregular=false,
                            extra=name_extra())
@@ -89,7 +89,7 @@ _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
 outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
          unique_output_dir(joinpath(ROOT, "output"), _name)
 
-banner("SMALL | ring wave (point source, flat bed) | $(regime_sym()) $(nl_pressure_sym()) A=$Awave",
+banner("SMALL | ring wave (point source, flat bed) | $(regime_sym()) $(nl_pressure_flag()) A=$Awave",
        M, (px,py), (nx,ny), nx*ny, outdir)
 
 diags, vert, prob = setup_and_run_distributed(
@@ -99,7 +99,7 @@ diags, vert, prob = setup_and_run_distributed(
     h_val=d, T_wave=Twave, A_wave=Awave, x_wm=x_wm, y_wm=y_wm,      # point source => ring
     sponge_wL=spX, sponge_wR=spX, sponge_wB=spY, sponge_wT=spY, mu_max=mumax,
     T_final=Tfinal, dt=dt,
-    regime=regime_sym(), nl_pressure=nl_pressure_sym(), flat_bed=flat_bed_flag(1),
+    regime=regime_sym(), nl_pressure=nl_pressure_flag(), flat_bed=flat_bed_flag(1),
     y_wall_bc=:wall, x_wall_bc=false,
     output_dir=outdir, save_every=save_ev,
     write_w=write_w_flag(), write_pressure=write_p_flag(), rho=rho_val(),

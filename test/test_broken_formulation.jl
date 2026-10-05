@@ -11,15 +11,15 @@
 #      part alone is reported as the control (it must be O(1) wrong on a rough state).
 #  G2  LAYER LIVE (rule 38d). The skeleton integral is a non-negligible part of the broken
 #      Class-III contribution on a rough state.
-#  G3  NO LEAKAGE. attach_skeleton! with everything off leaves prob.skel = nothing, and a
-#      :native / :none residual is BITWISE unchanged; broken=true without :full is refused.
-#  G4  CONSISTENCY. broken and projected (projection evaluated at the SAME state, no lag)
-#      Class-III residuals converge to each other under refinement of a smooth state.
+#  G3  NO LEAKAGE / v2 API. attach_skeleton! with everything off leaves prob.skel = nothing for
+#      nl_pressure=false and the bare geometry for true, the residual BITWISE unchanged either
+#      way; the removed `broken` keyword, a v1 tier symbol and a full-pressure problem without a
+#      mesh are all refused.
 #  G5  C⁰-IP ALGEBRA. symmetric, positive semidefinite, zero on a global polynomial of
 #      the trial degree (open mesh), and the η-penalty conserves mass (q ≡ 1).
 #  G6  C⁰-IP SELECTIVITY. Rayleigh quotient on a λ = 2dx mode ≫ on a resolved mode.
 #  G7  JACOBIAN. linear regime + C⁰-IP: the hand ∂R/∂u equals the FD oracle (the linear
-#      Jacobian is exact, so the penalty block must be exact too); on the :full broken path
+#      Jacobian is exact, so the penalty block must be exact too); on the nl_pressure=true path
 #      the hand↔FD gap is the deliberate Class-III omission and shrinks with amplitude.
 #
 #  RUN:  julia --project=. test/test_broken_formulation.jl
@@ -58,13 +58,14 @@ function state(S, a; rough = 0.0, seed = 1, kx = 1.0)
     return FEFunction(S.U, x)
 end
 
-function mkprob(S; skel = :none, gu = 0.0, ge = 0.0, nlp = :full, regime = :nonlinear,
+"v2: `nlp=true` ⇒ all eight 𝓝 components, Class III by the broken formulation (the skeleton is
+built by build_problem); `skel=:cip` attaches the :jumpgrad penalty on top."
+function mkprob(S; skel = :none, gu = 0.0, ge = 0.0, nlp = true, regime = :nonlinear,
                 bedf = bed, flat_bed = false)
-    p = build_problem(vert; h_bathy = bedf, regime = regime, nl_pressure = nlp, flat_bed = flat_bed)
-    skel == :broken && attach_skeleton!(p, S.model; broken = true, cip_gamma_u = gu,
-                                        cip_gamma_eta = ge, degree = QDEG)
-    skel == :cip    && attach_skeleton!(p, S.model; cip_gamma_u = gu, cip_gamma_eta = ge,
-                                        degree = QDEG)
+    p = build_problem(vert; h_bathy = bedf, regime = regime, nl_pressure = nlp, flat_bed = flat_bed,
+                      model = S.model, quad_degree = QDEG)
+    skel == :cip && attach_skeleton!(p, S.model; cip_gamma_u = gu, cip_gamma_eta = ge,
+                                     degree = QDEG)
     return p
 end
 
@@ -116,7 +117,7 @@ function g1_errors(S, prob, uh)
     return errs, ctrl
 end
 S1 = setup()
-pb1 = mkprob(S1; skel = :broken)
+pb1 = mkprob(S1)
 for (lbl, uh) in (("smooth", state(S1, 1.0)), ("rough", state(S1, 1.0; rough = 0.02)))
     println("   $lbl state:")
     e, c = g1_errors(S1, pb1, uh)
@@ -129,14 +130,14 @@ end
 # ---------------------------------------------------------------------------------------
 println("\n  G2 — the skeleton layer is live in the assembled residual (rough state)")
 let uh = state(S1, 1.0; rough = 0.01)
-    r_none = resid(mkprob(S1), S1, uh)                  # projected, no projection state ⇒ no 𝓚/𝓟 Class III
-    r_brk  = resid(pb1, S1, uh)
     f      = fields(pb1, uh, S1.trian)
+    r_c3   = assemble_vector(v -> broken_class3_residual(pb1, pb1.skel[], f.d_cf, f.η, f.H, f.dHx, f.dHy,
+                                  f.Ux, f.Uy, f.DU, f.S, f.bf, v[2], v[3], alg_dx(v[2]) + alg_dy(v[3]), S1.dΩ), S1.V)
     r_lay  = assemble_vector(v -> broken_class3_skeleton_contrib(pb1, pb1.skel[], f.H, f.dHx, f.dHy,
                                   f.Ux, f.Uy, f.S, f.bf, v[2], v[3], alg_dx(v[2]) + alg_dy(v[3])), S1.V)
-    ratio  = norm(r_lay) / norm(r_brk - r_none)
+    ratio  = norm(r_lay) / norm(r_c3)
     @printf("    |broken Class-III 𝓚+𝓟| = %.3e   |skeleton layer| = %.3e   ratio %.2f\n",
-            norm(r_brk - r_none), norm(r_lay), ratio)
+            norm(r_c3), norm(r_lay), ratio)
     chk("G2 the skeleton layer is a non-negligible part of the broken Class-III blocks (ratio $(round(ratio, sigdigits=2)))",
         0.05 < ratio < 20)
 end
@@ -144,46 +145,30 @@ end
 # ---------------------------------------------------------------------------------------
 println("\n  G3 — no leakage")
 let uh = state(S1, 1.0; rough = 0.01)
-    pn = mkprob(S1; nlp = :native)
+    pn = mkprob(S1; nlp = false)
     r1 = resid(pn, S1, uh)
-    attach_skeleton!(pn, S1.model; broken = false, cip_gamma_u = 0.0, cip_gamma_eta = 0.0, degree = QDEG)
-    chk("G3 everything off ⇒ prob.skel stays nothing", pn.skel[] === nothing)
-    chk("G3 :native residual bitwise unchanged", resid(pn, S1, uh) == r1)
-    refused = try
-        attach_skeleton!(mkprob(S1; nlp = :native), S1.model; broken = true, degree = QDEG); false
-    catch
-        true
-    end
-    chk("G3 broken=true without nl_pressure=:full is refused", refused)
-end
-
-# ---------------------------------------------------------------------------------------
-println("\n  G4 — broken and projected (same state, no lag) converge to each other")
-const VSTAR = [x -> 0.3 * sin(0.9x[1] + 0.2x[2]),
-               x -> VectorValue(ntuple(j -> cos(0.5x[1] + 0.3j - 0.4x[2]), Nσ)...),
-               x -> VectorValue(ntuple(j -> 0.5 * sin(0.7x[2] + 0.2x[1] + 0.1j), Nσ)...)]
-function g4(nx)
-    Sm = setup(nx = nx, ny = nx ÷ 2)
-    u  = state(Sm, 1.0)
-    vc = get_free_dof_values(interpolate_everywhere(VSTAR, Sm.U))
-    r0 = resid(mkprob(Sm), Sm, u)
-    rb = resid(mkprob(Sm; skel = :broken), Sm, u)
-    pp = mkprob(Sm); update_nlp_state!(pp, build_nlp_ctx(Sm.model, PU, Nσ, Sm.trian, Sm.dΩ), u)
-    rp = resid(pp, Sm, u)
-    Jb = dot(rb - r0, vc); Jp = dot(rp - r0, vc)
-    @printf("    nx=%3d  J_broken=% .7e  J_projected=% .7e  |diff|/|J| = %.3e\n", nx, Jb, Jp, abs(Jb - Jp) / abs(Jb))
-    return abs(Jb - Jp) / abs(Jb)
-end
-let ds = [g4(n) for n in (6, 12, 24)]
-    rates = log2.(ds[1:end-1] ./ ds[2:end])
-    chk("G4 the two treatments converge to each other (pairwise orders $(round.(rates, digits=2)))",
-        all(rates .> 2.0) && ds[end] < 1e-5)
+    attach_skeleton!(pn, S1.model; cip_gamma_u = 0.0, cip_gamma_eta = 0.0, degree = QDEG)
+    chk("G3 nl_pressure=false, everything off ⇒ prob.skel stays nothing", pn.skel[] === nothing)
+    chk("G3 nl_pressure=false residual bitwise unchanged", resid(pn, S1, uh) == r1)
+    pf = mkprob(S1; nlp = true)
+    r2 = resid(pf, S1, uh)
+    attach_skeleton!(pf, S1.model; cip_gamma_u = 0.0, cip_gamma_eta = 0.0, degree = QDEG)
+    chk("G3 nl_pressure=true, γ = 0 ⇒ the skeleton geometry is kept, no penalty",
+        pf.skel[] !== nothing && !has_cip(pf))
+    chk("G3 nl_pressure=true residual bitwise unchanged by a γ = 0 attach", resid(pf, S1, uh) == r2)
+    refused(f) = try f(); false catch; true end
+    chk("G3 the removed `broken` keyword is refused",
+        refused(() -> attach_skeleton!(mkprob(S1), S1.model; broken = true, degree = QDEG)))
+    chk("G3 a v1 tier symbol (:full) is refused",
+        refused(() -> build_problem(vert; h_bathy = bed, regime = :nonlinear, nl_pressure = :full)))
+    chk("G3 nl_pressure=true without model/quad_degree is refused",
+        refused(() -> build_problem(vert; h_bathy = bed, regime = :nonlinear, nl_pressure = true)))
 end
 
 # ---------------------------------------------------------------------------------------
 println("\n  G5 — C⁰-IP algebra (open 2-D mesh, sloping bed)")
 cipmat(Sm, p) = assemble_matrix((du, v) -> cip_contrib(p, p.skel[], du[1], du[2], du[3], v[1], v[2], v[3]), Sm.U, Sm.V)
-let pc = mkprob(S1; skel = :cip, gu = 1.0, ge = 1.0, nlp = :none)
+let pc = mkprob(S1; skel = :cip, gu = 1.0, ge = 1.0, nlp = false)
     A  = cipmat(S1, pc); Ad = Matrix(A)
     λ  = eigvals(Symmetric(0.5 * (Ad + Ad')))
     asym = norm(Ad - Ad') / norm(Ad)
@@ -206,7 +191,7 @@ end
 # ---------------------------------------------------------------------------------------
 println("\n  G6 — C⁰-IP is grid-scale selective (x-periodic box, Q3/Q2, 16 cells/λ)")
 const SP = setup(nx = 16, ny = 1, Lx = 4.0, Ly = 0.25, periodic = true, bc = :wall)
-let pcp = mkprob(SP; skel = :cip, gu = 1.0, nlp = :none, bedf = flat, flat_bed = true)
+let pcp = mkprob(SP; skel = :cip, gu = 1.0, nlp = false, bedf = flat, flat_bed = true)
     Ap = cipmat(SP, pcp)
     Mm = assemble_matrix((du, v) -> ∫(du[2] ⋅ v[2]) * SP.dΩ, SP.U, SP.V)
     z  = VectorValue(ntuple(_ -> 0.0, Nσ)...)
@@ -230,17 +215,17 @@ function jac_fd_gap(p, Sm, x0, d; h = 1e-7)
     return maximum(abs, J * d .- fd) / maximum(abs, fd)
 end
 let x0 = get_free_dof_values(state(S1, 1.0; rough = 0.01)), d = randn(MersenneTwister(7), length(x0))
-    gl = jac_fd_gap(mkprob(S1; skel = :cip, gu = 0.3, ge = 0.3, nlp = :none, regime = :linear), S1, x0, d)
+    gl = jac_fd_gap(mkprob(S1; skel = :cip, gu = 0.3, ge = 0.3, nlp = false, regime = :linear), S1, x0, d)
     @printf("    linear + C⁰-IP: rel gap %.2e\n", gl)
     chk("G7 linear regime + C⁰-IP: the Jacobian is exact (penalty block included)", gl < 1e-6)
-    pbk = mkprob(S1; skel = :broken, gu = 0.3, ge = 0.3)
+    pbk = mkprob(S1; skel = :cip, gu = 0.3, ge = 0.3)              # nl_pressure=true + penalty
     gaps = Float64[]
     for a in (1.0, 0.5, 0.25)
         xa = get_free_dof_values(state(S1, a; rough = 0.01a))
         push!(gaps, jac_fd_gap(pbk, S1, xa, d))
-        @printf("    :full broken + C⁰-IP, a = %.2f: rel gap %.3e\n", a, gaps[end])
+        @printf("    nl_pressure=true + C⁰-IP, a = %.2f: rel gap %.3e\n", a, gaps[end])
     end
-    chk("G7 :full broken: the quasi-Newton gap shrinks with amplitude (the deliberate omission)",
+    chk("G7 nl_pressure=true: the quasi-Newton gap ({3,6,7,8}, ∇h-IBP, pressure η-derivatives) shrinks with amplitude",
         all(gaps[1:end-1] ./ gaps[2:end] .> 1.2))
 end
 
@@ -248,7 +233,7 @@ end
 println("\n  G8 — hp-CIP, orders 1–2 (BROKEN_FORMULATION_PLAN.md §5.2)")
 let S2 = setup()
     for ord in (1, 2)
-        p = build_problem(vert; h_bathy = bed, regime = :nonlinear, nl_pressure = :none, flat_bed = false)
+        p = build_problem(vert; h_bathy = bed, regime = :nonlinear, nl_pressure = false, flat_bed = false)
         attach_skeleton!(p, S2.model; cip_gamma_u = 1.0, cip_gamma_eta = 1.0, cip_order = ord,
                          p_u = PU, p_eta = PE, degree = QDEG)
         A  = cipmat(S2, p); Ad = Matrix(A)
@@ -269,7 +254,7 @@ let S2 = setup()
     end
     chk("G8 the order-2 terms are live: rank grows ($(RANK1) → $(RANK2))", RANK2 > RANK1)
     refused = try
-        attach_skeleton!(mkprob(S2; nlp = :none), S2.model; cip_gamma_u = 1.0, cip_order = 3, degree = QDEG); false
+        attach_skeleton!(mkprob(S2; nlp = false), S2.model; cip_gamma_u = 1.0, cip_order = 3, degree = QDEG); false
     catch
         true
     end
@@ -281,9 +266,10 @@ end
 # =======================================================================================
 println("\n  G9 — ghost-volume stabilisation")
 "Problem with a given stabilisation attached (flat or sloping bed)."
-function gprob(Sm; stab = :ghostvolume, gu = 1.0, ge = 1.0, regime = :nonlinear, nlp = :none,
+function gprob(Sm; stab = :ghostvolume, gu = 1.0, ge = 1.0, regime = :nonlinear, nlp = false,
                bedf = bed, flat_bed = false, pu = PU, pe = PE, order = 1)
-    p = build_problem(vert; h_bathy = bedf, regime = regime, nl_pressure = nlp, flat_bed = flat_bed)
+    p = build_problem(vert; h_bathy = bedf, regime = regime, nl_pressure = nlp, flat_bed = flat_bed,
+                      model = Sm.model, quad_degree = 2 * pu + 4)
     attach_skeleton!(p, Sm.model; cip_gamma_u = gu, cip_gamma_eta = ge, stabilization = stab,
                      cip_order = order, p_u = pu, p_eta = pe, degree = 2 * pu + 4)
     return p
@@ -366,15 +352,16 @@ let pcp = gprob(SP; gu = 1.0, ge = 0.0, bedf = flat, flat_bed = true)
 end
 
 let uh = state(S1, 1.0; rough = 0.01)
-    p_def = build_problem(vert; h_bathy = bed, regime = :nonlinear, nl_pressure = :native, flat_bed = false)
+    p_def = build_problem(vert; h_bathy = bed, regime = :nonlinear, nl_pressure = true, flat_bed = false,
+                          model = S1.model, quad_degree = QDEG)
     attach_skeleton!(p_def, S1.model; cip_gamma_u = 0.3, cip_gamma_eta = 0.3, cip_order = 2, p_u = PU, p_eta = PE, degree = QDEG)
-    p_jg = gprob(S1; stab = :jumpgrad, nlp = :native, gu = 0.3, ge = 0.3, order = 2)
+    p_jg = gprob(S1; stab = :jumpgrad, nlp = true, gu = 0.3, ge = 0.3, order = 2)
     chk("G9g default stabilization is :jumpgrad, bitwise", resid(p_def, S1, uh) == resid(p_jg, S1, uh))
     r1 = try gprob(S1; order = 2); false catch; true end
     chk("G9g :ghostvolume with cip_order ≠ 1 is refused", r1)
     nm = CartesianDiscreteModel((0.0, 1.0, 0.0, 1.0), (4, 2); map = x -> VectorValue(x[1]^2, x[2]))
     r2 = try
-        pp = build_problem(vert; h_bathy = flat, regime = :nonlinear, nl_pressure = :none, flat_bed = true)
+        pp = build_problem(vert; h_bathy = flat, regime = :nonlinear, nl_pressure = false, flat_bed = true)
         attach_skeleton!(pp, nm; cip_gamma_u = 1.0, stabilization = :ghostvolume, p_u = PU, p_eta = PE, degree = QDEG); false
     catch
         true
@@ -384,17 +371,19 @@ end
 
 # =======================================================================================
 #  G10 — the EXACT Jacobian of the broken Class-III blocks (volume + skeleton layer)
-#  Oracle: central FD of the Class-III residual ALONE, R_broken − R_(no Class III).
+#  Oracle: central FD of the Class-III residual ALONE (`broken_class3_residual`, the exact terms
+#  global_residual assembles), both arms (∇𝖲 and ∇𝖻).
 # =======================================================================================
 println("\n  G10 — broken Class-III Jacobian vs FD")
 function c3_gap(Sm, x0, d; h = 1e-7, bedf = bed, flat_bed = false)
-    pb = build_problem(vert; h_bathy = bedf, regime = :nonlinear, nl_pressure = :full, flat_bed = flat_bed)
-    attach_skeleton!(pb, Sm.model; broken = true, degree = QDEG)
-    p0 = build_problem(vert; h_bathy = bedf, regime = :nonlinear, nl_pressure = :full, flat_bed = flat_bed)
-    ud = FEFunction(Sm.U, zeros(length(x0)))
-    R(p, x) = assemble_vector(v -> global_residual(0.0, TransientCellField(FEFunction(Sm.U, x), (ud,)), v,
-                                                   p, Sm.trian, Sm.dΩ), Sm.V)
-    Rc3(x) = R(pb, x) - R(p0, x)
+    pb = build_problem(vert; h_bathy = bedf, regime = :nonlinear, nl_pressure = true, flat_bed = flat_bed,
+                       model = Sm.model, quad_degree = QDEG)
+    function Rc3(x)
+        f = fields(pb, FEFunction(Sm.U, x), Sm.trian)
+        assemble_vector(v -> broken_class3_residual(pb, pb.skel[], f.d_cf, f.η, f.H, f.dHx, f.dHy, f.Ux, f.Uy,
+                                                    f.DU, f.S, f.bf, v[2], v[3], alg_dx(v[2]) + alg_dy(v[3]),
+                                                    Sm.dΩ), Sm.V)
+    end
     fd = (Rc3(x0 .+ h .* d) .- Rc3(x0 .- h .* d)) ./ (2h)
     uh = FEFunction(Sm.U, x0); d_cf = CellField(pb.h_bathy, Sm.trian)
     J  = assemble_matrix((du, v) -> broken_class3_jacobian(pb, pb.skel[], d_cf, uh[1], uh[2], uh[3],

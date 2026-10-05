@@ -69,7 +69,7 @@ diags1, _, _ = setup_and_run(
     T_wave=FLUME.T, A_wave=A_in,
     wave_bc=wi, bc_side=:left, relax_bc=true, relax_width=w_rel,
     sponge_wL=0.0, sponge_wR=12.0, mu_max=40.0,
-    T_final=Tf1, dt=FLUME.dt, regime=:linear, nl_pressure=:none,
+    T_final=Tf1, dt=FLUME.dt, regime=:linear, nl_pressure=false,
     y_wall_bc=:periodic, x_wall_bc=false,
     save_every=0, gauges=gauges, print_every=100, check_every=0, diag_every=5,
     output_dir=out1)
@@ -142,7 +142,7 @@ for use_relax in (true, false)
         T_wave=FLUME.T, A_wave=A_eps,
         wave_bc=wi0, bc_side=:left, relax_bc=use_relax, relax_width=w_rel,
         sponge_wL=0.0, sponge_wR=0.0, mu_max=40.0,   # NO sponge anywhere: the zone is the only absorber
-        T_final=Tf2, dt=FLUME.dt, regime=:linear, nl_pressure=:none,
+        T_final=Tf2, dt=FLUME.dt, regime=:linear, nl_pressure=false,
         y_wall_bc=:periodic, x_wall_bc=true,          # solid right wall
         eta0_func=hump,                               # the energy under test
         save_every=0, gauges=gauges2, print_every=200, check_every=0, diag_every=5,

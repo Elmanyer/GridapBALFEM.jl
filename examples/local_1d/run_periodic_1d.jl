@@ -1,7 +1,7 @@
 # ==============================================================
 #  run_periodic_1d.jl — the x-PERIODIC closed flume: the INTERIOR discretisation alone
 #
-#  THE QUESTION (LaTeX chapter "Stability Analysis", §7.7). Every :full failure on the
+#  THE QUESTION (LaTeX chapter "Stability Analysis", §7.7). Every full-pressure failure on the
 #  60 m flume pins at the inflow (x ≈ 0.12–0.5 m) or at the relaxation-zone edge. The flume
 #  cannot tell apart
 #     (a) an INTERIOR discretisation instability that the boundary merely seeds, from
@@ -27,15 +27,15 @@
 #  Read growth from the log-linear rise of the HIGH-k band energy
 #  (postprocessing/examples/periodic_growth.jl), never from max η.
 #
-#  MIXED LAYOUT: the auxiliary 𝖦 is solved from its own constraint at t₀
-#  (mixed_consistent_ic), so the hot start is consistent.
+#  v2: BALFEM_NL_PRESSURE=0/1 — all eight 𝓝 components off/on (Class III by the broken
+#  formulation; there is no other treatment and no component mask).
 #
-#  BROKEN / C⁰-IP (src/broken.jl, markdown_files/BROKEN_FORMULATION_PLAN.md):
-#     BALFEM_BROKEN=1  Class-III 𝓚/𝓟 blocks by the distributional gradient (needs :full)
-#     BALFEM_CIP_GU    C⁰-IP γ_u on ⟦∂ₙ𝖴⟧   BALFEM_CIP_GE  γ_η on ⟦∂ₙη⟧   BALFEM_CIP_HEXP  s (2)
+#  SKELETON STABILISATION (src/broken.jl):
+#     BALFEM_STAB      jumpgrad | ghostvolume        BALFEM_CIP_ORDER  jumpgrad orders (≤ 2)
+#     BALFEM_CIP_GU    γ_u (velocity)   BALFEM_CIP_GE  γ_η (surface)   BALFEM_CIP_HEXP  s (2)
 #
-#  KNOBS (all BALFEM_*, as run_flume_1d.jl): NL_PRESSURE, MIXED, P_AUX, C3_MASK, FE_ORDER,
-#  P_ETA, AWAVE, TWAVE, D, DT, PERIODS, SOLVER/TABLEAU, USE_AD, NLP_INLOOP, plus
+#  KNOBS (all BALFEM_*, as run_flume_1d.jl): NL_PRESSURE, FE_ORDER, P_ETA, AWAVE, TWAVE, D,
+#  DT, PERIODS, SOLVER/TABLEAU, USE_AD, plus
 #     BALFEM_NLAMBDA   wavelengths in the box          (default 1)
 #     BALFEM_NCELL     cells per wavelength            (default 16  → dx = λ/16 ≈ 0.25 m)
 #     BALFEM_NOISE     seed amplitude                  (default 1e-8; 0 = none)
@@ -46,7 +46,7 @@ include(joinpath(@__DIR__, "..", "distributed", "_dist_common.jl"))
 using Gridap.TensorValues: VectorValue     # the stacked 𝖴x initial condition
 
 get!(ENV, "BALFEM_REGIME",      "nonlinear")
-get!(ENV, "BALFEM_NL_PRESSURE", "native")
+get!(ENV, "BALFEM_NL_PRESSURE", "0")
 get!(ENV, "BALFEM_FLAT_BED",    "1")
 
 M       = genv_i("BALFEM_M", 2)
@@ -98,20 +98,15 @@ solver_sym() === :theta && push!(_extra, "theta")
 (solver_sym() === :sdirk && tableau_sym() !== :SDIRK_2_2) &&
     push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
-genv_b("BALFEM_NLP_INLOOP", 0) && push!(_extra, "inloop")
-genv_b("BALFEM_MIXED", 0) && push!(_extra, "mixed")
-genv_b("BALFEM_BROKEN", 0) && push!(_extra, "broken")
 _cgu = genv_f("BALFEM_CIP_GU", 0.0); _cge = genv_f("BALFEM_CIP_GE", 0.0)
 _cgu > 0 && push!(_extra, @sprintf("cipu%g", _cgu))
 _cge > 0 && push!(_extra, @sprintf("cipe%g", _cge))
 haskey(ENV, "BALFEM_CIP_HEXP") && push!(_extra, "hexp" * ENV["BALFEM_CIP_HEXP"])
 genv_i("BALFEM_CIP_ORDER", 1) > 1 && push!(_extra, "cipord" * ENV["BALFEM_CIP_ORDER"])
 lowercase(genv("BALFEM_STAB", "jumpgrad")) == "ghostvolume" && push!(_extra, "ghost")
-haskey(ENV, "BALFEM_P_AUX") && push!(_extra, "aux" * ENV["BALFEM_P_AUX"])
-let m = lowercase(genv("BALFEM_C3_MASK", "both")); m == "both" || push!(_extra, "c3" * m) end
 _name = output_dir_name(; M = M, p_vert = p_vert, ny = 1, y_wall_bc = :wall,
                           wave_kind = "plane", wave_gen = :ic,
-                          regime = regime_sym(), nl_pressure = nl_pressure_sym(),
+                          regime = regime_sym(), nl_pressure = nl_pressure_flag(),
                           bed = "flat", p_u = feord, p_eta = p_eta,
                           amplitude = Awave, period = Twave, irregular = false,
                           nx = nx, nx_in_name = false, extra = _extra)
@@ -120,7 +115,7 @@ outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
 
 @printf("############################################################\n")
 @printf("# PERIODIC 1-D FLUME | %s %s flat | A=%g T=%g | %s\n",
-        regime_sym(), nl_pressure_sym(), Awave, Twave, "P$(p_vert)LFE-$(M)")
+        regime_sym(), nl_pressure_flag(), Awave, Twave, "P$(p_vert)LFE-$(M)")
 @printf("#   box = %d × λ_model = %.4f m | k0 = %.4f (kd=%.2f, κa=%.3f) | %d cells/λ → dx=%.4f\n",
         nlam, Lx, k0, k0 * d, k0 * Awave, ncell, dx)
 @printf("#   NO inflow, NO relaxation, NO sponge, NO source | seed %.1e on %d harmonics\n",
@@ -138,18 +133,12 @@ diags, vert, prob = setup_and_run(;
     sponge_wL = 0.0, sponge_wR = 0.0, sponge_wB = 0.0, sponge_wT = 0.0,
     eta0_func = eta0, ux0_func = ux0,
     T_final = Tfinal, dt = dt,
-    regime = regime_sym(), nl_pressure = nl_pressure_sym(), flat_bed = true,
+    regime = regime_sym(), nl_pressure = nl_pressure_flag(), flat_bed = true,
     use_ad = genv_b("BALFEM_USE_AD", 0),
-    nlp_inloop = genv_b("BALFEM_NLP_INLOOP", 0),
-    mixed = genv_b("BALFEM_MIXED", 0),
-    broken = genv_b("BALFEM_BROKEN", 0),
     cip_gamma_u = _cgu, cip_gamma_eta = _cge,
     cip_hexp = genv_f("BALFEM_CIP_HEXP", 2.0),
     cip_order = genv_i("BALFEM_CIP_ORDER", 1),
     stabilization = Symbol(lowercase(genv("BALFEM_STAB", "jumpgrad"))),
-    p_aux = (haskey(ENV, "BALFEM_P_AUX") ? genv_i("BALFEM_P_AUX", feord) : nothing),
-    c3_mask = (m -> m == "gs" ? (true, false) : m == "gb" ? (false, true) :
-                    m == "none" ? (false, false) : (true, true))(lowercase(genv("BALFEM_C3_MASK", "both"))),
     output_dir = outdir, save_every = genv_i("BALFEM_SAVE_EVERY", 5),
     #  sub-cell VTK sampling: 2·p_u samples per cell resolves every polynomial mode up to
     #  the NODE Nyquist (vertex-only output would alias all sub-element content away)

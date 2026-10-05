@@ -13,9 +13,12 @@
 #
 #  Because the stacked residual and its hand Jacobians are expressed purely in
 #  Gridap CellField algebra, this single distributed path carries every physics
-#  flag — advection, lin_pressure, P_full, nl_pressure68, nl_pressure_full, flat_bed —
-#  using the very same code as the sequential driver; only the linear solver
-#  (GMRES + Jacobi + Newton) and the reductions differ.
+#  flag — advection, lin_pressure, P_full, flat_bed — using the very same code as the
+#  sequential driver; only the linear solver (GMRES + Jacobi + Newton) and the reductions
+#  differ.
+#
+#  ⚠ `nl_pressure=true` is REFUSED here until the broken Class-III skeleton terms are ported to
+#  `DistributedDiscreteModel` (V2_SOLVER_PLAN.md step 10).
 #
 #  The vertical pre-computation is tiny and identical on every rank, so it is
 #  simply replicated rather than distributed.
@@ -89,11 +92,11 @@ function setup_and_run_distributed(;
     x_wall_bc    :: Bool    = false,       # solid walls on the x-edges (true for closed-basin IC)
     # ---- Physics flags (all supported in parallel) ---------------------------
     regime       :: Symbol  = :nonlinear,  # :linear (linearised, no advection) | :nonlinear
-    nl_pressure  :: Symbol  = :none,       # nonlinear pressure: :none | :native | :full (CG+Jacobi)
+    nl_pressure             = false,       # 𝓝 (all eight components) — ⚠ v2: only `false` is
+                                           #   supported distributed until the broken formulation is
+                                           #   ported (V2_SOLVER_PLAN.md step 10)
     flat_bed     :: Bool    = false,       # sea-bed geometry: false = variable bathymetry (∇h≠0),
                                            #   true = flat bed (∇h≡0; ∇h-terms dropped, ∇η-terms kept)
-    nlp_cg_rtol  :: Float64 = 1e-10,       # CG tolerance for the frozen-projection solve
-    nlp_cg_maxiter :: Int   = 500,         # CG iteration cap for that solve
     h_bathy                  = nothing,     # x → d(x): variable bathymetry (overrides h_val)
     eta0_func               = nothing,     # x → η₀(x): initial release (REQUIRES x_wall_bc=true)
     # ---- Dirichlet boundary wave generation (deterministic per rank) ---------
@@ -114,7 +117,7 @@ function setup_and_run_distributed(;
     nl_iter      :: Int     = 50,          # max Newton iterations per stage
     nl_tol       :: Float64 = 1e-5,        # Newton residual tolerance (‖r‖₂) — production default
     ls_rtol      :: Float64 = 1e-5,        # GMRES relative tolerance. MEASURED 2026-08-11/12 on one
-                                           #   fixed 2-D case (96x36, nl_pressure=:full, 12 ranks):
+                                           #   fixed 2-D case (96x36, v1 full pressure, 12 ranks):
                                            #     1e-9 -> 1e-6  cut GMRES 491-515 -> 294-314 (-40%)
                                            #     1e-6 -> 1e-5  cut GMRES 295-313 -> 238-253 (-19%)
                                            #   with max|eta| unmoved in BOTH steps (the second pair
@@ -139,7 +142,14 @@ function setup_and_run_distributed(;
     eta_ref                 = nothing,     # reference amplitude for the divergence guard (auto)
     div_factor   :: Float64 = 20.0,        # abort when max|η| > div_factor · eta_ref
 )
+    _run_config = Base.@locals()             # ⚠ FIRST statement: exactly the keyword arguments
     n_procs = prod(cpu_grid)                 # total MPI ranks implied by the process grid
+    #  v2 interim refusal, BEFORE MPI starts so every rank fails identically (step 5).
+    resolve_physics(; regime = regime, nl_pressure = nl_pressure, flat_bed = flat_bed)
+    nl_pressure &&
+        error("setup_and_run_distributed: nl_pressure=true is not available distributed in v2 yet — " *
+              "Class III is assembled by the broken formulation, whose skeleton terms are not yet " *
+              "ported to MPI (markdown_files/V2_SOLVER_PLAN.md step 10). Run it sequentially.")
 
     # Everything runs inside with_mpi: it initialises MPI and hands back a
     # `distribute` that turns a global index set into this rank's local share.
@@ -151,6 +161,12 @@ function setup_and_run_distributed(;
             println("=== 2D BALFE-M ALGEBRAIC Distributed Solver (stacked [η,𝖴x,𝖴y]) ===")
             println("  cpu_grid: $cpu_grid  ($(n_procs) ranks total)")
             flush(stdout)
+        end
+
+        #  Provenance (V2_SOLVER_PLAN.md step 9), written once, by rank 0.
+        if i_am_main(ranks)
+            println("=== Run manifest: ", joinpath(output_dir, "run_manifest.toml"), "  [",
+                    write_run_manifest(output_dir, _run_config; driver = "setup_and_run_distributed"), "]")
         end
 
         #  Pairing gate FIRST, on EVERY rank — before the tensors, the mesh and the JIT.
@@ -334,12 +350,6 @@ function setup_and_run_distributed(;
             make_initial_conditions(space_at(U, 0.0), vert.N_dof; eta0_func=eta0_func)
         end
 
-        # For nl_pressure=:full, the frozen-projection mass solve uses CG + Jacobi
-        # here (a partitioned matrix has no direct-factorisation method).
-        nlp = nl_pressure == :full ?
-              (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh;
-                                   distributed=true, cg_rtol=nlp_cg_rtol,
-                                   cg_maxiter=nlp_cg_maxiter)) : nothing
 
         # ----- STAGE 5: TIME LOOP ---------------------------------------------
         # Reconstruction context for optional w/p VTK output.
@@ -395,7 +405,6 @@ function setup_and_run_distributed(;
                     recon       = recon,        # reconstruction context for optional w/p VTK output
                     trial_space = U,            # trial FE space (for VTK output)
                     dt          = dt,           # time step [s]
-                    nlp         = nlp,          # frozen-projection context for nl_pressure=:full (nothing if not used)
                     monitor     = monitor,      # wrap the Newton solver to harvest per-step stats
                     checker     = checker,      # optional independent re-assembly of the governing equations
                     check_every = check_every,  # re-verify the governing equations every N steps (0 = off)

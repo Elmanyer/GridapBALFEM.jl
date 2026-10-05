@@ -1,5 +1,10 @@
 # NEW_TREATMENT.md — replacing the frozen Class-III projection
 
+> **⚙ v1 RECORD (2026-10-05).** This file documents v1's projected and mixed Class-III treatments, both REMOVED in v2. It is kept as the record of how v1 reached its results;
+> the v2 solver (branch `v2-solver`) differs — one Class-III formulation (broken), `nl_pressure::Bool`
+> with all eight `𝓝` components, no component mask (`V2_SOLVER_PLAN.md`). Paths `output/…` here are
+> now under `output_v1/`.
+
 > **Branch `new-classIII-treatment`, opened 2026-09-18.**
 > Two changes to how the Class-III components `{1,2,4,5}` of `𝓝ₖⱼ` reach the residual:
 > **(A)** an exact algebraic reduction collapsing `{1,2,5}` onto a single contraction, and

@@ -614,7 +614,9 @@ function setup_and_run(;
     x_wall_bc    :: Bool    = false,      # solid walls on the x-edges (𝖴x=0); true for closed-basin IC
     # ---- Physics flags (switch individual residual terms on/off) --------------
     regime       :: Symbol  = :nonlinear, # :linear (linearised, no advection) | :nonlinear
-    nl_pressure  :: Symbol  = :none,      # nonlinear pressure: :none | :native {3,6,7,8} | :full {+1,2,4,5}
+    nl_pressure             = false,      # the nonlinear pressure operator 𝓝: true = ALL EIGHT components
+                                          #   (Class III by the broken formulation), false = none. v2 —
+                                          #   the v1 tiers :none/:native/:full are refused.
     flat_bed     :: Bool    = false,      # sea-bed geometry: false = variable bathymetry (∇h≠0),
                                           #   true = flat bed (∇h≡0; every ∇h-term dropped, ∇η-terms kept)
     h_bathy                 = nothing,    # x → d(x): variable bathymetry (overrides h_val)
@@ -635,27 +637,8 @@ function setup_and_run(;
     relax_bc     :: Bool    = false,      # relaxation (generation/absorption) zone at the inflow
     relax_width  :: Float64 = 0.0,        # relaxation-zone width [m]; 0 → one peak wavelength
     # ---- Solver / diagnostics ------------------------------------------------
-    p_aux        :: Union{Int,Nothing} = nothing,  # ⚠ ORDER OF THE MIXED AUXILIARY SPACE (𝖦, 𝖥).
-                                          #   nothing → p_u (the velocity order; every mixed run
-                                          #   before 2026-09-23). Only meaningful with mixed=true.
-    mixed_coupling :: Bool  = true,       # ⚠ include the C = dR_G/d(eta,u) and B = dR_phys/dG
-                                          #   coupling blocks in the mixed Jacobian. Default ON;
-                                          #   false reproduces the old block-diagonal form, kept
-                                          #   only so the two can be compared (NEW_TREATMENT.md G).
-    mixed        :: Bool    = false,      # ⚠ PROJECTION-FREE Class-III path (src/mixed.jl):
-                                          #   promote ∇𝖲 (and ∇𝖻 if c3_mask[2]) to genuine
-                                          #   unknowns instead of frozen L² projections.
-                                          #   DIAGNOSTIC ONLY — AD Jacobians, sequential,
-                                          #   much slower per step. Needs nl_pressure=:full.
-    broken       :: Bool    = false,      # ⚠ BROKEN (skeleton) Class-III path (src/broken.jl): the
-                                          #   𝓚/𝓟 Class-III blocks by the DISTRIBUTIONAL gradient —
-                                          #   cellwise Hessians + a skeleton-layer integral — instead
-                                          #   of frozen L² projections (default) or auxiliary unknowns
-                                          #   (mixed=true). 3 fields. Needs nl_pressure=:full; refused
-                                          #   with mixed / nlp_inloop. Sequential only.
-                                          #   markdown_files/BROKEN_FORMULATION_PLAN.md
     cip_gamma_u  :: Float64 = 0.0,        # ⚠ C⁰ interior penalty on ⟦∂ₙ𝖴⟧ (dimensionless γ_u; 0 = off).
-                                          #   J_h = Σ_F ∫ γ_u d√(gd) h_F^s Σₐ⟦∂ₙ𝖴ₐ⟧·Mv⟦∂ₙ𝖵ₐ⟧. Any tier.
+                                          #   J_h = Σ_F ∫ γ_u d√(gd) h_F^s Σₐ⟦∂ₙ𝖴ₐ⟧·Mv⟦∂ₙ𝖵ₐ⟧. Any model.
     cip_gamma_eta:: Float64 = 0.0,        # ⚠ C⁰-IP on ⟦∂ₙη⟧ in continuity (γ_η √(gd) h_F^s; 0 = off).
     cip_hexp     :: Float64 = 2.0,        # exponent s of h_F in the penalty.
     stabilization:: Symbol  = :jumpgrad,  # ⚠ which skeleton stabilisation the γ knobs drive:
@@ -665,16 +648,6 @@ function setup_and_run(;
     cip_order    :: Int     = 1,          # hp-CIP: penalise ⟦∂ₙʲ·⟧ for j = 1..cip_order (capped at
                                           #   each field's FE order; ≤ 2 — Gridap's derivative limit),
                                           #   weight h_F^(s+2(j−1)). BROKEN_FORMULATION_PLAN.md §5.2.
-    c3_mask      :: Tuple{Bool,Bool} = (true, true),
-                                          # ⚠ WHICH Class-III object to assemble: (∇𝖲, ∇𝖻).
-                                          #   (true,true) = ordinary :full. Used to isolate which
-                                          #   of the two carries the :full instability.
-    nlp_inloop   :: Bool    = false,      # ⚠ Class-III projections INSIDE the Newton loop (static
-                                          #   condensation) instead of frozen from the previous step.
-                                          #   Removes the O(dt) lag; costs one extra pair of mass
-                                          #   solves per Newton iteration. DEFAULT OFF so no existing
-                                          #   result changes silently. NEW_TREATMENT.md Part B.
-                                          #   Only meaningful with nl_pressure=:full.
     use_ad       :: Bool    = false,      # build Jacobians by AD instead of the hand Jacobians
     show_trace   :: Bool    = false,      # print the Newton iteration trace
     nl_iter      :: Int     = 50,         # max Newton iterations per stage
@@ -703,6 +676,9 @@ function setup_and_run(;
     write_pressure :: Bool    = false,    # also write total-pressure fields p_s<σ> to VTK
     rho            :: Float64 = rho,      # water density [kg/m³] (used for the pressure output)
 )
+    #  ⚠ MUST STAY THE FIRST STATEMENT: at this point the only locals are the keyword arguments,
+    #  so this is exactly the configuration the run uses (defaults included).
+    _run_config = Base.@locals()
     # Choose the σ-element boundaries: the paper's optimised set for this M when
     # available, otherwise a uniform split of [0,1]. One resolver, one definition.
     #  Pairing gate FIRST — before the σ-tensors, the mesh, the JIT and the hours.
@@ -710,6 +686,15 @@ function setup_and_run(;
     #  session, and a run should not get that far only to be told its element orders
     #  were wrong. CLAUDE.md rule 2b.
     check_taylor_hood(p_u, p_eta; where = "setup_and_run")
+    #  Physics gate, equally early: refuses the v1 tiers (:none/:native/:full) and a linear
+    #  model with nl_pressure=true before anything is built.
+    resolve_physics(; regime = regime, nl_pressure = nl_pressure, flat_bed = flat_bed)
+    #  Provenance (V2_SOLVER_PLAN.md step 9): commit + full configuration into the output dir.
+    _git = write_run_manifest(output_dir, _run_config)
+    println("=== Run manifest: ", joinpath(output_dir, "run_manifest.toml"), "  [", _git, "]")
+    occursin("DIRTY", _git) &&
+        @warn "setup_and_run: the working tree has uncommitted changes to tracked files — this run " *
+              "is NOT reproducible from its recorded commit alone"
     c_bdy = resolve_cbdy(M, c_bdy)
 
     # --- STAGE 1: VERTICAL PRE-COMPUTATION (MESH INDEPENDENT, DONE ONCE) -------
@@ -853,53 +838,32 @@ function setup_and_run(;
 
     # Build the stacked FE spaces for the horizontal problem, applying the inflow BCs if provided.
     pe = p_eta
-    #  ⚠ MIXED PATH: append the auxiliary unknowns AFTER [η,𝖴x,𝖴y], so every index the rest
-    #  of this driver uses (inflow BCs on fields 1–2, diagnostics on 1–3) is unchanged.
-    #  The count must come from `mixed_n_aux(prob)` — 2 for 𝖦 only, 4 with 𝖥 — or u[4]/u[5]
-    #  would silently index the wrong field.
-    mixed && nl_pressure != :full &&
-        error("setup_and_run: mixed=true needs nl_pressure=:full (it replaces the " *
-              "Class-III projections; there is nothing to replace otherwise)")
-    #  ⚠ BROKEN PATH: a DIFFERENT treatment of the same Class-III blocks, never an addend.
-    broken && nl_pressure != :full &&
-        error("setup_and_run: broken=true needs nl_pressure=:full (it replaces the " *
-              "Class-III projections; there is nothing to replace otherwise)")
-    broken && mixed &&
-        error("setup_and_run: broken=true and mixed=true are alternative Class-III " *
-              "treatments — choose one")
-    broken && nlp_inloop &&
-        error("setup_and_run: broken=true has no projections to refresh in-loop (nlp_inloop)")
-    n_aux = mixed ? (c3_mask[2] ? 4 : 2) : 0
     U, V = build_fe_spaces(model, 
                                 p_u,           # horizontal (velocity) FE order
                                 vert.N_dof;             # number of vertical DOFs = number of stacked fields
                                 y_wall_bc=y_wall_bc,    # lateral BC type
                                 x_wall_bc=x_wall_bc,    # solid wall BC on x-edges
                                 inflow=inflow,          # inflow BC data (η, 𝖴x, 𝖴y) if provided
-                                n_aux=n_aux,            # mixed-formulation auxiliary unknowns
-                                p_aux=(p_aux === nothing ? p_u : p_aux),  # their FE order
                                 p_eta=pe)               # surface FE order (see the kwarg note)
 
-    #  ⚠ THE BANNER MUST NAME THE JACOBIAN ACTUALLY BUILT. This line reported
-    #  "block-diagonal" unconditionally once `mixed_coupling` was added, i.e. it described a
-    #  configuration the run was not using. A log that misreports its own settings is worse
-    #  than no log -- it is how a wrong configuration survives review (rule 12b).
-    mixed && println("  Class-III: MIXED / PROJECTION-FREE — $(n_aux) auxiliary field(s) " *
-                     "in Q$(p_aux === nothing ? p_u : p_aux), " *
-                     (use_ad         ? "exact AD Jacobian (SLOW)" :
-                      mixed_coupling ? "quasi-Newton + C/B coupling blocks" :
-                                       "quasi-Newton (block-diagonal, LEGACY)"))
-    broken && println("  Class-III: BROKEN / DISTRIBUTIONAL — cellwise Hessians + skeleton layer " *
-                      "(no projection, no auxiliary unknowns); " *
-                      (use_ad ? "exact AD Jacobian" : "exact hand Jacobian incl. the Class-III blocks (broken_class3_jacobian)"))
+    #  ⚠ THE BANNER MUST NAME THE OPERATOR AND THE JACOBIAN ACTUALLY BUILT (rule 12b: a log that
+    #  misreports its own settings is how a wrong configuration survives review).
+    nl_pressure && println("  Nonlinear pressure 𝓝: ALL EIGHT components — {3,6,7,8} direct, ∇h half by " *
+                           "exact IBP, Class III BROKEN (cellwise Hessians + skeleton layer); " *
+                           (use_ad ? "exact AD Jacobian" :
+                                     "hand Jacobian, Class III exact (broken_class3_jacobian)"))
+    nl_pressure && cip_gamma_u == 0 && cip_gamma_eta == 0 &&
+        @warn "setup_and_run: nl_pressure=true WITHOUT a skeleton stabilisation. The discretisation " *
+              "is consistent but unstable at the grid scale (v1 stability campaign; LATEX_STRUCTURE.md " *
+              "ch. 8–9). Intended only for stability studies — production runs set cip_gamma_u/eta > 0."
     (cip_gamma_u > 0 || cip_gamma_eta > 0) && stabilization === :jumpgrad &&
         @printf("  C0-IP penalty: γ_u=%.3g (⟦∂ₙʲ𝖴⟧, j≤%d)  γ_η=%.3g (⟦∂ₙʲη⟧, j≤%d)  h_F^(%.3g+2(j−1)), τ_u=d√(gd), τ_η=√(gd)\n",
                 cip_gamma_u, min(cip_order, p_u), cip_gamma_eta, min(cip_order, p_eta), cip_hexp)
     (cip_gamma_u > 0 || cip_gamma_eta > 0) && stabilization === :ghostvolume &&
         @printf("  GHOST-VOLUME penalty: γ_u=%.3g  γ_η=%.3g  — γ τ h^(%.3g−3) ∫_{T⁺∪T⁻} |E·⁺ − E·⁻|², every order 0…p (𝖴: %d, η: %d), τ_u=d√(gd), τ_η=√(gd)\n",
                 cip_gamma_u, cip_gamma_eta, cip_hexp, p_u, p_eta)
-    @printf("  Fields: %d (η + 2 stacked VectorValue{%d} + %d aux)   free DOFs: %d\n",
-            3 + n_aux, vert.N_dof, n_aux, num_free_dofs(U(0.0)))
+    @printf("  Fields: 3 (η + 2 stacked VectorValue{%d})   free DOFs: %d\n",
+            vert.N_dof, num_free_dofs(U(0.0)))
     @printf("  Wave: λ=%.2f m, kd=%.2f\n", 2pi/k_wave, k_wave*h_val)
 
     # --- Forcing: sponge profile + internal wavemaker source ------------------
@@ -939,17 +903,17 @@ function setup_and_run(;
     prob = build_problem(vert; g=g, 
                         h_bathy=dfn,                # bathymetry function (x → d(x))
                         regime=regime,              # linear/nonlinear physics
-                        nl_pressure=nl_pressure,    # nonlinear pressure treatment
+                        nl_pressure=nl_pressure,    # 𝓝: all eight components, or none
                         flat_bed=flat_bed,          # whether to drop ∇h terms (flat bed)
-                        c3_mask=c3_mask,            # which Class-III object(s) to assemble
+                        model=model,                # the mesh — the broken Class-III layer lives
+                        quad_degree=2*max(p_u, p_eta) + 2 + quad_extra,  # on its skeleton
                         mu_sponge=sponge,           # sponge damping profile μ(x,y)
                         wm_src=wm,                  # internal wavemaker source S(x,t)
                         relax_bc=use_relax,         # whether to use a relaxation zone at the inflow
                         relax_mu=relax_mu_fn,       # relaxation-zone damping profile μ(x,y)
                         relax_tg=relax_tg)          # incident wave target for the relaxation zone
-    #  Skeleton context: the broken Class-III path and/or the C⁰-IP penalty. `nothing`
-    #  (both off) keeps every residual path bit-identical to the Galerkin one.
-    attach_skeleton!(prob, model; broken=broken, cip_gamma_u=cip_gamma_u,
+    #  Skeleton stabilisation (γ = 0 ⇒ none; the Class-III skeleton, if any, is kept).
+    attach_skeleton!(prob, model; cip_gamma_u=cip_gamma_u,
                      cip_gamma_eta=cip_gamma_eta, cip_hexp=cip_hexp,
                      cip_order=cip_order, stabilization=stabilization, p_u=p_u, p_eta=p_eta,
                      degree=2*max(p_u, p_eta) + 2 + quad_extra)
@@ -958,11 +922,7 @@ function setup_and_run(;
 
     # Build problem TransientFEOperator ->  Wrap the residual (+ Jacobians) into a Gridap operator
     # `use_ad` swaps the hand Jacobians for AD-generated ones (cross-checking only).
-    #  The mixed path is AD-only: jacobian_u/jacobian_u_t are hand-derived for the 3-field
-    #  layout and know nothing about 𝖦/𝖥 (rule 5 — never assume an omission is benign).
-    op = mixed  ? build_ode_operator_mixed(prob, U, V, trian, dΩh; use_ad=use_ad,
-                                          coupling=mixed_coupling) :
-         use_ad ? build_ode_operator_ad(prob, U, V, trian, dΩh) :
+    op = use_ad ? build_ode_operator_ad(prob, U, V, trian, dΩh) :
                   build_ode_operator(prob, U, V, trian, dΩh)
 
     # The monitor transparently wraps the Newton solver to harvest per-step stats.
@@ -987,51 +947,18 @@ function setup_and_run(;
 
     # Initial condition. Four cases: hot-start from the incident wave; rest state
     # for a generated sea; rest state (default); or a prescribed η₀(x) release.
-    #  ⚠ On the mixed path the auxiliary unknowns start at ZERO, which is EXACT only from
-    #  rest (𝖲 = 0 ⇒ 𝖦 = 0). `ic_from_bc` hot-starts from the incident wave, where 𝖦 ≠ 0 and
-    #  this initial state does NOT satisfy the auxiliary constraint — refused rather than
-    #  silently inconsistent.
-    mixed && wi !== nothing && ic_from_bc &&
-        error("setup_and_run: mixed=true is incompatible with ic_from_bc (the auxiliary " *
-              "constraint 𝖦 = ∇𝖲 would be violated at t₀); start from rest")
-    ic = mixed ? ((Usp, N; kw...) -> make_initial_conditions_mixed(Usp, N; n_aux=n_aux, kw...)) :
-                 make_initial_conditions
     u0 = if wi !== nothing && ic_from_bc
         inc = incident_fields(wi)
-        ic(U(0.0), vert.N_dof;
+        make_initial_conditions(U(0.0), vert.N_dof;
             eta0_func = x -> inc.eta(x, 0.0),
             ux0_func  = x -> inc.ux(x, 0.0),
             uy0_func  = x -> inc.uy(x, 0.0))
     elseif wi !== nothing
-        ic(U(0.0), vert.N_dof; eta0_func=eta0_func)
+        make_initial_conditions(U(0.0), vert.N_dof; eta0_func=eta0_func)
     elseif isnothing(eta0_func) && isnothing(ux0_func)
-        mixed ? ic(U, vert.N_dof) : make_initial_conditions(U)
+        make_initial_conditions(U)
     else
-        ic(U, vert.N_dof; eta0_func=eta0_func, ux0_func=ux0_func)
-    end
-    #  ⚠ MIXED + NON-REST START: solve the auxiliary constraints at t₀ so 𝖦 = ∇𝖲 holds
-    #  exactly (make_initial_conditions_mixed zeroes it, which is right only from rest).
-    if mixed && wi === nothing && !(isnothing(eta0_func) && isnothing(ux0_func))
-        u0, aux_rel = mixed_consistent_ic(u0, prob, U, trian, dΩh)
-        @printf("  Mixed IC: auxiliary fields solved from their constraints at t₀ (assembled aux-row residual, relative: %.2e)\n", aux_rel)
-        aux_rel < 1e-8 ||
-            error("setup_and_run: consistent mixed IC failed (relative aux residual $aux_rel)")
-    end
-
-    # For nl_pressure=:full, build the frozen-projection context (mass matrix
-    # factorised once) used to evaluate the irreducible ∇H/𝓟 pressure halves.
-    #  ⚠ NOT on the mixed path: there are no frozen projections to build there, and doing so
-    #  printed "Class-III projections: LAGGED one step (legacy)" directly under a banner that
-    #  had just announced PROJECTION-FREE — two contradictory claims about the same run.
-    nlp = (nl_pressure == :full && !mixed && !broken) ?
-          (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh)) : nothing
-    # ⚠ Attaching the context to the problem SELECTS in-loop (static-condensation) mode:
-    #   `global_residual` then refreshes π𝖲, π𝖻 from the current Newton iterate.
-    if nlp !== nothing && nlp_inloop
-        nlp_enable_inloop!(prob, nlp[2])
-        println("  Class-III projections: IN-LOOP (static condensation, no dt lag)")
-    elseif nlp !== nothing
-        println("  Class-III projections: LAGGED one step (legacy)")
+        make_initial_conditions(U, vert.N_dof; eta0_func=eta0_func, ux0_func=ux0_func)
     end
 
     # Reconstruction context for optional w/p VTK output (nothing if both off).
@@ -1082,7 +1009,6 @@ function setup_and_run(;
                             recon=recon,                # reconstruction context for optional w/p VTK output (nothing if both off)
                             trial_space=U,              # trial FE space (for VTK output)
                             dt=dt,                      # time step [s]
-                            nlp=nlp,                    # frozen-projection context for nl_pressure=:full (nothing if not used)
                             monitor=monitor,            # wrap the Newton solver to harvest per-step stats
                             checker=checker,            # optional independent re-assembly of the governing equations for verification
                             check_every=check_every,    # re-verify the governing equations every N steps (0 = off)
@@ -1099,7 +1025,7 @@ end
 #  (markdown_files/OUTPUT_NAMING_PROPOSAL.md — the accepted spec)
 #
 #      <model>_<domain>_<wave>_<regime>_<nlp>_<bed>_<discr>_<amplitude>_<period>[_<extra>…]
-#      P1LFE-2_1d_bcplane_nl_full_flat_Q2Q1_A0.10_T1.6
+#      P1LFE-2_1d_bcplane_nl_nlp1_flat_Q3Q2_A0.1_T1.6        (v2: <nlp> = nlp0 | nlp1)
 #
 #  ONE generator for every driver, sequential and distributed. Three drivers building
 #  names three different ways is the defect this replaces.
@@ -1138,8 +1064,86 @@ function wave_token(kind::AbstractString, gen::Symbol)
     return pre * kind
 end
 
+"""
+    write_run_manifest(output_dir, config; driver) -> String
+
+Write `run_manifest.toml` into `output_dir`: the git commit, branch and dirty-tree flag of this
+package, Julia and Gridap versions, host and start time, every keyword argument the driver ran
+with (`config`, as `repr`) and every `BALFEM_*` environment variable. Plain `key = "value"`
+lines (valid TOML) — no extra dependency. Returns the git status line for the banner.
+
+WHY (V2_SOLVER_PLAN.md step 9). v1 results from configurations that no longer exist sat beside
+each other with nothing in the output saying which code or which options produced them. A run
+that records its own commit and configuration cannot be confused with another one.
+"""
+function write_run_manifest(output_dir::AbstractString, config::AbstractDict;
+                            driver::AbstractString = "setup_and_run")
+    root = dirname(@__DIR__)
+    git(args::Vector{String}) = try
+        strip(read(Cmd(vcat(["git", "-C", root], args)), String))
+    catch
+        "unknown"
+    end
+    commit = git(["rev-parse", "HEAD"])
+    branch = git(["rev-parse", "--abbrev-ref", "HEAD"])
+    st     = git(["status", "--porcelain", "--untracked-files=no"])
+    dirty  = st == "unknown" ? "unknown" : string(!isempty(st))
+    q(x)   = repr(string(x))
+    mkpath(output_dir)
+    path = joinpath(output_dir, "run_manifest.toml")
+    open(path, "w") do io
+        println(io, "# GridapBALFEM run manifest — written at the start of the run")
+        println(io, "driver   = ", q(driver))
+        println(io, "started  = ", q(Libc.strftime("%Y-%m-%dT%H:%M:%S", time())))
+        println(io, "host     = ", q(gethostname()))
+        println(io, "julia    = ", q(VERSION))
+        println(io, "gridap   = ", q(something(pkgversion(Gridap), "unknown")))
+        println(io, "\n[git]")
+        println(io, "commit   = ", q(commit))
+        println(io, "branch   = ", q(branch))
+        println(io, "dirty    = ", q(dirty), "    # tracked files modified ⇒ NOT reproducible from `commit` alone")
+        println(io, "\n[config]")
+        for k in sort!(collect(keys(config)); by = string)
+            v = repr(config[k]); length(v) > 400 && (v = v[1:400] * "…")
+            println(io, string(k), " = ", q(v))
+        end
+        println(io, "\n[env]")
+        for k in sort!([k for k in keys(ENV) if startswith(k, "BALFEM_")])
+            println(io, k, " = ", q(ENV[k]))
+        end
+    end
+    return @sprintf("%s @ %s%s", branch, first(commit, 10), dirty == "true" ? " (DIRTY tree)" : "")
+end
+
+"""
+    check_v1_env() -> nothing
+
+Refuse the environment knobs that v1 drivers read and v2 removed (`BALFEM_MIXED`,
+`BALFEM_P_AUX`, `BALFEM_C3_MASK`, `BALFEM_NLP_INLOOP`, `BALFEM_BROKEN`) and a v1 tier name in
+`BALFEM_NL_PRESSURE`. An IGNORED knob is worse than a refused one: the run happens, under the
+name the launcher gave it, with a configuration the launcher did not ask for (rule 38h). Every
+driver calls this on load (examples/distributed/_dist_common.jl).
+"""
+function check_v1_env()
+    gone = [k for k in ("BALFEM_MIXED", "BALFEM_P_AUX", "BALFEM_C3_MASK", "BALFEM_NLP_INLOOP",
+                        "BALFEM_BROKEN") if haskey(ENV, k)]
+    isempty(gone) ||
+        error("check_v1_env: $(join(gone, ", ")) set — v1 knob(s) removed in v2 (the broken " *
+              "formulation is the only Class-III treatment; all eight 𝓝 components or none). " *
+              "Unset them; see markdown_files/V2_SOLVER_PLAN.md.")
+    v = lowercase(get(ENV, "BALFEM_NL_PRESSURE", "0"))
+    v in ("0", "1", "true", "false") ||
+        error("check_v1_env: BALFEM_NL_PRESSURE=$(ENV["BALFEM_NL_PRESSURE"]) — v2 takes 0/1 " *
+              "(all eight 𝓝 components off/on). The v1 tiers none/native/full are gone.")
+    return nothing
+end
+
 "`:linear`→`lin`, `:nonlinear`→`nl`."
 regime_token(regime::Symbol) = regime === :linear ? "lin" : "nl"
+
+"`nl_pressure` → `nlp0` | `nlp1` (v2). The v1 tokens none/native/full name operators that no
+longer exist, so a v1 directory can never be mistaken for a v2 one."
+nlp_token(nl_pressure::Bool) = nl_pressure ? "nlp1" : "nlp0"
 
 """
     discr_token(p_u, p_eta; nx=nothing, ny=nothing) -> "Q2Q1" | "Q2Q1-nx480" | …
@@ -1171,7 +1175,7 @@ be asked to label one.
 function output_dir_name(; M::Int, p_vert::Int,
                            ny::Int, y_wall_bc::Symbol,
                            wave_kind::AbstractString, wave_gen::Symbol,
-                           regime::Symbol, nl_pressure::Symbol,
+                           regime::Symbol, nl_pressure::Bool,
                            bed::AbstractString,
                            p_u::Int, p_eta::Int,
                            amplitude::Real, period::Real,
@@ -1184,8 +1188,8 @@ function output_dir_name(; M::Int, p_vert::Int,
     (dom == "1d" && occursin("dir", wave_kind)) && error(
         "output_dir_name: directional content ($wave_kind) is impossible on a 1-D domain " *
         "— a flume one cell across cannot represent k_y (CLAUDE.md rule 12).")
-    regime === :linear && nl_pressure !== :none && error(
-        "output_dir_name: regime=:linear with nl_pressure=:$nl_pressure — a linear model " *
+    regime === :linear && nl_pressure && error(
+        "output_dir_name: regime=:linear with nl_pressure=true — a linear model " *
         "carries no 𝓝 (mirrors resolve_physics).")
     check_taylor_hood(p_u, p_eta; where = "output_dir_name")
 
@@ -1193,7 +1197,7 @@ function output_dir_name(; M::Int, p_vert::Int,
     per = (irregular ? "Tp" : "T")  * _num(period)
     parts = [model_token(M, p_vert), dom,
              wave_token(wave_kind, wave_gen),
-             regime_token(regime), String(nl_pressure), String(bed),
+             regime_token(regime), nlp_token(nl_pressure), String(bed),
              discr_token(p_u, p_eta; nx = nx_in_name ? nx : nothing, ny = nothing),
              amp, per]
     append!(parts, extra)

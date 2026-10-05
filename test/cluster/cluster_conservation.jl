@@ -62,7 +62,7 @@ result = with_mpi() do distribute
     U, V = build_fe_spaces(model, feord, Nσ; y_wall_bc=:wall, x_wall_bc=true)  # closed basin
 
     prob = build_problem(vert; g=g, h_bathy=x -> d0,
-        regime=regime_sym(), nl_pressure=nl_pressure_sym(), flat_bed=flat_bed_flag(),   # constant depth → flat bed
+        regime=regime_sym(), nl_pressure=nl_pressure_flag(), flat_bed=flat_bed_flag(),   # constant depth → flat bed
         mu_sponge=x -> 0.0, wm_src=(x,t) -> 0.0)
 
     # initial free-surface hump at the basin centre (u=0); x_wall_bc=true is set
@@ -91,7 +91,7 @@ result = with_mpi() do distribute
         @printf("# domain %.0f×%.0f | d=%.2f | hump A=%.4g | dt=%.4g | %d steps (T=%.1f)\n",
                 Lx, Ly, d0, A0, dt, nsteps, Tfinal)
         @printf("# regime=%s nl_pressure=%s flat_bed=%s | M0=%.6e E0=%.6e\n",
-                string(regime_sym()), string(nl_pressure_sym()), string(flat_bed_flag()), M0, E0)
+                string(regime_sym()), string(nl_pressure_flag()), string(flat_bed_flag()), M0, E0)
         open(joinpath(outdir, "conservation.csv"), "w") do io
             println(io, "step,t,mass,dmass_rel,energy,denergy_rel,etaL2,nl_iters")
         end

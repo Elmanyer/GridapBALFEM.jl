@@ -1,5 +1,10 @@
 # PLANNED_CAMPAIGNS.md — the MMS convergence tests still owed
 
+> **⚙ v1 RECORD (2026-10-05).** The campaigns planned here were designed for v1's tiers and treatments; v2's campaign is `V2_SOLVER_PLAN.md` §4. It is kept as the record of how v1 reached its results;
+> the v2 solver (branch `v2-solver`) differs — one Class-III formulation (broken), `nl_pressure::Bool`
+> with all eight `𝓝` components, no component mask (`V2_SOLVER_PLAN.md`). Paths `output/…` here are
+> now under `output_v1/`.
+
 > **Scope — what belongs here.** *Everything designed but not yet run*: the next MMS convergence
 > campaigns, their ladders, the code they need, and other unblocked runs. Answers **"what runs
 > next, and what must be true before it does?"**

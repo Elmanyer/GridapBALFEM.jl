@@ -24,7 +24,7 @@
 #    BALFEM_CONV_NLTOL   Newton tol                       1e-14
 #    BALFEM_CONV_OUT     output dir                       output/local/mms/convergence_matrix
 #    BALFEM_CONV_REGIME  linear | nonlinear                linear
-#    BALFEM_CONV_NLP     none | native | full              none  (≠none available since 2026-08-18)
+#    BALFEM_CONV_NLP     0 | 1  (all eight 𝓝 components)  0
 #    BALFEM_CONV_FLATBED 1 flat bed | 0 variable bed       1
 #    BALFEM_CONV_AB      bed amplitude when FLATBED=0      0.2
 #    BALFEM_CONV_NLITER  Newton budget                     50 linear / 400 nonlinear
@@ -51,7 +51,7 @@ outdir = genv("BALFEM_CONV_OUT","output/local/mms/convergence_matrix"); mkpath(o
 #  MMS models instead of only the linear flat-bed one. The three symbols drive the
 #  forcing and the solver from one variable each, so they cannot drift apart.
 regime  = Symbol(genv("BALFEM_CONV_REGIME","linear"))
-nlp     = Symbol(genv("BALFEM_CONV_NLP","none"))
+nlp     = genv_b("BALFEM_CONV_NLP", 0)
 flatbed = genv_b("BALFEM_CONV_FLATBED",1)
 a_b     = genv_f("BALFEM_CONV_AB",0.2)          # bed amplitude when FLATBED=0
 #  Nonlinear ⇒ quasi-Newton ⇒ LINEAR convergence ⇒ needs budget, not a looser
@@ -66,7 +66,7 @@ p_vert  = genv_i("BALFEM_CONV_PVERT", 1)
 model   = regime === :linear ? (flatbed ? 1 : 2) : (flatbed ? 3 : 4)
 
 println("#"^76)
-println("#  MMS CONVERGENCE CAMPAIGN — Model $model ($(regime) / $(flatbed ? "flat" : "variable") bed / :$(nlp))")
+println("#  MMS CONVERGENCE CAMPAIGN — Model $model ($(regime) / $(flatbed ? "flat" : "variable") bed / nlp$(Int(nlp)))")
 println("#    vertical basis P$(p_vert)LFE-$(Mvert)  (Nσ = $(Mvert*p_vert+1))")
 println("#    pairings Q_p/Q_{p-1} for p = $(pus) | domain=$domain | modes=$modes")
 println("#    levels=$levels nx0=$nx0 dt=$dt nsteps=$nsteps | $(dist ? "MPI $(px)x$(py)" : "sequential (direct LU)")")

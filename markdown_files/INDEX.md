@@ -6,6 +6,13 @@ index exists so the right file is obvious without opening four of them.
 ⚠ **This directory is tracked; `latex_docs/` is gitignored.** Anything load-bearing therefore
 belongs here, not in the LaTeX.
 
+> **v2 (2026-10-05).** The solver was split into a frozen v1 (tag `v1_final_solver`) and v2 (branch
+> `v2-solver`). Start v2 work from [`V2_SOLVER_PLAN.md`](V2_SOLVER_PLAN.md) (what changed, step by
+> step) and [`LATEX_STRUCTURE.md`](LATEX_STRUCTURE.md) (the v2 document). The whole v1 history — the
+> old `CLAUDE.md` verbatim — is [`HISTORY_V1.md`](HISTORY_V1.md). Files carrying a "⚙ v1 RECORD"
+> banner (`VERIFIED_SCOPE`, `TEST_SUITE`, `OPEN_ISSUES`, `PLANNED_CAMPAIGNS`, `NEW_TREATMENT`,
+> `BROKEN_FORMULATION_PLAN`, `GHOST_PENALTY_PLAN`) record v1 measurements; read their banner first.
+
 ## The four that are easy to confuse
 
 They are separated by **the question each answers**, and each carries a scope header saying what it
@@ -46,6 +53,7 @@ belongs in `PLANNED_CAMPAIGNS.md`. On 2026-09-11 the "Runs not yet made" list mo
 | [`CAMPAIGN_COST.md`](CAMPAIGN_COST.md) | measured run costs, memory bands, queue limits, scheduling lessons |
 | [`OUTPUT_NAMING_PROPOSAL.md`](OUTPUT_NAMING_PROPOSAL.md) | the output-directory grammar — accepted and implemented |
 | [`NEW_TREATMENT.md`](NEW_TREATMENT.md) | the Class-III treatments and every campaign run on them: reduction, in-loop projections, the **mixed formulation**, the flume factorial, the closed periodic box (Parts A–I) |
+| [`HISTORY_V1.md`](HISTORY_V1.md) | **the v1 record**: the project `CLAUDE.md` verbatim at tag `v1_final_solver` — every v1 campaign, measurement and status |
 | [`V2_SOLVER_PLAN.md`](V2_SOLVER_PLAN.md) | **v2 solver plan**: the main changes (broken formulation only, `nl_pressure::Bool`, all eight `𝓝` components) and the step-by-step implementation |
 | [`LATEX_STRUCTURE.md`](LATEX_STRUCTURE.md) | **v2 document structure** (`latex_docs/BALFEM_models_v2/`): the chapter order and why — weak form and regularity, multi-field implementation, stability, stabilisation, solver functionalities, validation |
 | [`COMPLETED_VBASIS_STUDY.md`](COMPLETED_VBASIS_STUDY.md) | design record of the finished vertical-basis study |

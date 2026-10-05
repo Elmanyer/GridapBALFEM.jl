@@ -1,44 +1,43 @@
 # ==============================================================
-#  broken.jl — the BROKEN (skeleton) Class-III formulation and the C⁰-IP penalty
+#  broken.jl — the BROKEN (skeleton) Class-III formulation and the skeleton stabilisers
 #
 #  Mathematics: LaTeX §"Broken Weak Formulation: Term-by-Term Audit"
-#  (latex_docs/BALFEM_models/NumericalImplementation/BrokenAudit.tex).
-#  Implementation record and campaign: markdown_files/BROKEN_FORMULATION_PLAN.md.
+#  (v1: latex_docs/BALFEM_models_v1/NumericalImplementation/BrokenAudit.tex).
+#  Records: markdown_files/BROKEN_FORMULATION_PLAN.md, GHOST_PENALTY_PLAN.md (v1 campaigns),
+#  markdown_files/V2_SOLVER_PLAN.md (v2: the only Class-III treatment).
 #
-#  TWO ORTHOGONAL OPTIONS, both carried by `prob.skel[]` (nothing ⇒ bit-identical to main):
+#  Both live on `prob.skel[]`, one skeleton record (`skeleton_nt`):
 #
-#  (1) `broken = true` — a third treatment of the Class-III 𝓚 (surface-slope) and 𝓟
-#      (leading-pressure) blocks, beside the PROJECTED (frozen L² projections) and the MIXED
-#      (auxiliary unknowns) ones. It inserts the DISTRIBUTIONAL gradient of the broken fields
-#      𝖲 = ∇·(H𝗎) and 𝖻 = 𝗎·∇H directly:
+#  (1) THE Class-III treatment (v2: the only one). Whenever `prob.nl_pressure`, the 𝓚
+#      (surface-slope) and 𝓟 (leading-pressure) blocks of components {1,2,4,5} take the
+#      DISTRIBUTIONAL gradient of the broken fields 𝖲 = ∇·(H𝗎) and 𝖻 = 𝗎·∇H:
 #
 #          ∇𝖲 = ∇_𝒯𝖲 − Σ_F ⟦𝖲⟧_F n_F δ_F           (⟦f⟧_F ≡ f⁺ − f⁻, n_F = n⁺)
 #
 #      — cellwise second derivatives of the C⁰ unknowns (via ∇∇, hand-expanded) PLUS one
 #      skeleton integral for the layer. Form (A) of the audit: trial Hessians only, first
-#      test derivatives only. No auxiliary unknowns, no projection, no lag. The 𝓐 (∇h) block
-#      is NOT touched: its global IBP is already the exact distributional operator (audit
-#      §"Bed-slope block").
+#      test derivatives only. No auxiliary unknowns, no projection, no lag. BOTH arms (∇𝖲 and
+#      ∇𝖻) always. The 𝓐 (∇h) block is NOT here: its global IBP is already the exact
+#      distributional operator (nlp_gradh_contrib). Built by `build_problem_raw`.
 #
-#  (2) the C⁰ interior penalty  J_h = Σ_F ∫_F γ_u τ_u h_F^s Σₐ ⟦∂ₙ𝖴ₐ⟧·Mv⟦∂ₙ𝖵ₐ⟧
-#                                         + γ_η τ_η h_F^s ⟦∂ₙη⟧⟦∂ₙq⟧,
+#  (2) the skeleton STABILISATION, `attach_skeleton!` (any model):
+#      :jumpgrad    J_h = Σ_F Σ_{j≤order} ∫_F γ τ h_F^(s+2(j−1)) ⟦∂ₙʲ·⟧⟦∂ₙʲ·⟧   (orders ≤ 2)
+#      :ghostvolume the direct (volume) ghost penalty — every order 0…p (see below)
 #      τ_u = d√(gd), τ_η = √(gd), d = still-water depth. LINEAR in the unknowns (still-water
-#      scales), so its Jacobian is exact and it adds nothing to ∂R/∂u̇ (a damping, not a mass
-#      modification). Sign-definite, consistent (zero on the exact solution and on global
-#      polynomials of degree ≤ p), mass-conserving (q ≡ 1 ⇒ 0). Works with ANY tier and ANY
-#      Class-III treatment.
+#      scales), so its Jacobian is exact and it adds nothing to ∂R/∂u̇. Sign-definite,
+#      mass-conserving (q ≡ 1 ⇒ 0).
 #
 #  ⚠ JUMP CONVENTION. Every jump here is written EXPLICITLY as `f.plus − f.minus` with the
 #  single normal n_F = nΛ.plus, rather than through Gridap's `jump`, so that the sign of the
-#  layer is fixed by this file and verified by test_broken_formulation.jl G1 against the
-#  (independently verified) mixed weak gradient, to round-off.
+#  layer is fixed by this file and verified by test_broken_formulation.jl G1 (the layer
+#  identity against the weak gradient, to round-off).
 #
 #  ⚠ EXCLUDED, DELIBERATELY: the skeleton term ⟦𝒫ᵢ⟧·vᵢ of the leading-pressure integration
 #  by parts. It is consistent but turns the effective mass matrix into the element-wise strong
 #  form (h⁻⁴ conditioning, non-convergent; audit Table 6.1). Do not add it.
 #
-#  SEQUENTIAL ONLY (like the mixed path). On an x-periodic mesh the identified edge is an
-#  interior facet of the skeleton.
+#  SEQUENTIAL ONLY (V2_SOLVER_PLAN.md step 10 ports it). On an x-periodic mesh the identified
+#  edge is an interior facet of the skeleton.
 # ==============================================================
 
 "(a,b) component of the ELEMENT-WISE Hessian of a scalar or stacked `VectorValue{Nσ}` field.
@@ -71,14 +70,32 @@ function build_skeleton_ctx(model; degree::Int)
 end
 
 """
-    attach_skeleton!(prob, model; broken=false, cip_gamma_u=0.0, cip_gamma_eta=0.0,
-                     cip_hexp=2.0, degree) -> prob
+    skeleton_nt(ctx; stab=:none, gu=0, ge=0, hexp=2, order_u=0, order_eta=0, cu=(), ce=(),
+                ghost=nothing) -> NamedTuple
 
-Select the broken Class-III treatment and/or the C⁰-IP penalty by attaching the skeleton
-context to `prob.skel[]`. With `broken=false` and both γ = 0 the field is left `nothing`
-and every residual path is bit-identical to the Galerkin one (test_broken_formulation G3).
+The ONE skeleton record carried on `prob.skel[]`: the geometric context of
+`build_skeleton_ctx` plus the stabilisation settings (`stab === :none` ⇒ no penalty). The
+broken Class-III layer reads only the geometry; the stabilisers read the rest.
 """
-function attach_skeleton!(prob::BALFEMProblem, model; broken::Bool = false,
+skeleton_nt(ctx; stab::Symbol = :none, gu::Float64 = 0.0, ge::Float64 = 0.0, hexp::Float64 = 2.0,
+            order_u::Int = 0, order_eta::Int = 0, cu = (), ce = (), ghost = nothing) =
+    (Λ = ctx.Λ, dΛ = ctx.dΛ, nx = ctx.nx, ny = ctx.ny, hF = ctx.hF, nfacets = ctx.nfacets,
+     stab = stab, gu = gu, ge = ge, hexp = hexp, order_u = order_u, order_eta = order_eta,
+     cu = cu, ce = ce, ghost = ghost)
+
+"""
+    attach_skeleton!(prob, model; cip_gamma_u=0.0, cip_gamma_eta=0.0, cip_hexp=2.0, cip_order=1,
+                     stabilization=:jumpgrad, p_u, p_eta, degree) -> prob
+
+Attach (or clear) the skeleton STABILISATION. The skeleton record is rebuilt on `model` at
+quadrature `degree` and keeps serving the broken Class-III layer when `prob.nl_pressure`.
+With both γ = 0: the record is reduced to the bare geometry when `prob.nl_pressure` (the
+layer still needs it), and removed otherwise — the residual then has no skeleton term at all.
+
+⚠ v2: there is no `broken` keyword — the broken formulation is implied by `nl_pressure=true`
+(V2_SOLVER_PLAN.md). Passing it is a `MethodError`, deliberately.
+"""
+function attach_skeleton!(prob::BALFEMProblem, model;
                           cip_gamma_u::Real = 0.0, cip_gamma_eta::Real = 0.0,
                           cip_hexp::Real = 2.0, cip_order::Int = 1,
                           stabilization::Symbol = :jumpgrad,
@@ -89,17 +106,15 @@ function attach_skeleton!(prob::BALFEMProblem, model; broken::Bool = false,
         error("attach_skeleton!: cip_order applies to :jumpgrad only — :ghostvolume always covers " *
               "every order 0…p (GHOST_PENALTY_PLAN.md §1.4)")
     cip_gamma_u ≥ 0 && cip_gamma_eta ≥ 0 ||
-        error("attach_skeleton!: the C⁰-IP coefficients must be ≥ 0 (a negative penalty " *
+        error("attach_skeleton!: the penalty coefficients must be ≥ 0 (a negative penalty " *
               "is an energy SOURCE)")
     1 ≤ cip_order ≤ CIP_MAX_ORDER ||
         error("attach_skeleton!: cip_order must be in 1:$CIP_MAX_ORDER (got $cip_order). Gridap " *
               "evaluates derivatives of the FE bases only up to order 2 " *
               "(BROKEN_FORMULATION_PLAN.md §5.3)")
-    broken && !prob.nl_pressure_full &&
-        error("attach_skeleton!: broken=true replaces the Class-III treatment and needs " *
-              "nl_pressure=:full")
-    if !broken && cip_gamma_u == 0 && cip_gamma_eta == 0
-        prob.skel[] = nothing
+    if cip_gamma_u == 0 && cip_gamma_eta == 0
+        prob.skel[] = prob.nl_pressure ? skeleton_nt(build_skeleton_ctx(model; degree = degree)) :
+                                         nothing
         return prob
     end
     ctx = build_skeleton_ctx(model; degree = degree)
@@ -115,15 +130,15 @@ function attach_skeleton!(prob::BALFEMProblem, model; broken::Bool = false,
     ou  = min(cip_order, p_u)
     oe  = min(cip_order, p_eta)
     hw  = j -> Operation(h -> h^(cip_hexp + 2*(j - 1)))(ctx.hF)
-    gh  = stabilization === :ghostvolume && (cip_gamma_u > 0 || cip_gamma_eta > 0) ?
+    gh  = stabilization === :ghostvolume ?
           build_ghost_ctx(model, ctx, τu, τη, Float64(cip_gamma_u), Float64(cip_gamma_eta),
                           Float64(cip_hexp), p_u, p_eta) : nothing
-    prob.skel[] = (ctx..., broken = broken, stab = stabilization,
-                   gu = Float64(cip_gamma_u), ge = Float64(cip_gamma_eta),
-                   hexp = Float64(cip_hexp), order_u = ou, order_eta = oe,
-                   cu = ntuple(j -> Float64(cip_gamma_u) * τu * hw(j), ou),
-                   ce = ntuple(j -> Float64(cip_gamma_eta) * τη * hw(j), oe),
-                   ghost = gh)
+    prob.skel[] = skeleton_nt(ctx; stab = stabilization,
+                              gu = Float64(cip_gamma_u), ge = Float64(cip_gamma_eta),
+                              hexp = Float64(cip_hexp), order_u = ou, order_eta = oe,
+                              cu = ntuple(j -> Float64(cip_gamma_u) * τu * hw(j), ou),
+                              ce = ntuple(j -> Float64(cip_gamma_eta) * τη * hw(j), oe),
+                              ghost = gh)
     return prob
 end
 
@@ -131,10 +146,7 @@ end
 only (Fields/FieldsInterfaces.jl:85–86; Polynomials/PolynomialInterfaces.jl)."
 const CIP_MAX_ORDER = 2
 
-"True when `prob` assembles the Class-III 𝓚/𝓟 blocks by the broken (distributional) path."
-is_broken(prob::BALFEMProblem) = (sk = prob.skel[]; sk !== nothing && sk.broken)
-
-"True when `prob` carries a C⁰-IP penalty."
+"True when `prob` carries a skeleton stabilisation (:jumpgrad or :ghostvolume) with γ > 0."
 has_cip(prob::BALFEMProblem) = (sk = prob.skel[]; sk !== nothing && (sk.gu > 0 || sk.ge > 0))
 
 """
@@ -149,8 +161,8 @@ The CELLWISE part of the Class-III objects, from the element-wise Hessians (audi
 
     GU_𝒯 = Σₐ ∂ₐ𝖲 ⊗ 𝖴ₐ,   SD = 𝖲 ⊗ D,   N4_𝒯 = Σₐ 𝖴ₐ ⊗ ∂ₐ𝖻
 
-— the exact analogues of `nlp_class3_reduced_fields`, with ∂ₐ(π𝖲) → ∂ₐ^𝒯𝖲. The skeleton
-layer that completes them is `broken_class3_skeleton_contrib`.
+— the cellwise part of the distributional gradients; the skeleton layer that completes them is
+`broken_class3_skeleton_contrib`.
 """
 function broken_class3_cell_fields(prob::BALFEMProblem, d_cf, η, H, dHx, dHy, Ux, Uy, DU, S)
     hxx, hxy, hyy = prob.flat_bed ? (0.0*d_cf, 0.0*d_cf, 0.0*d_cf) : alg_bed_hessian(d_cf)
@@ -171,17 +183,30 @@ function broken_class3_cell_fields(prob::BALFEMProblem, d_cf, η, H, dHx, dHy, U
     return GU, SD, N4, (dxS, dyS, dxb, dyb)
 end
 
-"Skeleton-layer counterpart of `_c3_sum`: the same weights and the same `c3_mask` bits, acting
-on the layer objects. `SD` has no layer (it is undifferentiated), so it is absent here."
-function _c3_layer(prob::BALFEMProblem, W, T4, LS, Lb)
-    use_gs, use_gb = prob.c3_mask
-    if use_gs && use_gb
-        return alg_dc3(W, LS) + alg_dc3(T4, Lb)
-    elseif use_gs
-        return alg_dc3(W, LS)
-    else
-        return alg_dc3(T4, Lb)
-    end
+"Skeleton-layer counterpart of `_c3_sum`: the same weights, acting on the layer objects — the
+∇𝖲 arm (`W ⊙ ⟦𝖲⟧⊗𝖴ₙ`) and the ∇𝖻 arm (`T⁴ ⊙ 𝖴ₙ⊗⟦𝖻⟧`). `SD` has no layer (it is
+undifferentiated), so it is absent here."
+_c3_layer(prob::BALFEMProblem, W, T4, LS, Lb) = alg_dc3(W, LS) + alg_dc3(T4, Lb)
+
+"""
+    broken_class3_residual(prob, sk, d_cf, η, H, dHx, dHy, Ux, Uy, DU, S, bf, Wx, Wy, DW, dΩh)
+
+The complete Class-III 𝓚 and 𝓟 contribution of components {1,2,4,5}, broken form: the cellwise
+volume part (`broken_class3_cell_fields` through the reduced contractions) plus the skeleton
+layer (`broken_class3_skeleton_contrib`). This is what `global_residual` assembles whenever
+`prob.nl_pressure`, and what `broken_class3_jacobian` linearises exactly — exposing it on its
+own is what lets the Jacobian be checked against a finite difference of THESE terms alone
+(test_broken_formulation.jl G10).
+"""
+function broken_class3_residual(prob::BALFEMProblem, sk, d_cf, η, H, dHx, dHy, Ux, Uy, DU, S, bf,
+                                Wx, Wy, DW, dΩh)
+    sk === nothing &&
+        error("broken_class3_residual: prob.skel[] is nothing — a problem with nl_pressure=true must " *
+              "be built by build_problem(…; model, quad_degree), which attaches the skeleton")
+    GU, SD, N4, _ = broken_class3_cell_fields(prob, d_cf, η, H, dHx, dHy, Ux, Uy, DU, S)
+    r = nlp_gradH_reduced_contrib(prob, H, dHx, dHy, Wx, Wy, GU, SD, N4, dΩh)
+    r = r + nlp_P_reduced_contrib(prob, H, DW, GU, SD, N4, dΩh)
+    return r + broken_class3_skeleton_contrib(prob, sk, H, dHx, dHy, Ux, Uy, S, bf, Wx, Wy, DW)
 end
 
 """

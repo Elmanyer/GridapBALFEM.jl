@@ -62,7 +62,7 @@ save_ev  = genv_i("BALFEM_SAVE_EVERY", 1)  # SAVE A LOT OF SCREENSHOTS FOR VISUA
 #  below: it is what makes the <domain> token truthful.
 _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:open,
                            wave_kind="dir", wave_gen=(:bc),
-                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           regime=regime_sym(), nl_pressure=nl_pressure_flag(),
                            bed="flat", p_u=feord, p_eta=p_eta,
                            amplitude=hs_val(), period=tp_val(), irregular=true)
 outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
@@ -86,7 +86,7 @@ diags, vert, prob = setup_and_run_distributed(
     sponge_wL=0.0, sponge_wR=sponge, sponge_wB=sponge, sponge_wT=sponge,
     mu_max=mumax,
     T_final=Tfinal, dt=dt,
-    regime=regime_sym(), nl_pressure=nl_pressure_sym(), flat_bed=flat_bed_flag(),          # flat sea bed (∇h≡0); set BALFEM_FLAT_BED=0 for variable bathymetry
+    regime=regime_sym(), nl_pressure=nl_pressure_flag(), flat_bed=flat_bed_flag(),          # flat sea bed (∇h≡0); set BALFEM_FLAT_BED=0 for variable bathymetry
     y_wall_bc=:open, x_wall_bc=false,       # REQUIRED: v ≠ 0 at the inflow
     output_dir=outdir, save_every=save_ev,
     write_w=genv_b("BALFEM_WRITE_W", 0), write_pressure=genv_b("BALFEM_WRITE_PRESSURE", 0),

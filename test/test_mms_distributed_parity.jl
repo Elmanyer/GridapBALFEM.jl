@@ -28,7 +28,7 @@
 #        non-Model-1 configuration (linear ⇒ one Newton step), and it moves the
 #        `flat_bed` switch AND forces the general `mms_forcing` path instead of
 #        the Model-1 closed form.
-#    G2  PARITY, regime × nl_pressure — Model 5 (:nonlinear / flat / :native).
+#    G2  PARITY, regime × bed — Model 4 (:nonlinear / variable bed / nl_pressure=false; v2).
 #        The other two switches, which G1 leaves at their Model-1 values.
 #
 #  Together G1 and G2 move all three switches off their hard-coded values, so the
@@ -71,7 +71,6 @@ const P_U, P_ETA = 3, 2     # Q3/Q2, the pairing used everywhere else
 #
 #      Model 1 (lin/flat/:none)      e_eta=1.9844455e-04   e_u=9.859119e-06
 #      Model 2 (lin/varbed/:none)    e_eta=1.9844463e-04   e_u=9.857747e-06
-#      Model 5 (nl/flat/:native)     e_eta=1.9844477e-04   e_u=9.862121e-06
 #                                    Δ ≈ 4e-07 rel        Δ ≈ 1.4e-04 / 3.1e-04 rel
 #
 #  ⚠ THE MMS L² ERROR IS A WEAK DISCRIMINATOR BETWEEN MODEL TIERS, and the reason
@@ -89,10 +88,8 @@ const PARITY_RTOL   = 1e-7    # LU vs GMRES(1e-13) on the SAME problem
 const MIN_MARGIN    = 30.0    # required separation / PARITY_RTOL
 
 #  If a future change makes the separation shrink below the margin, the honest fix
-#  is a MORE DISCRIMINATING CASE, not a looser gate. The strongest one available is
-#  `nl_pressure=:full`, whose e_u sits on a frozen-projection floor ~600x above the
-#  :none value — but its LU-vs-CG projection difference then needs a parity
-#  tolerance nearer 5e-3 (see test_nlpressure_distributed.jl).
+#  is a MORE DISCRIMINATING CASE, not a looser gate (a coarser mesh or a larger a_b; in v2
+#  nl_pressure=true becomes available here once the broken formulation is distributed).
 
 is_rank0 = get(ENV, "OMPI_COMM_WORLD_RANK", get(ENV, "PMI_RANK", "0")) == "0"
 n_pass = 0; n_fail = 0
@@ -118,9 +115,11 @@ common = (; nx=NX, ny=NY, dt=1e-5, T_final=1e-4, Lx=LX, Ly=LY, d=DEPTH,
             nl_tol=1e-12, nl_iter=400, verbose=false)
 
 models = (
-    m1     = (; regime=:linear,    flat_bed=true,  nl_pressure=:none,   hfun=nothing),
-    model2 = (; regime=:linear,    flat_bed=false, nl_pressure=:none,   hfun=bed),
-    model5 = (; regime=:nonlinear, flat_bed=true,  nl_pressure=:native, hfun=nothing),
+    m1     = (; regime=:linear,    flat_bed=true,  nl_pressure=false, hfun=nothing),
+    model2 = (; regime=:linear,    flat_bed=false, nl_pressure=false, hfun=bed),
+    #  model 4 (nonlinear, variable bed): nl_pressure=true is not yet distributed
+    #  (V2_SOLVER_PLAN.md step 10).
+    model4 = (; regime=:nonlinear, flat_bed=false, nl_pressure=false, hfun=bed),
 )
 
 if is_rank0
@@ -148,7 +147,7 @@ end
 #  G0 — SEPARATION. Read this one first: if it fails, G1/G2 mean nothing.
 # ---------------------------------------------------------------------------
 is_rank0 && println("\n--- G0: separation — can this test RESOLVE a silent fallback to Model 1? ---")
-for k in (:model2, :model5)
+for k in (:model2, :model4)
     de = abs(seq[k].e_eta - seq.m1.e_eta) / seq.m1.e_eta
     du = abs(seq[k].e_u   - seq.m1.e_u)   / seq.m1.e_u
     sep = max(de, du)                      # e_u is the usable channel; see the note
@@ -162,14 +161,14 @@ if n_fail > 0 && is_rank0
     println("    defect on this case: a distributed run silently computing Model 1")
     println("    would land INSIDE the parity tolerance and be reported as a PASS.")
     println("    Fix by making the case MORE DISCRIMINATING (coarser mesh, larger")
-    println("    a_b, or nl_pressure=:full) — never by loosening PARITY_RTOL.")
+    println("    or a larger a_b) — never by loosening PARITY_RTOL.")
     flush(stdout)
 end
 
 # ---------------------------------------------------------------------------
 #  G1 / G2 — PARITY. Same model, both execution paths.
 # ---------------------------------------------------------------------------
-for (gate, k) in (("G1", :model2), ("G2", :model5))
+for (gate, k) in (("G1", :model2), ("G2", :model4))
     m = models[k]
     is_rank0 && println("\n--- $gate: $k  $(m.regime) / $(m.flat_bed ? "flat" : "varbed") / $(m.nl_pressure) ---")
     is_rank0 && flush(stdout)

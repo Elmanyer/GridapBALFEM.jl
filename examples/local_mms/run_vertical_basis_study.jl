@@ -10,7 +10,7 @@
 #  the `length(c_bdy) == M+1` assertion. The evidence for the property the project
 #  is named for was one data point. This script produces the rest.
 #
-#  Design: markdown_files/COMPLETED_VBASIS_STUDY.md §1 (tiers 1–3).
+#  Design: markdown_files/COMPLETED_VBASIS_STUDY.md §1 (v1 record).
 #
 #  ⚠ THIS BELONGS LOCAL AND SEQUENTIAL. MMS measures the order of accuracy under
 #  MESH REFINEMENT; the domain size does not enter a rate at all (h = Lx/nx, so a
@@ -27,16 +27,12 @@
 #  p ≥ 2 no published optimum exists and `resolve_cbdy` falls back to the Yang &
 #  Liu boundaries for that M (a uniform split when M > 4), which is fine for a rate.
 #
-#  ⚠ TIER 3 (:full) IS NOT A RATE STUDY. `:full` pins p_u at −0.00 by
-#  construction: the solver evaluates components {1,2,4,5} from frozen L²
-#  projections lagged one step while the forcing computes them exactly, so the two
-#  encode different operators and refinement never closes the gap. The FLOOR value
-#  is what tier 3 wants — does it depend on Nσ? — and this script reports it,
-#  labelled as a floor, with no rate gate on u. Enabling a rate gate there would
-#  manufacture a defect that does not exist.
+#  Six models — regime × bed × nl_pressure (V2_SOLVER_PLAN.md §1). Models 5–6 are
+#  `nl_pressure=true` (all eight 𝓝 components, Class III by the broken formulation, exact),
+#  so both fields are rate-gated.
 #
 #  COST. Nσ = M·p+1 and the forcing scales as Nσ², multiplied by the tier factor
-#  (:native forcing is ~4–6× :none). Relative to P1LFE-2: P1LFE-3 1.8×, P1LFE-4
+#  (nl_pressure=true forcing is several × the 𝓝-free one). Relative to P1LFE-2: P1LFE-3 1.8×, P1LFE-4
 #  2.8×, P2LFE-2 2.8×, P2LFE-3 5.4×, P2LFE-4 9.0×. PRUNE THE GRID BEFORE RUNNING.
 #
 #  TOLERANCES must stay ~8 orders tighter than production (nl_tol 1e-12…1e-14,
@@ -47,7 +43,7 @@
 #
 #  ENV
 #    VB_BASES     "M:p,M:p,…"  vertical bases       2:1,3:1,4:1,2:2
-#    VB_MODELS    comma list of model numbers 1-8   1,2,3,4,5,6   (7,8 = :full)
+#    VB_MODELS    comma list of model numbers 1-6   1,2,3,4,5,6   (5,6 = nl_pressure=true)
 #    VB_PU        velocity FE order p_u             3      (⇒ Q3/Q2)
 #    VB_DOMAIN    d1 | d2                           d1
 #    VB_MODE      static | transient                static
@@ -64,8 +60,8 @@
 #    # tier 1, the paper claim (30 studies — hours):
 #    VB_BASES=2:1,3:1,4:1,2:2,3:2 VB_MODELS=1,2,3,4,5,6 \
 #        julia --project=. examples/local_mms/run_vertical_basis_study.jl
-#    # tier 3, the :full floor vs Nσ:
-#    VB_MODELS=7,8 VB_BASES=2:1,3:1 \
+#    # the nonlinear-pressure models only:
+#    VB_MODELS=5,6 VB_BASES=2:1,3:1 \
 #        julia --project=. examples/local_mms/run_vertical_basis_study.jl
 # ==============================================================
 using GridapBALFEM, Printf
@@ -73,18 +69,15 @@ using GridapBALFEM, Printf
 gs(k,d)=get(ENV,k,d); gi(k,d)=parse(Int,get(ENV,k,string(d)))
 gf(k,d)=parse(Float64,get(ENV,k,string(d)))
 
-#  The eight models of §4 of CLAUDE.md, as (regime, flat_bed, nl_pressure).
-#  `rate_u` is false exactly where the MMS cannot reach the operator — see the
-#  tier-3 note above. Numbering matches the verified-scope table.
+#  The six models (V2_SOLVER_PLAN.md §1), as (regime, flat_bed, nl_pressure). `rate_u`
+#  switches the u-rate gate off for a model the MMS cannot reach (none at present).
 const MODELS = Dict(
-    1 => (regime=:linear,    flat_bed=true,  nlp=:none,   rate_u=true),
-    2 => (regime=:linear,    flat_bed=false, nlp=:none,   rate_u=true),
-    3 => (regime=:nonlinear, flat_bed=true,  nlp=:none,   rate_u=true),
-    4 => (regime=:nonlinear, flat_bed=false, nlp=:none,   rate_u=true),
-    5 => (regime=:nonlinear, flat_bed=true,  nlp=:native, rate_u=true),
-    6 => (regime=:nonlinear, flat_bed=false, nlp=:native, rate_u=true),
-    7 => (regime=:nonlinear, flat_bed=true,  nlp=:full,   rate_u=false),
-    8 => (regime=:nonlinear, flat_bed=false, nlp=:full,   rate_u=false),
+    1 => (regime=:linear,    flat_bed=true,  nlp=false, rate_u=true),
+    2 => (regime=:linear,    flat_bed=false, nlp=false, rate_u=true),
+    3 => (regime=:nonlinear, flat_bed=true,  nlp=false, rate_u=true),
+    4 => (regime=:nonlinear, flat_bed=false, nlp=false, rate_u=true),
+    5 => (regime=:nonlinear, flat_bed=true,  nlp=true,  rate_u=true),
+    6 => (regime=:nonlinear, flat_bed=false, nlp=true,  rate_u=true),
 )
 
 bases = map(split(gs("VB_BASES","2:1,3:1,4:1,2:2"), ",")) do tok
@@ -105,16 +98,15 @@ println("#  VERTICAL-BASIS CONVERGENCE STUDY — is the order INDEPENDENT of the
 println("#    bases  : ", join(["P$(b.p)LFE-$(b.M) (Nσ=$(b.M*b.p+1))" for b in bases], "  "))
 println("#    models : $mods    pairing Q$(p_u)/Q$(p_u-1)   $dom  $mode  levels=$levels nx0=$nx0")
 println("#    gates  : u → $(p_u+1)   eta → $(p_u)   (different optima, by design)")
-println("#    ⚠ models 7/8 (:full) are NOT rate-gated on u — the floor is reported instead")
 println("#"^84); flush(stdout)
 
 rows = []; summ = []
 for b in bases, mno in mods
-    haskey(MODELS, mno) || error("VB_MODELS: unknown model $mno (valid 1–8)")
+    haskey(MODELS, mno) || error("VB_MODELS: unknown model $mno (valid 1–6 in v2)")
     m = MODELS[mno]
     nliter = gi("VB_NLITER", m.regime === :linear ? 50 : 400)
     println("\n" * "-"^84)
-    println("  P$(b.p)LFE-$(b.M)  ×  Model $mno  ($(m.regime) / $(m.flat_bed ? "flat" : "varbed") / :$(m.nlp))")
+    println("  P$(b.p)LFE-$(b.M)  ×  Model $mno  ($(m.regime) / $(m.flat_bed ? "flat" : "varbed") / nlp$(Int(m.nlp)))")
     println("-"^84); flush(stdout)
     #  A study that cannot COMPLETE is a failed entry, not an aborted campaign:
     #  letting it propagate would destroy the report of every study that did work.
@@ -150,8 +142,6 @@ for b in bases, mno in mods
                  fit_eta=r.fit_eta, opt_eta=r.opt_eta,
                  fit_u=r.fit_u, opt_u=r.opt_u, e_u_floor=r.e_u[end],
                  rate_u=m.rate_u, verdict=(okη && oku) ? "PASS" : "CHECK"))
-    m.rate_u || @printf("    :full ⇒ e_u FLOOR = %.6e at Nσ=%d (p_u=%.3f, NOT a rate)\n",
-                        r.e_u[end], r.Nsigma, r.fit_u)
     flush(stdout)
 end
 
@@ -162,7 +152,7 @@ open(csv,"w") do io
 end
 
 println("\n" * "="^100)
-println("  VERTICAL-BASIS SUMMARY   (u is not rate-gated for :full — floor reported instead)")
+println("  VERTICAL-BASIS SUMMARY")
 println("="^100)
 @printf("  %-46s %4s  %-13s %-13s %-12s %s\n",
         "study","Nσ","eta fit/opt","u fit/opt","e_u(finest)","verdict")
@@ -177,4 +167,3 @@ println("    every rate optimal across bases ⇒ the order is INDEPENDENT of the
 println("      which is the direct quantitative support for the basis-agnosticism claim;")
 println("    one basis off-optimal ⇒ check the ERROR MAGNITUDE and the pairwise SEQUENCE")
 println("      before concluding — a saturated study and a wrong coefficient look identical;")
-println("    :full rows ⇒ compare e_u(finest) ACROSS Nσ. That, not a rate, is tier 3's answer.")

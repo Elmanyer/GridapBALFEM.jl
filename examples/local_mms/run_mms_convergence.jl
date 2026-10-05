@@ -27,7 +27,7 @@
 #    BALFEM_MMS_OUT      output directory            output/local/mms
 #    -- model selection (the four MMS models) --
 #    BALFEM_MMS_REGIME   linear | nonlinear          linear
-#    BALFEM_MMS_NLP      none | native | full        none   (≠none available since 2026-08-18)
+#    BALFEM_MMS_NLP      0 | 1  (all eight 𝓝 comps)  0
 #    BALFEM_MMS_FLATBED  1 flat | 0 variable bed     1
 #    BALFEM_MMS_AB       bed amplitude if FLATBED=0  0.2
 #    BALFEM_MMS_NLITER   Newton budget               50 linear / 400 nonlinear
@@ -60,6 +60,7 @@ using Printf
 genv(k, d)   = get(ENV, k, d)
 genv_i(k, d) = parse(Int,     get(ENV, k, string(d)))
 genv_f(k, d) = parse(Float64, get(ENV, k, string(d)))
+genv_b(k, d) = lowercase(get(ENV, k, string(d))) in ("1", "true")
 
 mode    = Symbol(genv("BALFEM_MMS_MODE", "both"))
 levels  = genv_i("BALFEM_MMS_LEVELS", 4)
@@ -85,7 +86,7 @@ mkpath(outdir)
 #  Model selection — the SAME three symbols drive the forcing and the solver
 #  (run_mms_case passes both from one variable each), so they cannot drift apart.
 regime      = Symbol(genv("BALFEM_MMS_REGIME", "linear"))
-nlp         = Symbol(genv("BALFEM_MMS_NLP", "none"))
+nlp         = genv_b("BALFEM_MMS_NLP", 0)
 flat_bed    = genv_i("BALFEM_MMS_FLATBED", 1) != 0
 a_b         = genv_f("BALFEM_MMS_AB", 0.2)       # bed amplitude when flat_bed=0
 nl_iter     = genv_i("BALFEM_MMS_NLITER", regime === :linear ? 50 : 400)
@@ -101,7 +102,7 @@ opt_eta, opt_u = p_eta + 1, order + 1
 model_no = regime === :linear ? (flat_bed ? 1 : 2) : (flat_bed ? 3 : 4)
 
 println("#"^70)
-println("#  ANALYTIC MMS — Model $model_no  ($(regime) / $(flat_bed ? "flat" : "variable") bed / :$(nlp))")
+println("#  ANALYTIC MMS — Model $model_no  ($(regime) / $(flat_bed ? "flat" : "variable") bed / nlp$(Int(nlp)))")
 println("#    domain $(Lx)×$(Ly) m | d=$(dval) | P$(p_vert)LFE-$(Mvert) (Nσ=$(Mvert*p_vert+1)) | Q$(order)/Q$(p_eta) | $(solver)")
 println("#    expected: space  eta→$(opt_eta)  u→$(opt_u)   |   time 2")
 if order == p_eta

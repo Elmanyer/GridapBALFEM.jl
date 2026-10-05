@@ -36,11 +36,10 @@
 #  test_jacobians_ad.jl distinguishes the two directly, by measuring how the
 #  hand↔AD gap scales with state amplitude: vanishing ⇒ slow, flat ⇒ wrong.
 #
-#  RUNTIME. ~25–30 min per :none study (3 levels). The :native study is
-#  SUBSTANTIALLY slower — the 𝓝 forcing costs ~4x a :none evaluation (measured
-#  ~25 vs ~100-150 µs/point), because Ψ carries an Nσ²x8 component sum that the
-#  outer gradient then differentiates. Budget ~1 h for it. Set MMS_NL_LEVELS to
-#  shorten.
+#  RUNTIME. ~25–30 min per nl_pressure=false study (3 levels). The nl_pressure=true
+#  studies are SUBSTANTIALLY slower — the 𝓝 forcing costs several × the 𝓝-free one
+#  (Ψ carries an Nσ²×8 component sum that the outer gradient then differentiates)
+#  and the solver assembles the broken Class-III skeleton. Set MMS_NL_LEVELS to shorten.
 #
 #  THE VERTICAL BASIS IS A PARAMETER: MMS_M (elements) and MMS_PVERT (order),
 #  defaulting to the P1LFE-2 every study in this repository has ever run. The
@@ -55,7 +54,7 @@
 #    MMS_NL_NX0     coarsest nx                             8
 #    MMS_M          vertical elements M                     2
 #    MMS_PVERT      vertical FE order p  (Nσ = M·p+1)       1
-#    MMS_NL_FULL    1 ⇒ also run the two :full models       0  (see below)
+#    MMS_NL_P       1 ⇒ also run the two nl_pressure=true models  0  (opt-in, see below)
 #
 #  RUN:  julia --project=. test/test_mms_convergence_nonlinear.jl
 #        MMS_M=3 julia --project=. test/test_mms_convergence_nonlinear.jl
@@ -76,7 +75,7 @@ const TOLP   = 0.3          # |p_obs − p_opt| gate, as in §subsubsec: mms mea
 #  threw the length(c_bdy)==M+1 assertion for anything else (fixed 2026-08-21).
 const M_VERT = parse(Int, get(ENV, "MMS_M",     "2"))
 const P_VERT = parse(Int, get(ENV, "MMS_PVERT", "1"))
-const RUN_FULL = get(ENV, "MMS_NL_FULL", "0") != "0"
+const RUN_NLP  = get(ENV, "MMS_NL_P", "0") != "0"
 @printf("  vertical basis: P%dLFE-%d  (Nσ = %d)   levels=%d  nx0=%d\n",
         P_VERT, M_VERT, M_VERT*P_VERT + 1, LEVELS, NX0)
 
@@ -87,11 +86,13 @@ function check(name, cond, extra = "")
            (println("  FAIL  $name $extra"); n_fail += 1)
 end
 
-#  Studies in the order of MMS_NONLINEAR_PLAN.md §3 — simplest first, so a broken
-#  rate is attributable to the block just added.
+#  Studies, simplest first, so a broken rate is attributable to the block just added.
+#  Six-model numbering (V2_SOLVER_PLAN.md §1): models 3–4 are nl_pressure=false, models 5–6
+#  nl_pressure=true (all eight 𝓝 components; Class III by the broken formulation, which is
+#  exact, so both fields are rate-gated). Read the pairwise sequence, not only the fit (rule 33).
 studies = [
-    (name = "Model 3  nonlinear / flat bed      / :none",
-     regime = :nonlinear, flat_bed = true,  nl_pressure = :none, nl_iter = 50,
+    (name = "Model 3  nonlinear / flat bed      / nlp0",
+     regime = :nonlinear, flat_bed = true,  nl_pressure = false, nl_iter = 50, a_eta = 0.8,
      rate_gate_u = true),
     #  Model 4 runs at the DEFAULT budget. It briefly carried nl_iter=400, added
     #  when the stall at ‖r‖=4.8e-8 was read as "quasi-Newton convergence is just
@@ -103,67 +104,23 @@ studies = [
     #  ordinary number of iterations. Lesson: distinguish "converging slowly"
     #  from "converging to the wrong thing" BEFORE spending iterations on it;
     #  test_jacobians_ad.jl tells them apart by amplitude scaling.
-    (name = "Model 4  nonlinear / variable bed  / :none",
-     regime = :nonlinear, flat_bed = false, nl_pressure = :none, nl_iter = 50,
+    (name = "Model 4  nonlinear / variable bed  / nlp0",
+     regime = :nonlinear, flat_bed = false, nl_pressure = false, nl_iter = 50, a_eta = 0.8,
      rate_gate_u = true),
-    #  ⛔ DO NOT SIMPLY UNCOMMENT ALL FOUR. The 𝓝 forcing became available on
-    #  2026-08-18 (B1 was a closure variable-capture bug, not the tag-precedence
-    #  limit recorded here before), but only `:native` is RATE-TESTABLE:
-    #
-    #    :native — components {3,6,7,8} are assembled NATIVELY, so the forcing and
-    #              the solver encode the same operator. Model 3 measured
-    #              p_η=2.996, p_u=3.997 and Model 4 p_η=2.996, p_u=3.998 —
-#              theoretical order in both. BOTH are enabled below.
-    #
-    #    :full   — adds {1,2,4,5}, whose irreducible ∂²η the SOLVER evaluates from
-    #              FROZEN L² PROJECTIONS lagged one step (src/nlpressure.jl) while
-    #              the MMS forcing computes them EXACTLY. Different operators, so
-    #              the study measures the surrogate and `e_u` STALLS AT A CONSTANT
-    #              (5.988e-03; p_u = −0.00 over a 16× refinement) while `e_η` keeps
-    #              its rate. ⚠ That is the IDENTICAL fingerprint to the 2026-08-17
-    #              gravity DEFECT and here it means the opposite — the MMS cannot
-    #              tell a wrong operator from a deliberately approximated one.
-    #              Enabling it as a RATE gate would assert something false.
-    #              If you want :full in the suite, pin the FLOOR (e_u ≈ 5.99e-3)
-    #              as a regression value instead — that detects a change in the
-    #              approximation, which a rate gate never could.
-    (name = "Model 3 / :native", regime=:nonlinear, flat_bed=true,  nl_pressure=:native,
-     nl_iter=50, rate_gate_u = true),
-    (name = "Model 4 / :native", regime=:nonlinear, flat_bed=false, nl_pressure=:native,
-     nl_iter=50, rate_gate_u = true),
 ]
-
-#  ---- the :full pair — OPT-IN (MMS_NL_FULL=1), AND NOT A RATE GATE ON u ------
-#  These complete the eight-model grid, so a vertical-basis sweep can cover every
-#  configuration the solver offers. They are OFF by default for two reasons, one
-#  of cost and one of meaning:
-#
-#    * cost — each is the most expensive tier (all eight 𝓝 components in the
-#      forcing), and enabling them by default would multiply this file's runtime
-#      and silently change its documented 8/8 score;
-#    * meaning — `rate_gate_u = false`. `e_u` STALLS AT A CONSTANT by
-#      construction: the solver evaluates the irreducible ∂²η of components
-#      {1,2,4,5} from frozen L² projections lagged one step while the forcing
-#      computes them exactly, so the two encode DIFFERENT operators and no mesh
-#      refinement closes the gap (VERIFIED_SCOPE.md §4). `e_η` keeps its rate and IS
-#      gated. The `e_u` floor is REPORTED, labelled as a floor.
-#
-#  ⚠ DO NOT "fix" this by gating p_u — that would assert something false — and do
-#  NOT pin a floor CONSTANT here either: the floor is a property of (M, p_vert,
-#  domain, depth, levels), and COMPLETED_VBASIS_STUDY.md §1 tier 3 exists precisely to ask
-#  whether it depends on Nσ. Pinning the P1LFE-2 number would break every other
-#  vertical basis the moment someone swept one.
-if RUN_FULL
-    append!(studies, [
-        (name = "Model 7  nonlinear / flat bed      / :full", regime=:nonlinear,
-         flat_bed=true,  nl_pressure=:full, nl_iter=50, rate_gate_u = false),
-        (name = "Model 8  nonlinear / variable bed  / :full", regime=:nonlinear,
-         flat_bed=false, nl_pressure=:full, nl_iter=50, rate_gate_u = false),
-    ])
-else
-    println("\n  [skip] the two :full models — set MMS_NL_FULL=1 to include them.")
-    println("         They are NOT rate-gated on u (frozen-projection floor); see the note above.")
-end
+#  ⚠ Models 5–6 are OPT-IN (MMS_NL_P=1) and NOT part of the verified scope: the full nonlinear
+#  model is still under development and not ready for MMS evaluation (decision 2026-10-05). The
+#  one exploratory run measured p_η 2.997/2.996 but p_u pairwise 3.94 → 1.97 (Model 5, nx 8–32).
+#  Models 5–6 at a_eta = 0.4: the {3,6,7,8} and ∇h-IBP 𝓝 blocks are quasi-Newton, and at the
+#  default a_eta = 0.8 (H_min = 0.2·d) Newton stalls above nl_tol. Lower the amplitude, never
+#  loosen nl_tol.
+RUN_NLP && append!(studies, [
+    (name = "Model 5  nonlinear / flat bed      / nlp1", regime=:nonlinear,
+     flat_bed=true,  nl_pressure=true, nl_iter=50, a_eta = 0.4, rate_gate_u = true),
+    (name = "Model 6  nonlinear / variable bed  / nlp1", regime=:nonlinear,
+     flat_bed=false, nl_pressure=true, nl_iter=50, a_eta = 0.4, rate_gate_u = true),
+])
+RUN_NLP || println("\n  [skip] models 5–6 (nl_pressure=true) — opt-in, MMS_NL_P=1; not yet in the verified scope.")
 
 for s in studies
     println("\n" * "-"^76)
@@ -181,7 +138,7 @@ for s in studies
                          M = M_VERT, p_vert = P_VERT,   # c_bdy ⇒ resolve_cbdy(M)
                          dt = 1e-5, nsteps = 100, nl_tol = 1e-9,
                          nl_iter = s.nl_iter,
-                         regime = s.regime, nl_pressure = s.nl_pressure,
+                         regime = s.regime, nl_pressure = s.nl_pressure, a_eta = s.a_eta,
                          flat_bed = s.flat_bed, a_b = s.flat_bed ? 0.0 : 0.2,
                          kbx = 1.3, kby = 0.0, verbose = true)
     catch e
@@ -206,15 +163,6 @@ for s in studies
     if s.rate_gate_u
         check("$(s.name): p_u   → $(Int(r.opt_u))",   abs(r.fit_u   - r.opt_u)   < TOLP,
               @sprintf("(got %.3f)", r.fit_u))
-    else
-        #  REPORTED, NOT GATED. See the :full note above: a stalled p_u is the
-        #  designed behaviour of the frozen-projection surrogate, so asserting a
-        #  rate would manufacture a defect, and asserting a floor CONSTANT would
-        #  break under any other vertical basis. What the sweep wants is the number.
-        @printf("  REPORT  %s: e_u FLOOR = %.6e  (p_u = %.3f over %d levels, %s, Nσ=%d)\n",
-                s.name, r.e_u[end], r.fit_u, length(r.h), r.tag, r.Nsigma)
-        println("          not gated: :full's u-error is capped by the frozen L² projections,")
-        println("          not by the mesh — VERIFIED_SCOPE.md §4. p_η above IS gated.")
     end
     flush(stdout)
 end
