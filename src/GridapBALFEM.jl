@@ -72,6 +72,7 @@ include("horizontal.jl")     # Stage 2: 2D mesh + stacked [η,𝖴x,𝖴y] FE sp
 include("problem.jl")        # BALFEMProblem struct + loop-free residual + hand Jacobians
 include("nlpressure.jl")     # FULL nonlinear pressure (native / ∇h exact-IBP / frozen proj.)
 include("mixed.jl")          # MIXED (projection-free) Class-III formulation — DIAGNOSTIC
+include("broken.jl")         # BROKEN (skeleton) Class-III formulation + C⁰-IP penalty
 include("reconstruct.jl")    # w / total-pressure σ-level VTK fields (serial + distributed)
 include("monitor.jl")        # solver monitor + governing-eq residual checker + reports
 include("timeloop.jl")       # ODE solver factory + sequential time loop (VTK + recon)
@@ -105,6 +106,10 @@ export build_ode_operator, build_ode_operator_ad
 # Mixed (projection-free) Class-III formulation — diagnostic, see src/mixed.jl
 export global_residual_mixed, build_ode_operator_mixed, make_initial_conditions_mixed
 export mixed_n_aux, mixed_coupling_jacobian, mixed_delta_S, mixed_consistent_ic
+# Broken (skeleton) Class-III formulation + C⁰ interior penalty — see src/broken.jl
+export alg_hess, build_skeleton_ctx, attach_skeleton!, is_broken, has_cip
+export broken_class3_cell_fields, broken_class3_skeleton_contrib, cip_contrib
+export ghost_contrib, stab_contrib, build_ghost_ctx, broken_class3_jacobian
 
 # Nonlinear pressure (full physics)
 export nlp_native_contrib, nlp_gradh_contrib, nlp_frozen_N

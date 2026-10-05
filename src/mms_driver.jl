@@ -69,6 +69,15 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         #  degradation (e_eta ratios 7.84 -> 5.46 while linear
                         #  holds 8.00). This kwarg is what tests it.
                         quad_extra::Int = 0,
+                        #  BROKEN Class-III path / C⁰-IP penalty (src/broken.jl, 2026-09-30).
+                        #  Off by default ⇒ every existing caller is byte-identical. The
+                        #  penalty is consistent (zero on the exact solution), so the MMS
+                        #  orders must survive it — that is what these knobs let us measure
+                        #  (BROKEN_FORMULATION_PLAN.md §T8).
+                        broken::Bool = false,
+                        cip_gamma_u::Float64 = 0.0, cip_gamma_eta::Float64 = 0.0,
+                        cip_hexp::Float64 = 2.0, cip_order::Int = 1,
+                        stabilization::Symbol = :jumpgrad,
                         verbose::Bool = true,
                         use_ad::Bool = false,   # AD Jacobians (3-arg TransientFEOperator)
                         output_dir::String = mktempdir(),
@@ -114,6 +123,10 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                          mu_sponge   = (x -> 0.0),    # sponge OFF
                          wm_src      = ((x, t) -> 0.0),  # wavemaker OFF
                          mms_src     = src)
+    attach_skeleton!(prob, model; broken = broken, cip_gamma_u = cip_gamma_u,
+                     cip_gamma_eta = cip_gamma_eta, cip_hexp = cip_hexp,
+                     cip_order = cip_order, stabilization = stabilization, p_u = p_u, p_eta = pe,
+                     degree = 2*max(p_u, pe) + 2 + quad_extra)
 
     op     = use_ad ? build_ode_operator_ad(prob, U, V, trian, dΩh) :
                       build_ode_operator(prob, U, V, trian, dΩh)
@@ -132,7 +145,7 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
     #  branch adds nothing at all — `:full` silently degenerates to `:native` while
     #  `mms_forcing` still forces all eight components. The three switches must
     #  select the SOLVER WORKFLOW and the forcing together, never just the forcing.
-    nlp = nl_pressure == :full ?
+    nlp = (nl_pressure == :full && !broken) ?
           (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh)) : nothing
 
     # --- IC = u*(t0), which satisfies the wall Dirichlet data exactly ------
