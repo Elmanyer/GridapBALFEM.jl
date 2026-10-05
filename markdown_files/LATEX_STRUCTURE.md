@@ -1,6 +1,18 @@
-# LATEX_STRUCTURE.md — the chapter order of `latex_docs/BALFEM_models/` and why
+# LATEX_STRUCTURE.md — the chapter order of the v2 LaTeX document (`latex_docs/BALFEM_models_v2/`) and why
 
-> **Revision 4 (2026-10-05) — PROPOSED, not yet applied to the LaTeX.**
+> **Revision 4 (2026-10-05): the structure of the v2 documentation.**
+>
+> **Where each document lives (separated 2026-10-05):**
+>
+> | | v1 (frozen) | v2 (active) |
+> |---|---|---|
+> | solver code | GitHub `GridapBALFEM.jl`, branches `main` / `v1-solver`, tag `v1_final_solver` | branch `v2-solver`; plan in [`V2_SOLVER_PLAN.md`](V2_SOLVER_PLAN.md) |
+> | LaTeX | `latex_docs/BALFEM_models_v1/` (GitHub `BALFEM_models`, tag `v1_final_solver`) | `latex_docs/BALFEM_models_v2/`, its own Overleaf project |
+> | run outputs | `output_v1/` | `output/` |
+>
+> `BALFEM_models_v2` starts as a verbatim copy of the v1 content. This file is the plan for
+> restructuring it. Nothing below has been applied to the LaTeX yet; the author edits it in
+> Overleaf.
 >
 > **What changes.**
 > * The two implementation chapters are reorganised around the development *story* of the
@@ -12,8 +24,20 @@
 > * The Gridap solver functionalities move to the end, after the core discretisation has been
 >   shown to work.
 >
+> **What the document must reflect from the v2 solver** (`V2_SOLVER_PLAN.md` §1):
+> * **One implemented Class-III treatment: broken.**
+>   * The mixed formulation is still *derived* in chapter 6 as the second consistent
+>     formulation. It is not implemented in v2 (it was in v1).
+>   * The projected treatment becomes Appendix A, as a v1 record.
+> * **`nl_pressure` is a Boolean:** all eight `𝓝` components on, or none. `:native`, `:full` and the
+>   component mask do not exist in v2. Where v1 results are quoted, they are labelled as v1.
+> * **Every number quoted below from the stability and stabilisation campaigns is a v1 result.**
+>   Those runs used `C3_MASK=gs`, i.e. component 4 omitted, and the mixed or projected treatment for
+>   the unstabilised ladder. Each is marked *(v1)* and is a placeholder until the v2 campaign of
+>   `V2_SOLVER_PLAN.md` §4 replaces it.
+>
 > Revisions 1–3 are summarised under "History" at the end; their full text is in git.
-> The open decisions this plan needs from the author are listed in §5.
+> The open decisions are listed in §5.
 
 ---
 
@@ -157,10 +181,15 @@ Placing it in an implementation chapter would leave the argument without its evi
 5. **The term-by-term classification and the model switches.**
    * Every term of the full model, tagged by amplitude order × bed-slope class × activation
      condition. The table factorises: `regime` is a truncation in amplitude order, `flat_bed` a
-     projection onto `∇h ≡ 0`, `nl_pressure` a component filter on `𝓝`. That is why the three
-     switches are orthogonal, and the `O(ε)` rows *are* the linearised model.
+     projection onto `∇h ≡ 0`, `nl_pressure` switches the whole `𝓝` operator on or off. That is
+     why the three switches are orthogonal, and the `O(ε)` rows *are* the linearised model.
+   * The section must say **why `𝓝` is switched as a whole (v2)**. A partial operator such as v1's
+     `:native` (`{3,6,7,8}`) is defined by a numerical criterion (first order on `C⁰`), not a
+     physical one. No ordering in amplitude or `kd` separates the components, and component 3 is
+     the same horizontal advection of `w` as components 1, 2, 4 and 5, applied to the bed-induced
+     part. This argument belongs next to the classification of §4, which is what exposes it.
    * It belongs here because it is a statement about the weak form (which terms exist in which
-     model), not about code. Chapter 8 needs it to compare `:native` against `:full`.
+     model), not about code. Chapter 8 needs it to compare the model with and without `𝓝`.
    * Source: old ch. 7 §"Model setups" and §"Term-by-term anatomy". The *code* realisation of the
      switches (`resolve_physics`, the internal booleans) goes to chapter 7.
 6. **The regularity problem.**
@@ -188,6 +217,10 @@ Placing it in an implementation chapter would leave the argument without its evi
    * **Mixed:** `𝖦 ≈ ∇𝖲`, `𝖥 ≈ ∇𝖻` as auxiliary unknowns defined by integrated-by-parts weak
      equations. 5 or 7 fields. The mixed `𝖦` *is* the `L²` projection of the distributional
      gradient: it contains the skeleton layer, verified to 2e-16.
+   * **Which one is implemented, and why.** v2 implements the broken one only. It is exact with 3
+     fields, has an exact Jacobian, and works with explicit RK. The mixed one needs 5–7 fields, has
+     a quasi-Newton `∂R/∂u`, and cannot be run with explicit RK. The mixed formulation was
+     implemented and run in v1 (tag `v1_final_solver`); its v1 stability record can be cited.
    * The reduction of components `{1,2,5}` to a single contraction in `∇𝖲`, exact to 4.4e-16.
      This is what makes both treatments affordable.
    * Source: old ch. 6 §"Mixed Formulation" (its weak form) and the Class-III treatment
@@ -244,25 +277,24 @@ Until then the tensors can be taken as given, as chapter 2 defines them.
    * the left-hand-side residuals (continuity, acceleration, gravity, advection);
    * the `𝓛` blocks;
    * the `𝓝` blocks, including the Class-III terms in their broken form (cellwise Hessians via
-     `∇∇` plus the skeleton integral) and their mixed form (the 5/7-field layout and the Gram
-     block);
-   * the code realisation of the model switches (`resolve_physics`, one control point for
-     `flat_bed`).
+     `∇∇` plus the skeleton integral, both the `∇𝖲` and `∇𝖻` arms);
+   * the code realisation of the model switches (`resolve_physics` with `nl_pressure::Bool`, one
+     control point for `flat_bed`).
    * Source: old ch. 6 §"Implementation of Left-Hand-Side Residuals", §"Implementation of `𝓛`
-     Residuals", §"Implementation of `𝓝` Residuals" and the mixed-formulation assembly.
+     Residuals", §"Implementation of `𝓝` Residuals". The mixed-formulation assembly is **not**
+     carried over (v1 only).
    * The Gridap constraints that shape the code are stated here: never apply `∇` to an `Operation`
      containing a test basis (rule 6); the remarks on rest-state-safe gravity and the linearised
      reductions.
 3. **Time integration.**
    * The semi-discrete system `M(u)u̇ + K(u) = 0` as a Gridap transient operator.
-   * The integrators: Crank–Nicolson, `SDIRK_2_2`, explicit RK. Explicit RK cannot run the mixed
-     formulation, because its `∂R/∂u̇` is singular on the auxiliary rows.
+   * The integrators: Crank–Nicolson, `SDIRK_2_2`, explicit RK. All three run every v2 model.
    * The Newton loop and its Jacobians:
      * `∂R/∂u̇` is exact in every model;
-     * `∂R/∂u` is quasi-Newton for the mixed treatment, and exact for the broken one
-       (`broken_class3_jacobian`).
-   * Justifying results: `test_jacobians_ad` 17/17 over 8 models; broken Class-III Jacobian
-     against finite differences 3.5e-11 (G10).
+     * `∂R/∂u` includes the exact broken Class-III linearisation (`broken_class3_jacobian`).
+   * Justifying results: the AD comparison over the 6 v2 models (re-measured in v2 step 6; v1:
+     17/17 over 8); broken Class-III Jacobian against finite differences 3.5e-11 (G10, v1, `∇𝖲`
+     arm; the `∇𝖻` arm gets its own gate in v2 step 2).
    * Rule 17b, stated here once: the Jacobian changes the cost of a step, never the converged
      answer.
    * Moved here from old ch. 7 §"Solver algorithm workflow" because chapter 8 depends on it: the
@@ -309,16 +341,19 @@ stability of the exact discretisation (revision 2's lesson).
      but diverges at ≈ 90 s under Crank–Nicolson.
 5. **The closed periodic box: the main experiment of the chapter.**
    * The test: one wavelength, no boundaries; the continuum answer is "nothing grows".
-   * Results, under Crank–Nicolson:
+   * **v2 evidence (to be run, `V2_SOLVER_PLAN.md` §4.1):** the unstabilised Crank–Nicolson
+     ladder, broken formulation, all eight components, `nl_pressure` on and off, Q3/Q2 and Q2/Q1,
+     8–64 cells/λ.
+   * **v1 record (component 4 omitted), quoted until then:**
      * mixed `:full`, Q2/Q1: diverges at 157 / 104 / 90 / 31 s at 8 / 16 / 32 / 64 cells/λ. Onset
        advances with every refinement: the grid-scale signature (rule 38b).
      * projected `:full`: dies at 8.8 s;
-     * **broken `:full`, Q3/Q2: dies at 44 s.**
+     * broken `:full`, Q3/Q2: dies at 44 s;
      * `:native`: diverges at 64 cells/λ (Q2/Q1, 146 s) and grows at Q3/Q2 with 16 cells/λ
        (+0.10 s⁻¹).
-   * The broken result is new and must be added. Together with the mixed one, it shows that
-     **both consistent formulations of chapter 6 are unstable**. The instability is therefore not
-     an artefact of one Class-III treatment.
+   * The v1 record already shows that **both consistent formulations of chapter 6 are unstable**,
+     so the instability is not an artefact of one Class-III treatment. The v1 mixed results can be
+     cited for that point with their v1 label.
 6. **Linearised stability about a frozen state.**
    * Frozen growth rates are not predictive. The spectral radius is: the Class-III Doppler branch
      `ω ≈ kU + ω∞`, with `ρ ∝ A/h_e`.
@@ -331,8 +366,9 @@ stability of the exact discretisation (revision 2's lesson).
    * Integrator damping acts on frequency, not wavenumber, and vanishes as `Δt → 0`, so it is a
      mask, not a remedy.
    * **The chapter ends with the verdict: the discrete operator of the full nonlinear model is
-     consistent but unstable, and `:native` shares the instability more weakly. A
-     wavenumber-selective energy sink is required.**
+     consistent but unstable. A wavenumber-selective energy sink is required.** Whether the model
+     without `𝓝` (`nl_pressure=false`) is also unstable at fine resolution is measured in the v2
+     ladder. In v1 the partial `:native` model shared the instability more weakly.
    * Today's §"Remedies the analysis admits" becomes that closing statement plus a forward
      reference. The remedies themselves move to chapter 9.
 
@@ -390,14 +426,15 @@ rate of +0.13 s⁻¹ (A = 0.10), with carrier loss ≪ 1/T_run.
    * The measured carrier damping matches the prediction to ±8 %, so the tool is reliable.
    * γ is dimensionless, scaled with `τ` and `h^(s−2)`. It is calibrated per discretisation
      family, not per run.
-4. **Results in the closed box** (Q3/Q2, Crank–Nicolson, 100 periods):
+4. **Results in the closed box** (Q3/Q2, Crank–Nicolson, 100 periods). **All rows are v1** (component 4
+   omitted); they are replaced by the v2 stabilised campaign (`V2_SOLVER_PLAN.md` §4.2):
 
    | arm | result | carrier energy lost over 160 s |
    |---|---|---|
    | jump penalty, order ≤ 2, γ = 2e-3: `:full` and `:native` | ✅ 160 s | ≈ 2 % |
    | ghost penalty, γ = 0.0033 / 0.01 / 0.03, `:full` | ✅ 160 s each, decaying | 0.5 / 1.5 / 4.3 % |
    | ghost penalty, γ = 0.01, 32 cells/λ: `:full` and `:native` | ✅ 160 s | — |
-   | ghost penalty, `A` = 0.15 | decaying at 137 s; final result pending | — |
+   | ghost penalty, `A` = 0.15 | decaying in every band; stopped at 153.6 s at the v1 freeze | — |
    | controls in the same batch | first-order penalty: ×100–250 growth; `:native` with γ = 0: ×920 | — |
 
 5. **The choice of method, and what remains.**
@@ -522,16 +559,9 @@ is the open acceptance criterion of chapter 9.
 
 ---
 
-* **D7 — The `:native` / `:full` tiers (open, 2026-10-05).**
-  * `:native` is defined by a *numerical* criterion: the `𝓝` components that are first order on
-    `C⁰`. It is not a physical one, and no ordering in amplitude or `kd` separates it from `:full`.
-  * Proposal: replace `nl_pressure ∈ {:none, :native, :full}` with a Boolean (all eight components
-    on or off). Keep a diagnostic mask for the stability chapter's "Class III removed" control.
-  * If adopted, chapters 6 §5 and 8 must present `:native` as a diagnostic decomposition, not as a
-    model.
-  * ⚠ Related: every `:full` box and flume run so far used `C3_MASK=gs`, i.e. **component 4 (`∇𝖻`)
-    omitted**. Before chapter 9 can claim "the full model is stabilised", the penalised arms must be
-    repeated with all eight components.
+* ~~**D7 — The `:native` / `:full` tiers.**~~ **Decided (2026-10-05): `nl_pressure::Bool`, all eight
+  components** (`V2_SOLVER_PLAN.md`). Chapter 6 §5 carries the physical argument. Chapters 8–9
+  quote v1 tier results only as labelled v1 records.
 
 ## 6. Loose ends carried forward
 
@@ -569,9 +599,12 @@ is the open acceptance criterion of chapter 9.
   * stale statements were corrected;
   * chapter 8 was expanded into a teaching chapter with "method at a glance" boxes, the
     `SDIRK_2_2` tableau correction and nine figures.
-* **Revision 4 (2026-10-05, this file, proposed; amended the same day).** The split described above. The
-  amendment moved the `𝓛`/`𝓝` blocks and the term classification into chapter 6, leaving chapter 7 the
-  stacked-layout realisation, the unit vertical basis and time integration. It follows from:
+* **Revision 4 (2026-10-05, this file).** Written as a proposal, then amended the same day: the
+  `𝓛`/`𝓝` blocks and the term classification moved into chapter 6; the projected treatment became an
+  appendix; `nl_pressure` became a Boolean. The same day the project was split into v1 and v2 (code
+  branches, separate LaTeX repositories, separate output folders); this file became the plan for
+  `BALFEM_models_v2`. Chapter 7 is left with the stacked-layout realisation, time integration and the
+  unit vertical basis. The restructure follows from:
   * the broken audit, which made the regularity question a chapter of its own;
   * the finding that both consistent formulations are unstable, so stability is a separate question
     from regularity;

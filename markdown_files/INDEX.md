@@ -46,7 +46,8 @@ belongs in `PLANNED_CAMPAIGNS.md`. On 2026-09-11 the "Runs not yet made" list mo
 | [`CAMPAIGN_COST.md`](CAMPAIGN_COST.md) | measured run costs, memory bands, queue limits, scheduling lessons |
 | [`OUTPUT_NAMING_PROPOSAL.md`](OUTPUT_NAMING_PROPOSAL.md) | the output-directory grammar — accepted and implemented |
 | [`NEW_TREATMENT.md`](NEW_TREATMENT.md) | the Class-III treatments and every campaign run on them: reduction, in-loop projections, the **mixed formulation**, the flume factorial, the closed periodic box (Parts A–I) |
-| [`LATEX_STRUCTURE.md`](LATEX_STRUCTURE.md) | the chapter order of the LaTeX document and why (the exact model first, its stability analysis, the projection last) |
+| [`V2_SOLVER_PLAN.md`](V2_SOLVER_PLAN.md) | **v2 solver plan**: the main changes (broken formulation only, `nl_pressure::Bool`, all eight `𝓝` components) and the step-by-step implementation |
+| [`LATEX_STRUCTURE.md`](LATEX_STRUCTURE.md) | **v2 document structure** (`latex_docs/BALFEM_models_v2/`): the chapter order and why — weak form and regularity, multi-field implementation, stability, stabilisation, solver functionalities, validation |
 | [`COMPLETED_VBASIS_STUDY.md`](COMPLETED_VBASIS_STUDY.md) | design record of the finished vertical-basis study |
 
 ## Recurring themes, and where each is authoritative

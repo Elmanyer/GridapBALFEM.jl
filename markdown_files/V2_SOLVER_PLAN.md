@@ -1,8 +1,43 @@
 # V2_SOLVER_PLAN.md — from the v1 solver to v2: one Class-III formulation, one switch
 
-*Written 2026-10-05 on branch `v2-solver`, created from `main` at tag **`v1_final_solver`**
-(`d7a4df9`). The LaTeX repository carries the same tag. v1 outputs are archived in **`output_v1/`**
-(22 GB, gitignored). `output/` starts empty.*
+*Written 2026-10-05; updated the same day after the v1/v2 split.*
+
+**Where everything lives:**
+
+| | v1 (frozen) | v2 (active) |
+|---|---|---|
+| solver code | GitHub `GridapBALFEM.jl`: branches `main` and `v1-solver` (`d7a4df9`), tag `v1_final_solver` | branch `v2-solver`, this plan |
+| LaTeX | `latex_docs/BALFEM_models_v1/` (GitHub `BALFEM_models`, tag `v1_final_solver`) | `latex_docs/BALFEM_models_v2/`, its own Overleaf project; structure plan in [`LATEX_STRUCTURE.md`](LATEX_STRUCTURE.md) |
+| run outputs | `output_v1/` (22 GB, gitignored) | `output/` (started empty) |
+
+**The main changes, at a glance:**
+
+1. **One Class-III formulation: broken.**
+   * The projected treatment (frozen `L²` projections) is deleted.
+   * The mixed treatment (auxiliary `𝖦`, `𝖥` unknowns, 5–7 fields) is deleted.
+   * The broken formulation (cellwise Hessians plus a skeleton layer, 3 fields, exact Jacobian) is
+     no longer opt-in. It *is* the Class-III assembly.
+2. **`nl_pressure` becomes a Boolean.**
+   * `:none` / `:native` / `:full` are dropped.
+   * `true` assembles **all eight** `𝓝` components; `false` assembles none.
+   * Passing a `Symbol` is an error.
+3. **No component mask.** `c3_mask` and `BALFEM_C3_MASK` are removed, so `∇𝖲` and `∇𝖻` are always
+   assembled together. Every v1 stability run had `∇𝖻` (component 4) off.
+4. **Six models instead of eight.** `regime × flat_bed × nl_pressure`, with the linear regime
+   forcing `false`. The two `:native` models disappear, and the two `nl_pressure=true` models get
+   their first MMS verification.
+5. **Removed options error loudly.** The keywords `broken`, `mixed`, `p_aux` and `c3_mask` are
+   removed, as are the environment variables `BALFEM_MIXED`, `_P_AUX`, `_C3_MASK`, `_NLP_INLOOP`
+   and `_BROKEN`. Setting any of them is an error, never silently ignored.
+6. **Distributed path, interim.** `nl_pressure=false` only, until the broken formulation is ported
+   to MPI (step 10). v1's distributed `:full` relied on the projection.
+7. **Stabilisation unchanged in this refactor.** `:jumpgrad` and `:ghostvolume` stay as they are.
+   Choosing the default, assembling the penalty matrix once, and porting it to general meshes and
+   MPI come after (§4).
+8. **Output naming and provenance.** The `<nlp>` token becomes `nlp0`/`nlp1`. Every run writes a
+   `run_manifest.toml` with its commit and full configuration (step 9).
+9. **v1 launchers removed from the v2 tree** (still in the tag). The docs are restructured, with
+   the v1 history moved to `HISTORY_V1.md`.
 
 ---
 
@@ -266,7 +301,8 @@ refusal.
   records.
 * Paths: v1 results are now under `output_v1/`. Every `output/...` reference in the markdown that
   points to a v1 result is updated.
-* The LaTeX restructure follows `LATEX_STRUCTURE.md` revision 4, edited by the author. The broken
+* The LaTeX restructure of `latex_docs/BALFEM_models_v2/` (Overleaf) follows `LATEX_STRUCTURE.md`
+  revision 4, edited by the author. The broken
   formulation becomes the only implemented treatment, and the projected treatment the appendix.
 
 ---
