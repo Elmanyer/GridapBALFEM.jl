@@ -2,6 +2,15 @@
 
 > ## ⇨ START HERE
 >
+> **⚙ v2 IN PREPARATION (2026-10-05).** The v1 solver is frozen at tag **`v1_final_solver`** (`main`,
+> `d7a4df9`; the LaTeX repo carries the same tag). Branch **`v2-solver`** implements
+> [`V2_SOLVER_PLAN.md`](markdown_files/V2_SOLVER_PLAN.md):
+> * broken Class-III formulation only (no projected, no mixed);
+> * `nl_pressure::Bool` with all eight `𝓝` components (no `:native`, no `c3_mask`).
+>
+> **v1 outputs are archived in `output_v1/`** (gitignored). `output/` holds v2 results only. Until
+> step 11 of the plan, the status sections below describe **v1**.
+>
 > This file is the map and the standing rules. **It stays at the repository root**, because Claude
 > Code auto-loads `CLAUDE.md` from the root and parent directories only — anywhere else and the
 > rules silently stop reaching a session started here. The rest of the tracked documentation lives
