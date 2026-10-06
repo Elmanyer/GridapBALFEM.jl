@@ -78,13 +78,14 @@ Tables comparing our numbers against theirs must not label both sides the same w
 |---|---|
 | `Project.toml` / `Manifest.toml` | the Julia package — `name = "GridapBALFEM"`. Loaded with **`using GridapBALFEM`, never `include()`**. This directory is both the package and the working environment. `[compat]` admits two Gridap minors on measured evidence — `CONFIGURATION.md` §1 |
 | `src/` | the solver package, **18 files** (v2 deleted `mixed.jl` and the projection machinery of `nlpressure.jl`). `problem.jl` — `BALFEMProblem`, `resolve_physics`, the loop-free residual and hand Jacobians; `nlpressure.jl` — `𝓝` {3,6,7,8} and the exact-IBP ∇h half; `broken.jl` — Class III (broken), its exact Jacobian, and the skeleton stabilisers `:jumpgrad` / `:ghostvolume`; `utilities.jl` — `setup_and_run`, output naming, `check_v1_env`, `write_run_manifest`. Map: `ARCHITECTURE.md` §2 |
-| `test/` | the suite (`runtests.jl` judges on gate output, never exit codes) + `test/local/` + `test/cluster/` + **`test/v2_migration/regression_snapshot.jl`** (the v1→v2 entry-by-entry gate). Inventory: `TEST_SUITE.md` |
+| `test/` | the suite (`runtests.jl` judges on gate output — `PASS`/`FAIL` lines or `Test.jl` summary tables — never exit codes) + `test/local/` + `test/cluster/`. v2 additions: **`test_skeleton_ad.jl`** (AD through skeleton terms) and **`test/v2_migration/regression_snapshot.jl`** (the v1→v2 entry-by-entry gate; its v1 recording is in `output/v2_baseline/`). Inventory: `TEST_SUITE.md` |
 | `examples/` | sequential examples, `distributed/` (cluster drivers + `_dist_common.jl`, which runs `check_v1_env` on load), `distributed_small/`, `validation/`, `local_1d/` (`run_flume_1d.jl`, `run_periodic_1d.jl` — the closed box, `stability_eig.jl` + `run_stability_eig.jl` — frozen eigen-analysis, `cip_eigen_analysis.jl` — penalty γ design), `local_2d/`, `local_mms/` (generic MMS study drivers). v1 campaign scripts removed (tag keeps them) |
 | `run/` | `balfem_env.sh` (cluster), `local/balfem_local.sh` (workstation), the top-level SLURM launchers, and [`SNELLIUS_ROME_LAUNCH_CONFIGS.md`](run/SNELLIUS_ROME_LAUNCH_CONFIGS.md) (job sizing: memory sets the tier, 7k ranks for tier k/8). **v1's 156 campaign launchers were removed** (`run/local/README.md`) |
 | `compile/` | the cluster sysimage build chain — `RUNNING.md` §5. ⚠ `Manifest.toml` is gitignored; `set_preferences.jl` `Pkg.add`s the two forks by URL |
 | `output/` · `output_v1/` | ⚠ **gitignored**. `output/` holds **v2 results only**; every v2 run writes `run_manifest.toml` (commit, dirty flag, full config, `BALFEM_*` env). `output_v1/` is the archived v1 output (22 GB) |
 | `postprocessing/` | `GridapBALFEMPost` — own environment, no dependency on the solver. `examples/periodic_growth.jl` turns a periodic-box run into band energies and growth rates |
-| `WaveSpec.jl/` · `Gridap.jl/` | vendored sea-state synthesis (GitHub version — the release's `change_seed!` is broken) · the Gridap **fork** (`fix-transient-multifield-ad`) that makes transient-multifield AD work |
+| `WaveSpec.jl/` | vendored sea-state synthesis (GitHub version — the release's `change_seed!` is broken) |
+| `Gridap.jl/` | the Gridap **fork** (`Elmanyer/Gridap.jl` @ `fix-transient-multifield-ad`, on v0.20.8) with **two AD patches**: transient-multifield AD (`fa860899c`) and **AD of skeleton integrals on transient fields** (`3928b98b9`, 2026-10-05 — type-level `DomainStyle` of `SkeletonCellFieldPair`; transient `.plus`/`.minus` delegate to the wrapped field). ⚠ The second patch is **not yet pushed**: the local environment loads this checkout via `Pkg.develop(path="Gridap.jl")` (`Manifest.toml`, gitignored); fresh clones and the cluster (`compile/set_preferences.jl`, by URL) get it only after the push |
 | `latex_docs/BALFEM_models_v1/` · `_v2/` | the v1 document (frozen) and the v2 document (own Overleaf project, restructured per `LATEX_STRUCTURE.md`). `_v1_old/` is an older v1 clone. Also `CFC2027_abstract/`, `doc_figures/` (`generate_doc_plots.ipynb`) |
 | `GridapSWE.jl/` · `GridapEmbedded.jl/` | untracked / gitignored references, not dependencies |
 
@@ -166,10 +167,12 @@ discrete-eigenmode polarization prescribes an exact discrete transport, so a gen
 solution of the discrete equations at the boundary and radiates cleanly.
 
 **Verification.** The analytic MMS (`src/mms.jl`; independence from `problem.jl` enforced by a grep
-gate) over the **six v2 models** (`regime × flat_bed × nl_pressure`); `test_jacobians_ad.jl` (hand
-vs AD Jacobians, all six models); the linear one-Newton-iteration gate; the Yang & Liu collapse
-(`test_yl_collapse.jl` — the only external oracle); `test_broken_formulation.jl` (layer identity,
-both Jacobians against FD, stabiliser algebra); and the v1→v2 regression snapshot.
+gate) over models 1–4 — **models 5–6 (`nl_pressure=true`) are opt-in (`MMS_NL_P=1`) and outside the
+verified scope until the full model is ready**; `test_jacobians_ad.jl` (hand vs AD Jacobians, six
+models); the linear one-Newton-iteration gate; the Yang & Liu collapse (`test_yl_collapse.jl` — the
+only external oracle); `test_broken_formulation.jl` (layer identity, Jacobians against FD,
+stabiliser algebra); `test_skeleton_ad.jl` (AD through the skeleton terms, needs the fork patch);
+and the v1→v2 regression snapshot.
 
 **Vertical grid optimisation** (`src/vopt.jl`) — the Yang & Liu **total relative-error functional**,
 `E_total = Ē_c + Ē_cg + Ē_shoal + Ē_u + Ē_w`, each term integrated over `kd` against
@@ -253,37 +256,58 @@ name. Output names carry `nlp0` / `nlp1` (`output_dir_name`).
 
 ## 5. Current Implementation Stage
 
-*v2, 2026-10-05.* The transition is recorded step by step in `V2_SOLVER_PLAN.md`; the v1 status and
-its history are in `HISTORY_V1.md` §5.
+*v2, updated 2026-10-05.* Branch `v2-solver`, last commit `3146004` (the v2 transition). The step-by-step
+record is `V2_SOLVER_PLAN.md` §6; the v1 status and its history are `HISTORY_V1.md` §5.
 
 ### 5.0 Status at a glance
 
-**Done (code).** Steps 1–5, 7, 9 of the plan: the Boolean switch; one Class-III assembly (broken,
-both arms, exact Jacobian); mixed and projected code deleted; distributed path restricted to
-`nl_pressure=false` (refused otherwise); MMS and tests renumbered to six models; drivers, launchers
-and output naming; `check_v1_env`; run manifests. See §5.1 for the gates.
+**Working and verified.**
+* **The v2 code base** (plan steps 0–9, 11): the Boolean `nl_pressure`; Class III by the broken
+  formulation only (both arms, exact Jacobian); mixed, projected, mask and in-loop code deleted;
+  six-model tests; ported drivers; v1 knobs refused; per-run manifests. About 14 600 lines and 165
+  files of v1 code, launchers and campaign scripts removed (all kept in tag `v1_final_solver`).
+* **Equivalence with v1, entry by entry** (`regression_snapshot.jl`, residual + ∂R/∂u + ∂R/∂u̇):
+  identical for models 1–4; ≤ 2e-16 in the residual and identical Jacobians for the full pressure
+  (flat, sloping bed), the ghost and jump stabilisers, the periodic box and Q2/Q1. A closed-box run
+  (Q3/Q2, CN, full pressure + ghost γ = 0.01) is identical over all 40 steps.
+* **The suite.** Fast tier 9/9 (155 gates); `test_broken_formulation` 35/35; medium tier 20 pass, with
+  `test_nlpressure` passing 10/10 after re-pinning a stale pre-Taylor–Hood constant (measured: `𝓝` moves
+  that value by only 6e-5). Models 3–4 MMS reproduce v1 (p_η 2.996, p_u 3.995 / 3.997).
+* **Inherited v1 verification** that the refactor provably does not touch: linear models 1–2 at
+  optimal order (1-D, 2-D, sequential, distributed); the Yang & Liu collapse; vertical-basis
+  independence of the orders.
 
-**Inherited from v1 and still to be re-confirmed on v2** (the refactor is designed not to touch
-them; the regression snapshot checks it entry by entry):
-* linear models 1–2: optimal order in both fields, 1-D and 2-D, sequential and distributed;
-* nonlinear models 3–4 (`nl_pressure=false`): theoretical order;
-* the Yang & Liu collapse at `p=1` to round-off; the vertical-basis independence of the orders.
+**Known failures, understood (carried from v1).** `test_mms_convergence` G7 (temporal gate window,
+`TEST_SUITE.md` §6 — reproduced digit for digit, 1.382 / 1.332); `test_bc_generation` case C
+(10.1 % vs a 10 % gate).
 
-**Open, in order** (`V2_SOLVER_PLAN.md` §4):
-1. the **first MMS of models 5–6** (`nl_pressure=true`, broken, exact) — never verified in v1;
-2. the **unstabilised closed-box ladder with all eight components** (chapter 8's v2 evidence;
-   v1's runs omitted component 4);
-3. the **stabilised box**, ghost γ ∈ {0.0033, 0.01, 0.03} and `:jumpgrad` order 2, 16 and 32 cells/λ,
-   A = 0.10 and 0.15; the MMS orders at γ\*;
-4. the flume, the bar bathymetry, the amplitude ladder;
-5. step 10 — the broken formulation (and stabiliser) distributed; step 11 remainder — the docs
-   listed in the plan;
-6. inherited open items: the nonlinear `p_η` order reduction at Q3/Q2 (`OPEN_ISSUES.md` §0b), the
-   Q2/Q1 velocity shortfall (`HISTORY_V1.md` §5.3), the cluster production suite.
+**In progress (2026-10-05, background runs, logs in `output/v2_logs/`).**
+* **Gridap skeleton-AD patch testing** — `test_skeleton_ad.jl` (S0 patch present ✓; S1 AD = hand for
+  broken Class III; S2 AD = form for both stabilisers; S3 `use_ad=true` run = hand-Jacobian run),
+  `test_jacobians_ad.jl` (A0b ✓; M5/M6 previously crashed in Gridap), and the full regression snapshot
+  on the patched Gridap (first 3/12 identical so far). Then: push the fork, restore the URL pin.
+* **`test_selfconsistency` failure** — new in v2 (full pressure at Q2/Q1, large amplitude: recovery
+  exact for half the run, 0.27 at the end; the test's Newton loop accepts a step at its 15-iteration
+  cap). A per-step probe is running (`output/v2_probe/selfconsistency_probe.jl`; first steps converge
+  in 7 iterations to 2e-15).
 
-### 5.1 Migration gates
+**Under development — the full nonlinear model (`nl_pressure=true`).**
+* **Not yet ready for MMS evaluation** (decision 2026-10-05; models 5–6 opt-in). One exploratory run,
+  Model 5: p_η 2.997 / 2.996 optimal, but **p_u pairwise 3.94 → 1.97** (nx 8–32) — a second-order
+  velocity error from the full-pressure terms emerging on fine meshes. Inherent (trial Hessians are
+  O(h^{p−1}) at Q3) or a defect is not yet established.
+* **Stability**: the v1 evidence (unstable unstabilised; stabilised by the hp jump or ghost penalty in
+  the closed box) was measured with component 4 omitted. The v2 campaign (`V2_SOLVER_PLAN.md` §4)
+  repeats it with all eight components: the unstabilised CN ladder, then the stabilised box (ghost
+  γ ∈ {0.0033, 0.01, 0.03}, `:jumpgrad` order 2; 16/32 cells/λ; A = 0.10/0.15), then flume, bar
+  bathymetry, amplitude ladder.
+* **Step 10** — the broken formulation and the stabilisers distributed (`setup_and_run_distributed`
+  refuses `nl_pressure=true` until then).
 
-*Filled in as they run; values in `V2_SOLVER_PLAN.md` §3.*
+**Other open items.** Record the migration values in `V2_SOLVER_PLAN.md` §3 and `TEST_SUITE.md`;
+describe the second fork patch in `CONFIGURATION.md` §2; the nonlinear `p_η` order reduction at
+Q3/Q2 (`OPEN_ISSUES.md` §0b); the Q2/Q1 velocity shortfall; the cluster production suite and a
+sysimage rebuild (stale — deliberately not rebuilt yet).
 
 ---
 

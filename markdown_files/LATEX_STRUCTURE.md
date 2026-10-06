@@ -11,8 +11,27 @@
 > | run outputs | `output_v1/` | `output/` |
 >
 > `BALFEM_models_v2` starts as a verbatim copy of the v1 content. This file is the plan for
-> restructuring it. Nothing below has been applied to the LaTeX yet; the author edits it in
-> Overleaf.
+> restructuring it.
+>
+> **⚙ APPLIED 2026-10-06 (working tree of `latex_docs/BALFEM_models_v2`, not committed or pushed).**
+> Chapters 6–11 and Appendices A–C now follow §2. Builds clean (0 errors; the one undefined
+> reference is the pre-existing `subsec: comparison point derived`), 270 pp. Deviations from the
+> plan, on the author's instruction of 2026-10-06 ("remove or annex mixed, projected, high-order
+> jump stabilisation"):
+> * **The mixed formulation is an appendix (B)**, not a section of ch. 6: ch. 6 §"Consistent
+>   treatments of the Class-III gradients" names it in one paragraph and points there. App. B
+>   also holds the detailed v1 flume record (D3) and the auxiliary-space material.
+> * **The jump penalties (first-order C⁰-IP and hp `:jumpgrad`) are an appendix (C)**; ch. 9
+>   summarises them and develops the ghost penalty only.
+> * The multi-field block compact form opens ch. 6 (the weak form needs the stacked notation);
+>   ch. 7 opens with the field layout.
+> * The author's draft subsections of the regularity section (empty headings, function-space
+>   notes) are kept verbatim inside `\begin{comment}`.
+> * New files: `HorizontalFormulation/WeakForm.tex`, `SolverValidation/Stabilisation.tex`,
+>   `Appendices/{MixedFormulation,JumpPenalty}.tex`; `BrokenAudit.tex` moved to
+>   `HorizontalFormulation/`. `HorizontalDiscretisation.tex` untouched (still not input).
+> * Ch. 8 §"Results of the v2 campaign" is a placeholder table for the running v2 box ladder
+>   (`run/local/run_1dper_v2_unstab.sh`); v1 tables/figures carry "(v1)" in their captions.
 >
 > **What changes.**
 > * The two implementation chapters are reorganised around the development *story* of the
