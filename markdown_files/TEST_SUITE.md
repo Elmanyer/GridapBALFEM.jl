@@ -1,5 +1,8 @@
 # TEST_SUITE.md — the test campaigns and what each one can and cannot detect
 
+> **2026-10-09:** references of the form `CLAUDE.md` §5.x in this file point to the v1 status sections, now in
+> [`archive/HISTORY_V1.md`](archive/HISTORY_V1.md) §5.x. The current state is [`STATUS.md`](STATUS.md).
+
 > **⚙ v1 RECORD (2026-10-05).** Scores here are v1's. v2 removed the mixed/projection/mask tests and renumbered the models to six; the v2 rebaseline is `V2_SOLVER_PLAN.md` step 8. It is kept as the record of how v1 reached its results;
 > the v2 solver (branch `v2-solver`) differs — one Class-III formulation (broken), `nl_pressure::Bool`
 > with all eight `𝓝` components, no component mask (`V2_SOLVER_PLAN.md`). Paths `output/…` here are
@@ -10,7 +13,7 @@
 > and what would slip through?"**
 >
 > **What does NOT belong here:** whether the model is correct → [`VERIFIED_SCOPE.md`](VERIFIED_SCOPE.md);
-> defects → [`OPEN_ISSUES.md`](OPEN_ISSUES.md); future runs → [`PLANNED_CAMPAIGNS.md`](PLANNED_CAMPAIGNS.md).
+> defects → [`OPEN_ISSUES.md`](OPEN_ISSUES.md); future runs → [`archive/PLANNED_CAMPAIGNS.md`](archive/PLANNED_CAMPAIGNS.md).
 >
 > ⚠ **"The suite passes" is not "the model is verified."** Most gates here are self-consistency
 > checks, which pass for *any* residual. Only the analytic MMS is an oracle.
@@ -279,7 +282,7 @@ confirm the `A³` scaling dynamically.
 > that diverges at 90 s under Crank–Nicolson stays bounded for 100 periods under SDIRK_2_2. A stability
 > gate must therefore (i) run in the closed box, (ii) under `solver_type=:theta`, (iii) for ≥ 100
 > periods, (iv) with its `:native` twin, and (v) read band growth rates, not `max|η|`. It is Stage 4 of
-> `PLANNED_CAMPAIGNS.md` §6c and cannot be written until a stabiliser exists (`OPEN_ISSUES.md` §0e).
+> `archive/PLANNED_CAMPAIGNS.md` §6c and cannot be written until a stabiliser exists (`archive/OPEN_ISSUES_v1.md` §0e).
 
 > ### Registration of the Class-III / mixed tests (2026-09-26, merge of `mixed-formulation-solver`)
 >
@@ -294,10 +297,10 @@ confirm the `A³` scaling dynamically.
 > | `test_class3_split.jl` | 4/4 | 17 min | **`:slow`, newly registered** |
 > | `test_mixed_jacobian.jl` | 7/7 | 21 min | **`:slow`, newly registered** |
 > | `test_diagnostics_mixed.jl` | 5/5 | 1 min | **`:medium`, newly registered** |
-> | `test_nlp_inloop.jl` | 8/9 — **G3 fails** | 2 h | `:medium` → **`:slow`**; ⚠ known failure — the in-loop projection mode is broken and off by default (commit `b8c93e2`, `NEW_TREATMENT.md` §C) |
+> | `test_nlp_inloop.jl` | 8/9 — **G3 fails** | 2 h | `:medium` → **`:slow`**; ⚠ known failure — the in-loop projection mode is broken and off by default (commit `b8c93e2`, `archive/NEW_TREATMENT.md` §C) |
 > | `test_mixed_formulation.jl` | 4/5 — **G1 fails** | 31 min | **not registered** |
 >
-> ⚠ **`test_mixed_formulation.jl` G1–G3 run in an unfit harness** (`NEW_TREATMENT.md` §F.0): a 6 m
+> ⚠ **`test_mixed_formulation.jl` G1–G3 run in an unfit harness** (`archive/NEW_TREATMENT.md` §F.0): a 6 m
 > box whose Gaussian source (`sigma_wm` = 1.5 m) spans the domain kills even `:native` after 20
 > steps, and G1 asks for 40. The failure is the harness, not the mixed path (which runs 100 periods on
 > the real flume, `CLAUDE.md` §5.2e). G4 (𝖦 recovers the analytic `∂ₓ𝖲` to 1e-11) and G5
@@ -346,7 +349,7 @@ confirm the `A³` scaling dynamically.
 >   flat 100-period trace (η 0.10494 → 0.10300, Newton 5.12) is the natural reference.
 > * **No gate exercises a VARIABLE BED for long.** Rule 4's corollary — "a flat-bed regression can
 >   never test ∇h code" — has a time-axis twin: every ∇h test is short, and the ∇h failure mode takes
->   23–86 periods to appear depending on slope (`OPEN_ISSUES.md` §0d).
+>   23–86 periods to appear depending on slope (`archive/OPEN_ISSUES_v1.md` §0d).
 > * **No gate exercises `:full` DYNAMICALLY at all.** `test_nlpressure` checks block contributions,
 >   not a long integration; `:full` diverges in **8 wave periods** at `A = 0.10` m on a flat bed
 >   (§0c). Every diverged cluster run was `:full`, and nothing in the suite would have caught it.

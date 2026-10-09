@@ -622,6 +622,12 @@ E is the canonical polynomial extension of the neighbour's local polynomial.
 
 ### 5.8 hp-CIP orders ≤ 2 — implemented, and the eigen-analysis (2026-10-02)
 
+> ⚠ **2026-10-06 — re-measured with a corrected mode classifier** (`STABILISATION_ORDER_RULE.md` §4). The
+> table below was read with a centre-line filter that cannot see the box's transverse modes: the γ = 1e-2
+> "locking" zero was such a mode. Corrected Q3/Q2 order ≤ 2 mid-band minima: 0.37 / 0.65 / 0.91 / **2.8**
+> at γ = 1e-3 / 2e-3 / 3e-3 / 1e-2 — the window is wider than stated. At **Q4/Q3** the same penalty has
+> **no** window (an x-wave escapes into the kernel at every γ).
+
 **Code:**
 * `attach_skeleton!(…; cip_order, p_u, p_eta)`: orders j ≤ min(cip_order, p_field), weight
   h_F^(s+2(j−1)); `CIP_MAX_ORDER = 2`, order 3 refused.

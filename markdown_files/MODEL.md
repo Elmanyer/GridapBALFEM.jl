@@ -211,7 +211,7 @@ partial tier (v1's `:native` = `{3,6,7,8}` was a numerical cut, not a physical m
 Jacobians: the Class-III blocks are linearised **exactly** (`broken_class3_jacobian`, gated against
 FD); `{3,6,7,8}` and the ∇h half stay **quasi-Newton** (`O(A²)`; they enter the residual, not the
 Jacobian). v1's frozen-projection and mixed treatments of Class III are documented in
-`NEW_TREATMENT.md` and `HISTORY_V1.md`.
+`archive/NEW_TREATMENT.md` and `archive/HISTORY_V1.md`.
 
 ### 5.1 Exact-IBP algebra for the ∇h half
 

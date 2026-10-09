@@ -1,5 +1,8 @@
 # VERIFIED_SCOPE.md — what is actually proven about the residual
 
+> **2026-10-09:** references of the form `CLAUDE.md` §5.x in this file point to the v1 status sections, now in
+> [`archive/HISTORY_V1.md`](archive/HISTORY_V1.md) §5.x. The current state is [`STATUS.md`](STATUS.md).
+
 > **⚙ v1 RECORD (2026-10-05).** Every verification result here was measured on v1. Models 1–4 are designed to be unchanged by the refactor (checked entry by entry by test/v2_migration/regression_snapshot.jl); `:native` and projected `:full` no longer exist; the v2 full-pressure models 5–6 are verified for the first time by the v2 MMS. It is kept as the record of how v1 reached its results;
 > the v2 solver (branch `v2-solver`) differs — one Class-III formulation (broken), `nl_pressure::Bool`
 > with all eight `𝓝` components, no component mask (`V2_SOLVER_PLAN.md`). Paths `output/…` here are
@@ -11,7 +14,7 @@
 >
 > **What does NOT belong here:** the inventory of test files → [`TEST_SUITE.md`](TEST_SUITE.md);
 > known defects → [`OPEN_ISSUES.md`](OPEN_ISSUES.md); work not yet run →
-> [`PLANNED_CAMPAIGNS.md`](PLANNED_CAMPAIGNS.md).
+> [`archive/PLANNED_CAMPAIGNS.md`](archive/PLANNED_CAMPAIGNS.md).
 
 
 **What this file is.** The verification record: the analytic MMS campaign, the Jacobian-vs-AD
@@ -85,7 +88,7 @@ Class-III *assembly* is untouched. Stage 1 lives in the suite as `test/test_yl_c
 > ⚠ **Verified ≠ stable (2026-09-26).** This file is about *consistency*: the residual is the right
 > residual, at the right order. It says nothing about *stability*. The `:full` tier (models 7–8) has an
 > **interior grid-scale instability** in its horizontal discretisation (`CLAUDE.md` §5.2f,
-> `OPEN_ISSUES.md` §0e), and at Q3/Q2 even `:native` grows slowly without integrator damping. By
+> `archive/OPEN_ISSUES_v1.md` §0e), and at Q3/Q2 even `:native` grows slowly without integrator damping. By
 > Lax–Richtmyer, consistency plus instability does not converge: no verified-scope claim here may be
 > read as a production licence for `:full`.
 
@@ -106,7 +109,7 @@ Model 2 additionally confirmed **transient** (`2.999`/`3.998`) and in **2-D** (`
 > ⚠ **VERIFIED ORDER IS NOT VERIFIED STABILITY, AND THE GAP IS NOW MEASURED (2026-09-15).** Every
 > rate in this table comes from short MMS studies at manufactured amplitude. They say the residual is
 > *consistent*; they say nothing about whether a long integration at production amplitude stays
-> bounded. The 1-D production campaign (`CLAUDE.md` §5.2b, `OPEN_ISSUES.md` §0c/§0d) found that:
+> bounded. The 1-D production campaign (`CLAUDE.md` §5.2b, `archive/OPEN_ISSUES_v1.md` §0c/§0d) found that:
 >
 > | configuration | MMS order | 100-period run at `A = 0.10` m |
 > |---|---|---|
@@ -129,7 +132,7 @@ Model 2 additionally confirmed **transient** (`2.999`/`3.998`) and in **2-D** (`
 >
 > This does not touch the `p_u` columns (which improve with refinement, 2.77 → 3.69) nor the linear
 > models, and it is not the `𝓝` blocks, `∇h`, the algebra or quadrature — all eliminated by
-> measurement. Cause and next step: **`OPEN_ISSUES.md` §0b**.
+> measurement. Cause and next step: **`archive/OPEN_ISSUES_v1.md` §0b**.
 >
 > **Say "verified at optimal order on the measured ladder (`nx ≤ 32`)"** rather than "verified at
 > optimal order", for the nonlinear models only.
@@ -249,7 +252,7 @@ field reproduces the same rates to 3 decimals, and `B=0` makes `η` *worse*, so 
 > ⚠ **WHAT THE CORRECTED NUMBER MEANS, AND IT MATTERS FOR §0c.** `:full` now *converges* — but at
 > **`p_u ≈ 1.95` against an optimal 4**. That is a direct measurement of the frozen-projection
 > **recovery** error's order of accuracy: roughly two orders short, and the deficit grows with
-> refinement in exactly the sense `OPEN_ISSUES.md` §0c's `dx` signature describes. **The projection
+> refinement in exactly the sense `archive/OPEN_ISSUES_v1.md` §0c's `dx` signature describes. **The projection
 > is not a small perturbation of the exact operator at production resolution**; it is the dominant
 > error in the velocity field, and it is the leading suspect for the `:full` instability.
 > ⚠ **Separate consequence:** with the blocks in the residual but still absent from `jacobian_u`, the

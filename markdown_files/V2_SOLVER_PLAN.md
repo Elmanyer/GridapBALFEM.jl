@@ -2,6 +2,13 @@
 
 *Written 2026-10-05; updated the same day after the v1/v2 split.*
 
+> **State 2026-10-09: executed.** Steps 0–9 and 11 are done (§6). **Step 10, the distributed path,
+> is open.** The §4 campaign changed course:
+> * item 1 (the unstabilised ladder) is complete (`STABILITY.md` §3);
+> * items 2–5 (penalty-based stabilisation) are superseded by the filtering direction (`STATUS.md` §4).
+>
+> Documents this plan names that are no longer in `markdown_files/` are in `archive/`.
+
 **Where everything lives:**
 
 | | v1 (frozen) | v2 (active) |
