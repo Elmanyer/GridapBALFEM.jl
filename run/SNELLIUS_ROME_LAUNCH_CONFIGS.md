@@ -108,7 +108,9 @@ it buys nothing the solver needs and pushes almost every rank count over a tier 
 #SBATCH --ntasks=28
 #SBATCH --ntasks-per-node=28
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=4G        # 112 GiB = exactly 4/8 of a rome node
+#SBATCH --mem=112G              # per-node total: 4/8 of a rome node, 112/28 = 4 GiB per rank
+                                # NEVER --mem-per-cpu: it is counted against the 16-core-rounded
+                                # allocation (32 x 4G = 128 GiB -> billed 5/8 or refused, §4)
 export BALFEM_PX=7
 export BALFEM_PY=4              # 7*4 = 28
 ```

@@ -15,9 +15,10 @@
 #  stack independently: ~30-45 min of wall time per run, and a ~4-8 GB/rank
 #  memory spike that OOM'd whole nodes at 32-128 ranks (which is why these jobs
 #  used to need fat_rome). With -J the ranks mmap one shared, already-compiled
-#  image: no compile, no spike, and the jobs fit the cheap rome/L1 budget at the
-#  node-default 2 GB/core — do NOT add --mem-per-cpu to get memory back, that
-#  only makes SLURM bill extra cores per rank.
+#  image: no compile, no spike. The solver still needs ~4 GiB per rank (the
+#  2 GB/core node default was OOM-killed): request it as a per-node --mem total,
+#  NEVER --mem-per-cpu, which Slurm counts against the 16-core-rounded allocation
+#  and bills a tier up (run/SNELLIUS_ROME_LAUNCH_CONFIGS.md §2, §4).
 #
 #  Build the image once (same partition + same OpenMPI module as the runs):
 #      cd $HOME/GridapBALFEM.jl/compile && sbatch compile_snellius.sh

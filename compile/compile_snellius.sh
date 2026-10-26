@@ -4,12 +4,13 @@
 #SBATCH --time=16:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#  SNELLIUS ROME SIZING: 7 x 8G = 56 GiB = exactly 2/8 of a rome node (32 cores/56 GiB).
-#  8 cpus x 8G = 64 GiB would bill 3/8, because the memory fraction (2.29/8) rounds up and
-#  the LARGER of the core/memory fraction sets the tier. mem-per-cpu is unchanged, so each
-#  thread still gets 8 GiB. See run/SNELLIUS_ROME_LAUNCH_CONFIGS.md.
+#  SNELLIUS ROME SIZING: 7 threads x 8 GiB = 56 GiB = exactly 2/8 of a rome node (32 cores/56 GiB).
+#  ⚠ --mem, NOT --mem-per-cpu: Slurm counts --mem-per-cpu against ALL allocated CPUs, and the
+#  allocation is rounded up to 16 cores, so 7 x --mem-per-cpu=8G was really 16 x 8 = 128 GiB
+#  (billed 5/8, or refused). --mem is a flat per-node total. 64 GiB would bill 3/8: the
+#  LARGER of the core/memory fraction sets the tier. See run/SNELLIUS_ROME_LAUNCH_CONFIGS.md §4.
 #SBATCH --cpus-per-task=7
-#SBATCH --mem-per-cpu=8G
+#SBATCH --mem=56G
 #SBATCH --output=compile_GridapBALFEM.%j.out
 #SBATCH --error=compile_GridapBALFEM.%j.err
 #
