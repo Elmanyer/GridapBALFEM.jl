@@ -26,7 +26,10 @@ const ROOT = normpath(joinpath(@__DIR__, ".."))
 using GridapBALFEM
 
 # ── tiny SEQUENTIAL solve — specializes residual/Jacobians for CellField ──────
-seq(reg, nlp; stab = (;)) = setup_and_run(
+#  ⚠ The leading `;` is load-bearing: it makes `stab...` splat as KEYWORDS. Without
+#  it Julia splats the NamedTuple's VALUES positionally, i.e.
+#  setup_and_run(:ghostvolume, 0.01, 0.01; …) -> MethodError (Snellius build 2026-10-26).
+seq(reg, nlp; stab = (;)) = setup_and_run(;
     M=2, c_bdy=[0.0, 0.728, 1.0], domain=((0.0, 4.0), (0.0, 4.0)), partition=(4, 4),
     p_u=3, p_eta=2, h_val=3.5, T_wave=1.6, A_wave=0.001,
     x_wm=1.0, y_wm=nothing, sponge_wL=0.5, sponge_wR=0.5, mu_max=5.0,
@@ -47,7 +50,15 @@ dist(reg, nlp) = setup_and_run_distributed(
 println("warmup: sequential traces (linear, nonlinear, nonlinear + 𝓝 + ghost penalty) …")
 seq(:linear, false)
 seq(:nonlinear, false)
-seq(:nonlinear, true; stab = (stabilization = :ghostvolume, cip_gamma_u = 0.01, cip_gamma_eta = 0.01))
+#  𝓝 + ghost penalty is SEQUENTIAL-ONLY (the distributed driver refuses nl_pressure=true),
+#  so it adds nothing to an MPI production image. Guarded like the distributed trace:
+#  a failure here must not throw away the build after the cold compile is paid.
+try
+    seq(:nonlinear, true; stab = (stabilization = :ghostvolume, cip_gamma_u = 0.01, cip_gamma_eta = 0.01))
+catch e
+    @warn "warmup: the 𝓝 + ghost-penalty trace failed and is NOT baked; sequential " *
+          "nl_pressure=true runs will JIT it. Distributed runs are unaffected." exception = e
+end
 
 println("warmup: distributed traces (cpu_grid=(1,1)) …")
 try

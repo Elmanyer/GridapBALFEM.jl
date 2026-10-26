@@ -50,7 +50,9 @@ occursin("Open MPI", _LIBVER) || error("""
     Expected system Open MPI (5.0.3). This usually means the OpenMPI module was
     not loaded (LD_LIBRARY_PATH missing its lib) or MPIPreferences.libmpi points
     at a JLL artifact instead of the cluster library.""")
-@info "MPI preflight OK — baking sysimage against SYSTEM OpenMPI" MPIPreferences.binary libmpi=MPIPreferences.libmpi version=_LIBVER
+#  The library path lives in MPI.API.libmpi; MPIPreferences has no `libmpi` binding (it holds
+#  only `binary` and `abi`), and reading one broke this log record (UndefVarError, 2026-10-26).
+@info "MPI preflight OK — baking sysimage against SYSTEM OpenMPI" MPIPreferences.binary libmpi=MPI.API.libmpi version=_LIBVER
 # ──────────────────────────────────────────────────────────────────────────────
 
 # ── PACKAGE PREFLIGHT ─────────────────────────────────────────────────────────
