@@ -244,6 +244,18 @@ function build_problem_raw(vert;
 end
 
 """
+    depth_cf(prob, trian)
+
+The still-water depth d(x) as a CellField. On a distributed triangulation it is built on the
+local cells WITH the ghost layer: the skeleton facet terms read H = d + η on both sides of a
+partition facet, and a field on the owned cells only reads ZERO on a ghost side
+(test_nlp_distributed_parity.jl P3). Volume integrals over the owned-cell measure are unchanged.
+"""
+depth_cf(prob::BALFEMProblem, trian::Triangulation) = CellField(prob.h_bathy, trian)
+depth_cf(prob::BALFEMProblem, trian::GridapDistributed.DistributedTriangulation) =
+    CellField(prob.h_bathy, Triangulation(with_ghost, get_background_model(trian)))
+
+"""
     global_residual(t, u, v, prob, trian, dΩh)
 
 Single scalar Gridap residual, stacked layout. `u` is a TransientCellField
@@ -258,7 +270,7 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
 
     g   = prob.g
     lin = prob.linearised
-    d_cf   = CellField(prob.h_bathy, trian)
+    d_cf   = depth_cf(prob, trian)
     src_cf = CellField(x -> prob.wm_src(x, t), trian)
     mu_cf  = CellField(prob.mu_sponge, trian)
     H = d_cf + η
@@ -485,7 +497,7 @@ function jacobian_u_t(t::Real, u, dut, v, prob::BALFEMProblem, trian, dΩh)
     dηt, dUxt, dUyt = dut[1], dut[2], dut[3]
     q, Wx, Wy = v[1], v[2], v[3]
     lin  = prob.linearised
-    d_cf = CellField(prob.h_bathy, trian)
+    d_cf = depth_cf(prob, trian)
     H = d_cf + η
 
     r = ∫( q*dηt ) * dΩh
@@ -555,7 +567,7 @@ function jacobian_u(t::Real, u, du, v, prob::BALFEMProblem, trian, dΩh)
     dη, dUx, dUy = du[1], du[2], du[3]
     q,  Wx,  Wy  = v[1], v[2], v[3]
     g = prob.g; lin = prob.linearised
-    d_cf  = CellField(prob.h_bathy, trian)
+    d_cf  = depth_cf(prob, trian)
     mu_cf = CellField(prob.mu_sponge, trian)
     H = d_cf + η
 

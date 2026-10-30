@@ -17,8 +17,10 @@
 #  sequential driver; only the linear solver (GMRES + Jacobi + Newton) and the reductions
 #  differ.
 #
-#  ⚠ `nl_pressure=true` is REFUSED here until the broken Class-III skeleton terms are ported to
-#  `DistributedDiscreteModel` (V2_SOLVER_PLAN.md step 10).
+#  `nl_pressure=true` runs here too (V2_SOLVER_PLAN.md step 10, 2026-10-29): the Class-III facet
+#  terms and the mandatory C⁰-CIP penalty live on the distributed skeleton (`SkeletonTriangulation`
+#  of the `DistributedDiscreteModel`, each interior facet once, on the rank that owns it; the
+#  ghost layer supplies the cell on the other side). The ghost-volume penalty stays sequential.
 #
 #  The vertical pre-computation is tiny and identical on every rank, so it is
 #  simply replicated rather than distributed.
@@ -92,13 +94,18 @@ function setup_and_run_distributed(;
     x_wall_bc    :: Bool    = false,       # solid walls on the x-edges (true for closed-basin IC)
     # ---- Physics flags (all supported in parallel) ---------------------------
     regime       :: Symbol  = :nonlinear,  # :linear (linearised, no advection) | :nonlinear
-    nl_pressure             = false,       # 𝓝 (all eight components) — ⚠ v2: only `false` is
-                                           #   supported distributed until the broken formulation is
-                                           #   ported (V2_SOLVER_PLAN.md step 10)
+    nl_pressure             = false,       # 𝓝 (all eight components): needs p_eta ≥ 2 and carries the
+                                           #   MANDATORY C⁰-CIP penalty (LaTeX §6.4)
     flat_bed     :: Bool    = false,       # sea-bed geometry: false = variable bathymetry (∇h≠0),
                                            #   true = flat bed (∇h≡0; ∇h-terms dropped, ∇η-terms kept)
     h_bathy                  = nothing,     # x → d(x): variable bathymetry (overrides h_val)
     eta0_func               = nothing,     # x → η₀(x): initial release (REQUIRES x_wall_bc=true)
+    # ---- C⁰-CIP skeleton penalty (:jumpgrad; src/broken.jl) -------------------
+    cip_gamma_u             = nothing,     # γ_u on ⟦∂ₙ𝖴⟧; nothing → DEFAULT_CIP_GAMMA with nl_pressure
+                                           #   (mandatory, > 0 on both fields), 0 (off) otherwise
+    cip_gamma_eta           = nothing,     # γ_η on ⟦∂ₙη⟧; same default
+    cip_hexp     :: Float64 = 2.0,         # exponent s of h_F (2 = LaTeX §6.4)
+    cip_order    :: Int     = 1,           # penalise ⟦∂ₙʲ·⟧ for j ≤ cip_order (≤ 2)
     # ---- Dirichlet boundary wave generation (deterministic per rank) ---------
     wave_gen     :: Symbol  = :auto,       # :inner_res | :bc_gen  (:auto infers from wave_bc)
     wave_bc                 = nothing,     # nothing | :regular | WaveInput | WaveSpec AiryState
@@ -146,10 +153,15 @@ function setup_and_run_distributed(;
     n_procs = prod(cpu_grid)                 # total MPI ranks implied by the process grid
     #  v2 interim refusal, BEFORE MPI starts so every rank fails identically (step 5).
     resolve_physics(; regime = regime, nl_pressure = nl_pressure, flat_bed = flat_bed)
-    nl_pressure &&
-        error("setup_and_run_distributed: nl_pressure=true is not available distributed in v2 yet — " *
-              "Class III is assembled by the broken formulation, whose skeleton terms are not yet " *
-              "ported to MPI (markdown_files/V2_SOLVER_PLAN.md step 10). Run it sequentially.")
+    #  𝓝 ⇒ p_eta ≥ 2 and the mandatory C⁰-CIP on both fields (LaTeX §6.4); resolved before MPI
+    #  starts, so every rank fails identically, and before the manifest records the configuration.
+    nl_pressure && check_nlp_surface_order(p_eta; where = "setup_and_run_distributed")
+    cip_gamma_u   = cip_gamma_u   === nothing ? (nl_pressure ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_u)
+    cip_gamma_eta = cip_gamma_eta === nothing ? (nl_pressure ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_eta)
+    nl_pressure && !(cip_gamma_u > 0 && cip_gamma_eta > 0) &&
+        error("setup_and_run_distributed: nl_pressure=true requires cip_gamma_u > 0 and " *
+              "cip_gamma_eta > 0 (LaTeX §6.4). Leave them unset for the default $(DEFAULT_CIP_GAMMA).")
+    _run_config[:cip_gamma_u] = cip_gamma_u; _run_config[:cip_gamma_eta] = cip_gamma_eta
 
     # Everything runs inside with_mpi: it initialises MPI and hands back a
     # `distribute` that turns a global index set into this rank's local share.
@@ -309,16 +321,34 @@ function setup_and_run_distributed(;
         end
 
         # Same problem bundle as the sequential driver — identical residual.
+        qdeg = 2*max(p_u, p_eta) + 2
         prob = build_problem(vert; g=g,
                             h_bathy=dfn,                # bathymetry function (x → d(x))
                             regime=regime,              # linear/nonlinear physics
                             nl_pressure=nl_pressure,    # nonlinear pressure treatment
                             flat_bed=flat_bed,          # whether to drop ∇h terms (flat bed)
+                            model=model,                # distributed mesh: its skeleton carries the
+                            quad_degree=qdeg,           #   Class-III facet terms and the C⁰-CIP
+                            p_eta=p_eta,                # surface order (𝓝 needs ≥ 2)
                             mu_sponge=sponge,           # sponge damping profile μ(x,y)
                             wm_src=wm,                  # internal wavemaker source S(x,t)
                             relax_bc=use_relax,         # whether to use a relaxation zone at the inflow
                             relax_mu=relax_mu_fn,       # relaxation-zone damping profile μ(x,y)
                             relax_tg=relax_tg)          # incident wave target for the relaxation zone
+        #  C⁰-CIP at the requested γ (γ = 0 on a model without 𝓝 ⇒ no skeleton term at all).
+        attach_skeleton!(prob, model; cip_gamma_u=cip_gamma_u, cip_gamma_eta=cip_gamma_eta,
+                         cip_hexp=cip_hexp, cip_order=cip_order, stabilization=:jumpgrad,
+                         p_u=p_u, p_eta=p_eta, degree=qdeg)
+        if i_am_main(ranks)
+            nl_pressure && println("  Nonlinear pressure 𝓝: ALL EIGHT components — {3,6,7,8} direct, ∇h " *
+                                   "half by exact IBP, Class III cellwise Hessians + facet terms, " *
+                                   "mandatory C⁰-CIP")
+            has_cip(prob) &&
+                @printf("  C0-IP penalty: γ_u=%.3g  γ_η=%.3g  (⟦∂ₙʲ·⟧, j≤%d)  h_F^%.3g, τ_u=d√(gd), τ_η=√(gd)\n",
+                        cip_gamma_u, cip_gamma_eta, cip_order, cip_hexp)
+            prob.skel[] !== nothing && @printf("  Skeleton: %d interior facets\n", prob.skel[].nfacets)
+            flush(stdout)
+        end
 
         # ----- STAGE 4: DISTRIBUTED OPERATOR + SOLVER STACK + INITIAL STATE ----
         op      = build_ode_operator(prob, U, V, trian, dΩh)   # same hand Jacobians

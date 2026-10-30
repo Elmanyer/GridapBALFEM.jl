@@ -342,15 +342,21 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           div_factor=genv_f("BALFEM_DIV_FACTOR", 20.0))
 
 if use_mpi
-    (nl_pressure_flag() || genv_f("BALFEM_CIP_GU", 0.0) > 0 || genv_f("BALFEM_CIP_GE", 0.0) > 0) &&
-        error("run_flume_1d: BALFEM_NL_PRESSURE=1 and BALFEM_CIP_* are sequential-only in v2 " *
-              "(skeleton terms not yet distributed — V2_SOLVER_PLAN.md step 10); set BALFEM_MPI=0")
+    lowercase(genv("BALFEM_STAB", "jumpgrad")) == "ghostvolume" &&
+        error("run_flume_1d: BALFEM_STAB=ghostvolume is sequential-only; set BALFEM_MPI=0")
     px = genv_i("BALFEM_PX", 12)
     nx % px == 0 || error("BALFEM_NX ($nx) must be divisible by BALFEM_PX ($px)")
+    #  The distributed driver has no `use_ad` and sets its own quadrature degree: refuse a
+    #  non-default value instead of silently ignoring it, and drop both keys from `common`.
+    common.use_ad && error("run_flume_1d: BALFEM_USE_AD=1 is sequential-only; set BALFEM_MPI=0")
+    common.quad_extra == 0 || error("run_flume_1d: BALFEM_QUAD_EXTRA is sequential-only; set BALFEM_MPI=0")
+    common_dist = Base.structdiff(common, NamedTuple{(:quad_extra, :use_ad)})
     diags, vert, prob = setup_and_run_distributed(;
         cpu_grid=(px, 1), domain=(0.0, Lx, 0.0, Ly), partition=(nx, ny),
+        cip_gamma_u=_cgu, cip_gamma_eta=_cge,
+        cip_hexp=genv_f("BALFEM_CIP_HEXP", 2.0), cip_order=genv_i("BALFEM_CIP_ORDER", 1),
         ls_rtol=ls_rtol_val(), ls_maxiter=ls_maxiter_val(), krylov_m=krylov_m_val(), precond=precond_sym(),
-        common...)
+        common_dist...)
 else
     diags, vert, prob = setup_and_run(;
         domain=((0.0, Lx), (0.0, Ly)), partition=(nx, ny),

@@ -278,7 +278,11 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
                                     nl_tol::Float64 = 1e-13, nl_iter::Int = 50,
                                     ls_rtol::Float64 = 1e-13, ls_maxiter::Int = 5000,
                                     krylov_m::Int = 200, verbose::Bool = true,
+                                    cip_gamma_u = nothing, cip_gamma_eta = nothing,  # as run_mms_case
                                     output_dir::String = mktempdir())
+    nl_pressure === true && check_nlp_surface_order(p_eta; where = "run_mms_case_distributed")
+    cip_gamma_u   = cip_gamma_u   === nothing ? (nl_pressure === true ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_u)
+    cip_gamma_eta = cip_gamma_eta === nothing ? (nl_pressure === true ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_eta)
     vert = vert_override === nothing ?
            assemble_vertical_tensors(M, p_vert, resolve_cbdy(M, c_bdy, p_vert)) : vert_override
     f    = field === nothing ? MMSField(vert.N_dof; Lx=Lx, Ly=Ly) : field
@@ -286,9 +290,6 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
     #  ONE bathymetry object and ONE set of switches for the forcing and the solver,
     #  built OUTSIDE the MPI block so every rank derives them from identical inputs.
     hf   = hfun === nothing ? ((xx, yy) -> d) : hfun
-    nl_pressure === true &&
-        error("run_mms_case_distributed: nl_pressure=true is not available distributed in v2 yet " *
-              "(the broken Class-III skeleton is not ported to MPI — V2_SOLVER_PLAN.md step 10)")
     src  = mms_forcing(f, vert, hf, g; regime = regime, flat_bed = flat_bed,
                                        nl_pressure = nl_pressure)
     with_mpi() do distribute
@@ -303,8 +304,14 @@ function run_mms_case_distributed(; nx::Int, ny::Int, dt::Float64, T_final::Floa
                              regime      = regime,       # SAME variables as `src` above —
                              nl_pressure = nl_pressure,  # never two literals, or the two can drift
                              flat_bed    = flat_bed,
+                             model       = model,          # skeleton: Class-III facet terms
+                             quad_degree = 2*max(p_u, pe) + 2,  # and the C⁰-CIP
+                             p_eta       = pe,
                              mu_sponge=(x -> 0.0), wm_src=((x,t) -> 0.0),
                              mms_src=src)
+        attach_skeleton!(prob, model; cip_gamma_u = cip_gamma_u, cip_gamma_eta = cip_gamma_eta,
+                         stabilization = :jumpgrad, p_u = p_u, p_eta = pe,
+                         degree = 2*max(p_u, pe) + 2)
         op     = build_ode_operator(prob, U, V, trian, dΩh)
         solver = build_ode_solver_distributed(dt; solver_type=solver_type, tableau=tableau,
                         nl_iter=nl_iter, nl_tol=nl_tol, ls_rtol=ls_rtol,

@@ -36,8 +36,10 @@
 #  by parts. It is consistent but turns the effective mass matrix into the element-wise strong
 #  form (h⁻⁴ conditioning, non-convergent; audit Table 6.1). Do not add it.
 #
-#  SEQUENTIAL ONLY (V2_SOLVER_PLAN.md step 10 ports it). On an x-periodic mesh the identified
-#  edge is an interior facet of the skeleton.
+#  SEQUENTIAL AND DISTRIBUTED (V2_SOLVER_PLAN.md step 10, 2026-10-29): on a DistributedDiscreteModel
+#  the skeleton holds each interior facet once, on its owning rank, and the ghost layer supplies the
+#  other cell; h_F and the facet count are built per rank. :ghostvolume stays sequential. On an
+#  x-periodic mesh the identified edge is an interior facet of the skeleton.
 # ==============================================================
 
 "(a,b) component of the ELEMENT-WISE Hessian of a scalar or stacked `VectorValue{Nσ}` field.
@@ -65,9 +67,20 @@ function build_skeleton_ctx(model; degree::Int)
     n⁺ = nΛ.plus
     nx = Operation(n -> n ⋅ Ex)(n⁺)
     ny = Operation(n -> n ⋅ Ey)(n⁺)
-    hF = CellField(collect(get_cell_measure(Λ)), Λ)
-    return (Λ = Λ, dΛ = dΛ, nx = nx, ny = ny, hF = hF, nfacets = num_cells(Λ))
+    hF = _facet_size(Λ)
+    return (Λ = Λ, dΛ = dΛ, nx = nx, ny = ny, hF = hF, nfacets = _num_facets(Λ))
 end
+
+"Facet size h_F (facet length) as a skeleton CellField; per rank on a distributed skeleton."
+_facet_size(Λ::Triangulation) = CellField(collect(get_cell_measure(Λ)), Λ)
+_facet_size(Λ::GridapDistributed.DistributedTriangulation) =
+    CellField(map(t -> collect(get_cell_measure(t)), GridapDistributed.local_views(Λ)), Λ)
+
+"Number of interior facets; on a distributed skeleton (no ghost facets) the sum over ranks."
+_num_facets(Λ::Triangulation) = num_cells(Λ)
+_num_facets(Λ::GridapDistributed.DistributedTriangulation) =
+    PartitionedArrays.getany(reduction(+, map(num_cells, GridapDistributed.local_views(Λ));
+                                       destination = :all))
 
 """
     skeleton_nt(ctx; stab=:none, gu=0, ge=0, hexp=2, order_u=0, order_eta=0, cu=(), ce=(),
@@ -102,6 +115,9 @@ function attach_skeleton!(prob::BALFEMProblem, model;
                           p_u::Int = 2, p_eta::Int = 2, degree::Int)
     stabilization in (:jumpgrad, :ghostvolume) ||
         error("attach_skeleton!: stabilization must be :jumpgrad or :ghostvolume (got :$stabilization)")
+    stabilization === :ghostvolume && model isa GridapDistributed.DistributedDiscreteModel &&
+        error("attach_skeleton!: :ghostvolume is sequential only (uniform Cartesian shift of the cell " *
+              "polynomials); use :jumpgrad on a distributed model")
     stabilization === :ghostvolume && cip_order != 1 &&
         error("attach_skeleton!: cip_order applies to :jumpgrad only — :ghostvolume always covers " *
               "every order 0…p (GHOST_PENALTY_PLAN.md §1.4)")
