@@ -18,18 +18,22 @@
 #SBATCH --job-name="BALFEM_lin_directional_flat"
 #SBATCH --partition=rome
 #SBATCH --time=119:59:00
-#SBATCH --nodes=2
-#SBATCH --ntasks=56
-#SBATCH --ntasks-per-node=28
+#SBATCH --nodes=1
+#SBATCH --ntasks=42
+#SBATCH --ntasks-per-node=42
 #SBATCH --cpus-per-task=1
 # MEMORY: --mem only, never --mem-per-cpu (run/SNELLIUS_ROME_LAUNCH_CONFIGS.md §2, §4).
-#   --mem is PER NODE: 112 GiB / 28 ranks = 4.00 GiB per rank on each of 2 nodes,
-#   billed 4/8 + 4/8 = 8/8 (128 CPUs). v1 linear wide run of this exact mesh and
-#   grid: peak 2.84 GB/rank, 73.5 s/step under SDIRK_2_2 -> ~102 h at the worst
-#   case, ~55-60 h expected under CN.
-#   If it is OOM-killed (exit 137): --ntasks=84 --ntasks-per-node=42 --mem=168G,
-#   PX=14 PY=6. Do NOT coarsen: dx 0.25 is 14.7 cells per the shortest wavelength.
-#SBATCH --mem=112G
+#   168 GiB / 42 ranks = 4.00 GiB per rank, billed 6/8 of ONE rome node (96 CPUs).
+#   ONE NODE, NOT v1's 2 x 28: same per-rank budget, 6/8 billed instead of 8/8, no
+#   inter-node traffic, and it matches the layout the numbers below were measured on.
+#   v1's measured wide run was 1 node x 40 ranks (8x5) on this exact 200 x 160 mesh:
+#   800 cells/rank, peak 2.84 GB (max over ranks). Here 42 ranks give 762 cells/rank,
+#   i.e. ~2.8 GB = 70 % of the 4 GiB budget.
+#   v1 wall at 40 ranks: 73.5 s/step under SDIRK_2_2 -> ~102 h at the worst case,
+#   ~50-60 h expected under CN.
+#   If it is OOM-killed (exit 137): 1 node x 56 ranks, --exclusive --mem=0 (8/8, the
+#   whole node), PX=8 PY=7. Do NOT coarsen: dx 0.25 is 14.7 cells per the shortest wavelength.
+#SBATCH --mem=168G
 #SBATCH --output=%x.%j.out
 #SBATCH --error=%x.%j.err
 
@@ -37,8 +41,8 @@ source $HOME/GridapBALFEM.jl/run/balfem_env.sh
 source "$BALFEM_PROJ/run/linear_production/_linear_common.sh"
 
 # --- MPI process grid (PX*PY MUST equal the rank count given to balfem_run) ---
-export BALFEM_PX=8
-export BALFEM_PY=7            # 8*7 = 56 ranks; 6.25 x 5.71 m subdomains (rule 22)
+export BALFEM_PX=7
+export BALFEM_PY=6            # 7*6 = 42 ranks; 7.14 x 6.67 m subdomains (rule 22)
 
 # --- Case ---------------------------------------------------------------------
 export BALFEM_FLAT_BED=1
@@ -53,4 +57,4 @@ export BALFEM_SPONGE_Y=2.0
 export BALFEM_PERIODS=50
 export BALFEM_SAVE_EVERY=20   # 0.4 s snapshots; halves VTK I/O on the largest mesh
 
-balfem_run 56 examples/distributed_small/run_directional_sea_small.jl
+balfem_run 42 examples/distributed_small/run_directional_sea_small.jl

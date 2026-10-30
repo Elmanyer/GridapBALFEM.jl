@@ -17,8 +17,8 @@ domain (50 × 40 m, 2 m lateral sponges).
 | `run_lin_irregular_flat.sh` | JONSWAP, Hs 0.2, Tp 2.0 | flat | 50 × 20, y-walls | 200 × 40 (0.25) | 28 = 7×4 · 1 | 112G | 4/8 | 60 Tp = 120 s |
 | `run_lin_irregular_bar.sh` | JONSWAP, Hs 0.2, Tp 2.0 | bar | 50 × 20, y-walls | 200 × 40 (0.25) | 28 = 7×4 · 1 | 112G | 4/8 | 60 Tp = 120 s |
 | `run_lin_ring_flat.sh` | point source, A 0.1, T 2.0 | flat | 40 × 40, 4 sponges | 160 × 160 (0.25) | 42 = 7×6 · 1 | 168G | 6/8 | 30 T = 60 s |
-| `run_lin_directional_flat.sh` | JONSWAP × cos-power, 7 θ, ±40° | flat | 50 × 40 wide_small | 200 × 160 (0.25) | 56 = 8×7 · 2 | 112G | 8/8 | 50 Tp = 100 s |
-| `run_lin_directional_bar.sh` | JONSWAP × cos-power, 7 θ, ±40° | bar | 50 × 40 wide_small | 200 × 160 (0.25) | 56 = 8×7 · 2 | 112G | 8/8 | 50 Tp = 100 s |
+| `run_lin_directional_flat.sh` | JONSWAP × cos-power, 7 θ, ±40° | flat | 50 × 40 wide_small | 200 × 160 (0.25) | 42 = 7×6 · 1 | 168G | 6/8 | 50 Tp = 100 s |
+| `run_lin_directional_bar.sh` | JONSWAP × cos-power, 7 θ, ±40° | bar | 50 × 40 wide_small | 200 × 160 (0.25) | 42 = 7×6 · 1 | 168G | 6/8 | 50 Tp = 100 s |
 
 **The bar** is the same in every variable-bed case:
 * `d = 3.5`, height 1.5 (crest depth 2.0);
@@ -45,7 +45,12 @@ same sea.
   16 cores. So `28 × 4G` became a request for `32 × 4 = 128 GiB`, which was billed 5/8 instead of
   4/8, or refused outright.
 * With `--mem`, a tier is `k/8 = 28k GiB` for `7k` ranks at 4 GiB/rank.
-* `--mem` is **per node**: the two-node directional jobs request 112G on each node.
+* `--mem` is **per node**. Every job here is single-node.
+* The directional pair runs on **one node, 1 × 42 at 168G**, not v1's 2 × 28 at 112G. The per-rank
+  budget is the same, the bill is 6/8 instead of 8/8, and there is no inter-node traffic.
+  v1's measured wide run (the 2.84 GB and 73.5 s/step below) was 1 node × 40 ranks on the same
+  200 × 160 mesh, i.e. 800 cells/rank against 762 here. If it is OOM-killed, use 1 × 56 with
+  `--exclusive --mem=0`, `PX=8 PY=7`.
 * The measured billing and the full rule are in
   [`../SNELLIUS_ROME_LAUNCH_CONFIGS.md`](../SNELLIUS_ROME_LAUNCH_CONFIGS.md) §2 and §4.
 
@@ -59,7 +64,7 @@ roughly 0.55–0.65 of those wall times.
 | bcplane flat / bar | 23.9 / 26.6 | 4000 | 27 / 30 h | ~15 / 17 h | 2.6 / 2.5 GB |
 | irregular flat / bar | ~24–27 | 6000 | ~45 h | ~25–27 h | ~2.6 GB |
 | ring | not measured (linear) | 3000 | uncertain, ≲ 90 h | ~40–50 h | ~2.9 GB (est.) |
-| directional flat / bar | 73.5 (flat) | 5000 | 102 / ~112 h | ~55–65 h | 2.84 GB |
+| directional flat / bar | 73.5 (flat, v1 at 40 ranks) | 5000 | 102 / ~112 h | ~55–65 h | 2.84 GB |
 
 The directional bar at SDIRK rates would come close to the 119:59 wall. That margin is a second
 reason for CN.
