@@ -3,8 +3,10 @@
 #
 #  GridapBALFEM is a Julia PACKAGE (name+uuid in ../Project.toml), so it is baked
 #  into the image alongside its dependencies, and warmup.jl then trace-compiles
-#  the BALFE-M solver kernels (residual, Jacobians, time loops, reconstruction) for
-#  BOTH the sequential (CellField) and distributed (DistributedCellField) paths.
+#  the COMPLETE BALFE-M solver (all six models incl. the 𝓝 + mandatory-CIP path, every
+#  integrator, generation mode, boundary type, stabiliser and diagnostic) for BOTH the
+#  sequential (CellField) and distributed (DistributedCellField) paths. Check the case
+#  matrix first: BALFEM_WARMUP_DRYRUN=1 julia --project=. compile/warmup.jl
 #
 #  WHY THIS MATTERS (the bug this fixed): the solver used to be loaded with
 #  `include(src/GridapBALFEM.jl)`, creating a fresh `Main.GridapBALFEM` in every

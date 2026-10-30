@@ -42,7 +42,7 @@ into one file, so every MPI rank **loads** the code instead of JIT-compiling it.
 |------|------|
 | `load_modules_snellius.sh` | `module load` OpenMPI/5.0.3 + Julia, and put the OpenMPI lib on `LD_LIBRARY_PATH`. Sourced by **both** build and run. |
 | `set_preferences.jl` | Pin `MPI.jl` to the **system** OpenMPI via `MPIPreferences.use_system_binary()` (writes `LocalPreferences.toml`, forces recompile). |
-| `warmup.jl` | Tiny sequential + distributed solves (both regimes) that trace-compile the LFE-M code into the image. |
+| `warmup.jl` | Tiny (4×4, 2-step) runs that trace-compile the **complete** solver: all six models, sequential and distributed, every integrator, interior and boundary generation (regular + WaveSpec sea, relaxation, hot start), walls / open / periodic boundaries, the x-periodic box, closed-basin release, the skeleton stabilisers, the GMRES preconditioners, and the per-step diagnostics, checks and VTK output. Knobs: `BALFEM_WARMUP_VERT` (vertical bases, default P1LFE-2), `BALFEM_WARMUP_EXTRA=mms,ad`, `BALFEM_WARMUP_ONLY`. **`BALFEM_WARMUP_DRYRUN=1` checks every case's keywords in seconds — run it before a build.** Each case is guarded; the build log ends with a summary of what was baked. A variable bed defined in a launcher closure still JITs its H-dependent kernels (closure type). |
 | `compile.jl` | `create_sysimage(...)` with an **MPI preflight** that refuses to build unless MPI binds system OpenMPI. |
 | `compile_snellius.sh` | SLURM job that runs the build steps end to end (partition `rome`), then stamps the image with a hash of `src/*.jl` for the launchers' staleness check. |
 
@@ -108,7 +108,7 @@ sbatch compile_snellius.sh
 
 The job runs three steps: `set_preferences.jl` → `Pkg.precompile()` + **verify MPI is
 system (aborts otherwise)** → `mpiexecjl -n 1 julia compile.jl` (warmup traces the code).
-Takes ~45–60 min; produces `~/GridapBALFEM.jl/GridapBALFEM_sysimage.so` (~1 GB). Check:
+Took ~45–60 min with the old warmup (models 1–4 only); the complete warmup adds the Q3/Q2 𝓝 path sequential **and** distributed, so expect several hours (estimate; the 𝓝 path alone took ~3 h to compile in the parity test). Produces `~/GridapBALFEM.jl/GridapBALFEM_sysimage.so` (~1 GB). Check:
 
 ```bash
 ls -lh ~/GridapBALFEM.jl/GridapBALFEM_sysimage.so
