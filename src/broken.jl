@@ -331,6 +331,34 @@ function cip_contrib(prob::BALFEMProblem, sk, η, Ux, Uy, q, Wx, Wy)
     return r
 end
 
+"""
+    cip_power(prob, sk, η, Ux, Uy) -> (P_η, P_u)
+
+Power drained by the `:jumpgrad` C⁰-IP penalty in the current state, in the units of the energy per
+second: `P_η = g·J_η(η,η)` (the continuity row tested with gη) and `P_u = J_u(𝖴,𝖴)` (the momentum
+rows tested with 𝖴). Both are ≥ 0; `P/E` is the damping rate the penalty applies. `(0.0, 0.0)` when
+the penalty is off, `(NaN, NaN)` for `:ghostvolume`. Diagnostics only; collective when distributed.
+"""
+function cip_power(prob::BALFEMProblem, sk, η, Ux, Uy)
+    sk === nothing && return (0.0, 0.0)
+    sk.stab === :ghostvolume && return (NaN, NaN)
+    Pu = 0.0
+    if sk.gu > 0
+        for j in 1:sk.order_u
+            jx = _jdnj(sk, Ux, j); jy = _jdnj(sk, Uy, j)
+            Pu += sum(∫( sk.cu[j] * ((alg_mul(prob.Mv, jx) ⋅ jx) + (alg_mul(prob.Mv, jy) ⋅ jy)) ) * sk.dΛ)
+        end
+    end
+    Pe = 0.0
+    if sk.ge > 0
+        for j in 1:sk.order_eta
+            je = _jdnj(sk, η, j)
+            Pe += sum(∫( sk.ce[j] * (je * je) ) * sk.dΛ)
+        end
+    end
+    return (prob.g * Pe, Pu)
+end
+
 
 # ==============================================================
 #  :ghostvolume — the DIRECT (volume) ghost penalty (markdown_files/GHOST_PENALTY_PLAN.md)

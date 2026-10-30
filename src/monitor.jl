@@ -342,6 +342,7 @@ mutable struct RunDiagnostics
     energy0    :: Float64
     rss_peak   :: Float64
     csv        :: Any        # IOStream or nothing
+    prob       :: Any        # the problem — its skeleton record carries the C⁰-CIP (cip_power)
 end
 
 """
@@ -382,13 +383,14 @@ function build_run_diagnostics(prob, U0, trian, dΩ;
         println(csv, "step,t,eta_max,x_at_max,eta_max_int,eta_max_damped,u_max,",
                      "mass,mass_drift,energy,energy_ratio,",
                      "nl_iters,nl_stages,res0,res,converged,",
-                     "lin_last,lin_min,lin_max,lin_sat,t_solve,rss_mb,rss_peak_mb")
+                     "lin_last,lin_min,lin_max,lin_sat,t_solve,rss_mb,rss_peak_mb,",
+                     "cip_P_eta,cip_P_u,cip_rate")
         flush(csv)
     end
 
     rd = RunDiagnostics(ranks, dΩ, d_cf, prob.g, prob.Mv,
                         get_free_dof_values(xh[1]), get_free_dof_values(muh[1]),
-                        eta_ref, div_limit, NaN, NaN, 0.0, csv)
+                        eta_ref, div_limit, NaN, NaN, 0.0, csv, prob)
     # Seed the conserved-quantity baselines from the ACTUAL initial state, not
     # from the first sampled step — a forced run has already gained mass by
     # then, which would hide exactly the drift the diagnostic looks for.
@@ -401,7 +403,8 @@ end
 
 Sample the physical diagnostics of the current state. **Collective** — call on
 every rank. Returns `eta_max, x_at_max, eta_int, eta_damped, u_max, ratio,
-mass, mass_drift, energy, energy_ratio, rss, rss_peak`.
+mass, mass_drift, energy, energy_ratio, rss, rss_peak, cip_P_eta, cip_P_u, cip_rate`.
+`cip_*` are the power drained by the C⁰-CIP penalty and the rate `(P_η+P_u)/E` (`cip_power`).
 
 `ratio = max|u| / max|η|` is the kinematic discriminator: a genuine wave gives
 ≈ `ω/(kd)`, the η-dominated open-boundary mode ≈ 0.4 (CLAUDE.md §8). `max|u|`
@@ -432,11 +435,16 @@ function field_diagnostics(rd::RunDiagnostics, u_n)
     rss = global_max_scalar(rss_bytes(), rd.ranks)
     rss > rd.rss_peak && (rd.rss_peak = rss)
 
+    #  Power drained by the C⁰-CIP penalty and the damping rate it applies, P/E [1/s].
+    Pe, Pu = cip_power(rd.prob, rd.prob.skel[], η, Ux, Uy)
+    crate  = energy > 0 ? (Pe + Pu) / energy : NaN
+
     return (eta_max = emax, x_at_max = xmax, eta_int = eint, eta_damped = edmp,
             u_max = umax, ratio = emax > 0 ? umax/emax : NaN,
             mass = mass, mass_drift = mass - rd.mass0, energy = energy,
             energy_ratio = rd.energy0 != 0 ? energy/rd.energy0 : NaN,
-            rss = rss, rss_peak = rd.rss_peak)
+            rss = rss, rss_peak = rd.rss_peak,
+            cip_P_eta = Pe, cip_P_u = Pu, cip_rate = crate)
 end
 
 """
@@ -480,9 +488,9 @@ function diag_csv_row(rd::RunDiagnostics, step::Int, t::Float64, fd, stats)
     @printf(rd.csv, "%d,%.6f,%.8e,%.4f,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,",
             step, t, fd.eta_max, fd.x_at_max, fd.eta_int, fd.eta_damped,
             fd.u_max, fd.mass, fd.mass_drift, fd.energy, fd.energy_ratio)
-    @printf(rd.csv, "%d,%d,%.6e,%.6e,%d,%d,%d,%d,%d,%.4f,%.1f,%.1f\n",
+    @printf(rd.csv, "%d,%d,%.6e,%.6e,%d,%d,%d,%d,%d,%.4f,%.1f,%.1f,%.8e,%.8e,%.8e\n",
             ni, nst, r0, rf, cv, ll, lmn, lmx, lst, ts,
-            fd.rss/1e6, fd.rss_peak/1e6)
+            fd.rss/1e6, fd.rss_peak/1e6, fd.cip_P_eta, fd.cip_P_u, fd.cip_rate)
     flush(rd.csv)
     return nothing
 end
@@ -609,6 +617,7 @@ function step_report(step::Int, t_n::Float64, emax::Float64, stats;
         @printf(io, " | m%+.1e", fd.mass_drift)
         isnan(fd.energy_ratio) ? @printf(io, " E=%.2e", fd.energy) :
                                  @printf(io, " E%.3f", fd.energy_ratio)
+        fd.cip_P_eta + fd.cip_P_u > 0 && @printf(io, " cip %.2e/s", fd.cip_rate)
         fd.rss > 0 && @printf(io, " | rss %.0fM", fd.rss/1e6)
     end
     isnan(eta_s) || print(io, "  | ETA ", fmt_hms(eta_s))
