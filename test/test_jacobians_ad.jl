@@ -123,6 +123,10 @@ model, trian = build_horizontal_model(((0.0, LX), (0.0, LY)), (NX, NY))
 U, V         = build_fe_spaces(model, 2, Nσ; y_wall_bc = :wall, x_wall_bc = true,
                                p_eta = 1)
 dΩh          = Measure(trian, 6)
+#  nl_pressure=true (M5/M6) requires p_eta ≥ 2 and carries the mandatory C⁰-CIP (LaTeX §6.4,
+#  2026-10-30): those models run on Q3/Q2 spaces over the same mesh.
+U3, V3       = build_fe_spaces(model, 3, Nσ; y_wall_bc = :wall, x_wall_bc = true, p_eta = 2)
+dΩh3         = Measure(trian, 8)
 
 @printf("  mesh %dx%d   Nσ=%d   free DOFs=%d   bed h=%.2f(1+%.2f sin(%.1f x))\n",
         NX, NY, Nσ, num_free_dofs(U), D0, AB, KBX)
@@ -145,7 +149,7 @@ Assemble (A_hand, B_hand, A_ad, B_ad) for `prob` at state amplitude `a`.
 `u` and `u̇` are independent fields here, as they are for the integrator: the
 two Jacobians are partial derivatives at frozen opposite argument.
 """
-function jac_pair(prob, a)
+function jac_pair(prob, a; U = U, V = V, dΩh = dΩh)
     uh  = interpolate_everywhere(state_funs(a),       U)
     uth = interpolate_everywhere(state_funs(0.6 * a), U)
     tu  = TransientCellField(uh, (uth,))
@@ -248,12 +252,14 @@ for m in models
                                          "QUASI-NEWTON: amplitude-vanishing gate", "]")
     flush(stdout)
 
+    sp   = m.nlp ? (U = U3, V = V3, dΩh = dΩh3) : (U = U, V = V, dΩh = dΩh)
     prob = build_problem(vert; g = G, h_bathy = h_bathy,
                          regime = m.regime, nl_pressure = m.nlp, flat_bed = m.flat,
-                         model = model, quad_degree = 6,       # broken Class-III skeleton (nlp1)
+                         model = model, quad_degree = m.nlp ? 8 : 6,   # skeleton (nlp1): facet terms + CIP
+                         p_eta = m.nlp ? 2 : 1,
                          mu_sponge = (x -> 0.0), wm_src = ((x, t) -> 0.0))
 
-    A_h, B_h, A_d, B_d = jac_pair(prob, AMP)
+    A_h, B_h, A_d, B_d = jac_pair(prob, AMP; sp...)
     rA = reldiff(A_h, A_d)
     rB = reldiff(B_h, B_d)
     @printf("      ‖ΔA‖/‖A‖ = %.3e      ‖ΔB‖/‖B‖ = %.3e\n", rA, rB)
@@ -266,7 +272,7 @@ for m in models
         #  Halving the amplitude must shrink the discrepancy. A wrong LEADING-order
         #  term would leave it flat; the deliberate quasi-Newton omissions are all
         #  higher order and must decay.
-        A_h2, B_h2, A_d2, B_d2 = jac_pair(prob, AMP / 2)
+        A_h2, B_h2, A_d2, B_d2 = jac_pair(prob, AMP / 2; sp...)
         #  Absolute norms for the ORDER (see the note at `absdiff`), relative for scale.
         aA, aB   = absdiff(A_h,  A_d),  absdiff(B_h,  B_d)
         aA2, aB2 = absdiff(A_h2, A_d2), absdiff(B_h2, B_d2)

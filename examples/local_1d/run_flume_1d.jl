@@ -277,8 +277,11 @@ solver_sym() === :theta && push!(_extra, "theta")
 (solver_sym() === :sdirk && tableau_sym() !== :SDIRK_2_2) &&
     push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
-genv_f("BALFEM_CIP_GU", 0.0) > 0 && push!(_extra, @sprintf("cipu%g", genv_f("BALFEM_CIP_GU", 0.0)))
-genv_f("BALFEM_CIP_GE", 0.0) > 0 && push!(_extra, @sprintf("cipe%g", genv_f("BALFEM_CIP_GE", 0.0)))
+#  γ: unset ⇒ the driver default (DEFAULT_CIP_GAMMA with 𝓝, where the C⁰-CIP is mandatory; 0 otherwise)
+_cgdef = nl_pressure_flag() ? DEFAULT_CIP_GAMMA : 0.0
+_cgu = genv_f("BALFEM_CIP_GU", _cgdef); _cge = genv_f("BALFEM_CIP_GE", _cgdef)
+_cgu > 0 && push!(_extra, @sprintf("cipu%g", _cgu))
+_cge > 0 && push!(_extra, @sprintf("cipe%g", _cge))
 genv_i("BALFEM_CIP_ORDER", 1) > 1 && push!(_extra, "cipord" * ENV["BALFEM_CIP_ORDER"])
 lowercase(genv("BALFEM_STAB", "jumpgrad")) == "ghostvolume" && push!(_extra, "ghost")
 genv_i("BALFEM_QUAD_EXTRA", 0) != 0 && push!(_extra, "q$(genv_i("BALFEM_QUAD_EXTRA",0))")
@@ -353,9 +356,9 @@ else
         domain=((0.0, Lx), (0.0, Ly)), partition=(nx, ny),
         gauges=gauges,
         #  Skeleton stabilisation: BALFEM_STAB (jumpgrad | ghostvolume), BALFEM_CIP_GU / _GE
-        #  (γ_u, γ_η), _HEXP, _ORDER. SEQUENTIAL ONLY — setup_and_run_distributed has none.
-        cip_gamma_u=genv_f("BALFEM_CIP_GU", 0.0),
-        cip_gamma_eta=genv_f("BALFEM_CIP_GE", 0.0),
+        #  (γ_u, γ_η), _HEXP, _ORDER. :jumpgrad runs distributed too; :ghostvolume is sequential only.
+        cip_gamma_u=_cgu,
+        cip_gamma_eta=_cge,
         cip_hexp=genv_f("BALFEM_CIP_HEXP", 2.0),
         cip_order=genv_i("BALFEM_CIP_ORDER", 1),
         stabilization=Symbol(lowercase(genv("BALFEM_STAB", "jumpgrad"))),

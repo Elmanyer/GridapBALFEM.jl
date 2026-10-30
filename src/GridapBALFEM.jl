@@ -104,6 +104,7 @@ export global_residual, jacobian_u, jacobian_u_t
 export build_ode_operator, build_ode_operator_ad
 # Broken (skeleton) Class-III formulation + skeleton stabilisation — see src/broken.jl
 export alg_hess, build_skeleton_ctx, skeleton_nt, attach_skeleton!, has_cip
+export DEFAULT_CIP_GAMMA, has_mandatory_cip, require_mandatory_cip, check_nlp_surface_order
 export broken_class3_cell_fields, broken_class3_skeleton_contrib, broken_class3_residual
 export cip_contrib, ghost_contrib, stab_contrib, build_ghost_ctx, broken_class3_jacobian
 

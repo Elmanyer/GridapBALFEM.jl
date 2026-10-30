@@ -112,9 +112,16 @@ function attach_skeleton!(prob::BALFEMProblem, model;
         error("attach_skeleton!: cip_order must be in 1:$CIP_MAX_ORDER (got $cip_order). Gridap " *
               "evaluates derivatives of the FE bases only up to order 2 " *
               "(BROKEN_FORMULATION_PLAN.md §5.3)")
+    if prob.nl_pressure
+        cip_gamma_u > 0 && cip_gamma_eta > 0 ||
+            error("attach_skeleton!: nl_pressure=true requires the C⁰-CIP penalty on BOTH fields " *
+                  "(γ_u > 0 and γ_η > 0; got γ_u=$cip_gamma_u, γ_η=$cip_gamma_eta). It is part of the " *
+                  "weak form of the nonlinear model (LaTeX §6.4), not an option. Default: " *
+                  "DEFAULT_CIP_GAMMA = $DEFAULT_CIP_GAMMA.")
+        check_nlp_surface_order(p_eta; where = "attach_skeleton!")
+    end
     if cip_gamma_u == 0 && cip_gamma_eta == 0
-        prob.skel[] = prob.nl_pressure ? skeleton_nt(build_skeleton_ctx(model; degree = degree)) :
-                                         nothing
+        prob.skel[] = nothing
         return prob
     end
     ctx = build_skeleton_ctx(model; degree = degree)
@@ -148,6 +155,33 @@ const CIP_MAX_ORDER = 2
 
 "True when `prob` carries a skeleton stabilisation (:jumpgrad or :ghostvolume) with γ > 0."
 has_cip(prob::BALFEMProblem) = (sk = prob.skel[]; sk !== nothing && (sk.gu > 0 || sk.ge > 0))
+
+"Default dimensionless penalty γ_u = γ_η of the mandatory C⁰-CIP of the nonlinear model (𝓝 on).
+The v1 first-order arm (STABILITY.md §4); not calibrated on v2 — that is the Chapter 8 study."
+const DEFAULT_CIP_GAMMA = 0.3
+
+"True when the penalty covers BOTH fields (γ_u > 0 and γ_η > 0): what 𝓝 requires (LaTeX §6.4)."
+has_mandatory_cip(prob::BALFEMProblem) =
+    (sk = prob.skel[]; sk !== nothing && sk.gu > 0 && sk.ge > 0)
+
+"Refuse to assemble a nonlinear-pressure residual or Jacobian without the mandatory C⁰-CIP."
+function require_mandatory_cip(prob::BALFEMProblem; where::AbstractString = "global_residual")
+    prob.nl_pressure && !has_mandatory_cip(prob) &&
+        error("$where: nl_pressure=true without the C⁰-CIP penalty on both fields. The penalty " *
+              "is part of the weak form of the nonlinear model (LaTeX §6.4): build the problem with " *
+              "build_problem (it attaches γ = DEFAULT_CIP_GAMMA) and never detach it.")
+    return nothing
+end
+
+"`nl_pressure=true` needs a surface order `p_eta ≥ 2` (LaTeX §6.4.5; STABILITY.md §4)."
+function check_nlp_surface_order(p_eta; where::AbstractString = "")
+    p_eta isa Integer && p_eta ≥ 2 ||
+        error("$where: nl_pressure=true requires p_eta ≥ 2 (Taylor–Hood Q3/Q2 or higher; got " *
+              "p_eta=$(repr(p_eta))). On Q1 surface elements the cellwise Class-III terms do not " *
+              "converge (LaTeX §6.4.5) and the first-order η penalty locks the carrier " *
+              "(STABILITY.md §4).")
+    return nothing
+end
 
 """
     broken_class3_cell_fields(prob, d_cf, η, H, dHx, dHy, Ux, Uy, DU, S)

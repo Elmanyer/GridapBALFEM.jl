@@ -637,9 +637,12 @@ function setup_and_run(;
     relax_bc     :: Bool    = false,      # relaxation (generation/absorption) zone at the inflow
     relax_width  :: Float64 = 0.0,        # relaxation-zone width [m]; 0 → one peak wavelength
     # ---- Solver / diagnostics ------------------------------------------------
-    cip_gamma_u  :: Float64 = 0.0,        # ⚠ C⁰ interior penalty on ⟦∂ₙ𝖴⟧ (dimensionless γ_u; 0 = off).
+    cip_gamma_u             = nothing,    # ⚠ C⁰ interior penalty on ⟦∂ₙ𝖴⟧ (dimensionless γ_u).
                                           #   J_h = Σ_F ∫ γ_u d√(gd) h_F^s Σₐ⟦∂ₙ𝖴ₐ⟧·Mv⟦∂ₙ𝖵ₐ⟧. Any model.
-    cip_gamma_eta:: Float64 = 0.0,        # ⚠ C⁰-IP on ⟦∂ₙη⟧ in continuity (γ_η √(gd) h_F^s; 0 = off).
+                                          #   nothing → DEFAULT_CIP_GAMMA (0.3) with nl_pressure=true, where
+                                          #   the penalty is MANDATORY (> 0 on both fields, LaTeX §6.4);
+                                          #   0 (off) otherwise.
+    cip_gamma_eta           = nothing,    # ⚠ C⁰-IP on ⟦∂ₙη⟧ in continuity (γ_η √(gd) h_F^s). Same default.
     cip_hexp     :: Float64 = 2.0,        # exponent s of h_F in the penalty.
     stabilization:: Symbol  = :jumpgrad,  # ⚠ which skeleton stabilisation the γ knobs drive:
                                           #   :jumpgrad    — normal-derivative jumps, orders ≤ cip_order
@@ -689,6 +692,16 @@ function setup_and_run(;
     #  Physics gate, equally early: refuses the v1 tiers (:none/:native/:full) and a linear
     #  model with nl_pressure=true before anything is built.
     resolve_physics(; regime = regime, nl_pressure = nl_pressure, flat_bed = flat_bed)
+    #  𝓝 ⇒ p_eta ≥ 2 and the mandatory C⁰-CIP on both fields (LaTeX §6.4). Resolved here, before
+    #  the manifest, so the manifest records the γ the run actually uses.
+    nl_pressure && check_nlp_surface_order(p_eta; where = "setup_and_run")
+    cip_gamma_u   = cip_gamma_u   === nothing ? (nl_pressure ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_u)
+    cip_gamma_eta = cip_gamma_eta === nothing ? (nl_pressure ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_eta)
+    nl_pressure && !(cip_gamma_u > 0 && cip_gamma_eta > 0) &&
+        error("setup_and_run: nl_pressure=true requires cip_gamma_u > 0 and cip_gamma_eta > 0 — the " *
+              "C⁰-CIP penalty is part of the nonlinear model's weak form (LaTeX §6.4). Leave them " *
+              "unset for the default $(DEFAULT_CIP_GAMMA).")
+    _run_config[:cip_gamma_u] = cip_gamma_u; _run_config[:cip_gamma_eta] = cip_gamma_eta
     #  Provenance (V2_SOLVER_PLAN.md step 9): commit + full configuration into the output dir.
     _git = write_run_manifest(output_dir, _run_config)
     println("=== Run manifest: ", joinpath(output_dir, "run_manifest.toml"), "  [", _git, "]")
@@ -849,13 +862,9 @@ function setup_and_run(;
     #  ⚠ THE BANNER MUST NAME THE OPERATOR AND THE JACOBIAN ACTUALLY BUILT (rule 12b: a log that
     #  misreports its own settings is how a wrong configuration survives review).
     nl_pressure && println("  Nonlinear pressure 𝓝: ALL EIGHT components — {3,6,7,8} direct, ∇h half by " *
-                           "exact IBP, Class III BROKEN (cellwise Hessians + skeleton layer); " *
+                           "exact IBP, Class III cellwise Hessians + facet terms, mandatory C⁰-CIP; " *
                            (use_ad ? "exact AD Jacobian" :
                                      "hand Jacobian, Class III exact (broken_class3_jacobian)"))
-    nl_pressure && cip_gamma_u == 0 && cip_gamma_eta == 0 &&
-        @warn "setup_and_run: nl_pressure=true WITHOUT a skeleton stabilisation. The discretisation " *
-              "is consistent but unstable at the grid scale (v1 stability campaign; LATEX_STRUCTURE.md " *
-              "ch. 8–9). Intended only for stability studies — production runs set cip_gamma_u/eta > 0."
     (cip_gamma_u > 0 || cip_gamma_eta > 0) && stabilization === :jumpgrad &&
         @printf("  C0-IP penalty: γ_u=%.3g (⟦∂ₙʲ𝖴⟧, j≤%d)  γ_η=%.3g (⟦∂ₙʲη⟧, j≤%d)  h_F^(%.3g+2(j−1)), τ_u=d√(gd), τ_η=√(gd)\n",
                 cip_gamma_u, min(cip_order, p_u), cip_gamma_eta, min(cip_order, p_eta), cip_hexp)
@@ -907,6 +916,7 @@ function setup_and_run(;
                         flat_bed=flat_bed,          # whether to drop ∇h terms (flat bed)
                         model=model,                # the mesh — the broken Class-III layer lives
                         quad_degree=2*max(p_u, p_eta) + 2 + quad_extra,  # on its skeleton
+                        p_eta=p_eta,                # surface order (𝓝 needs ≥ 2)
                         mu_sponge=sponge,           # sponge damping profile μ(x,y)
                         wm_src=wm,                  # internal wavemaker source S(x,t)
                         relax_bc=use_relax,         # whether to use a relaxation zone at the inflow

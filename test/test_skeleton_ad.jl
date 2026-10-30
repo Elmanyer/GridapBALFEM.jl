@@ -78,7 +78,7 @@ for (lbl, S, bedf, fb) in (("sloping 2-D mesh", setup(), bed, false),
                            ("x-periodic box (wrap facet)", setup(nx = 8, ny = 1, Lx = 4.0, Ly = 0.5,
                                                                 periodic = true, bc = :wall), flat, true))
     pb = build_problem(vert; h_bathy = bedf, regime = :nonlinear, nl_pressure = true, flat_bed = fb,
-                       model = S.model, quad_degree = QDEG)
+                       model = S.model, quad_degree = QDEG, p_eta = PE)
     uh = state(S, 1.0; seed = 1); ud = FEFunction(S.U, zeros(num_free_dofs(S.U)))
     res(tu, v) = (f = fields(pb, tu, S.trian);
                   broken_class3_residual(pb, pb.skel[], f.d_cf, f.η, f.H, f.dHx, f.dHy, f.Ux, f.Uy,

@@ -79,8 +79,12 @@ function stability_case(; pu::Int, pe::Int = pu - 1, model::Symbol,
 
     prob = build_problem(vert; h_bathy = (x -> SE_D), regime = :nonlinear,
                                nl_pressure = (model === :on), flat_bed = true,
-                               model = dm, quad_degree = qdeg)
-    gamma > 0 && attach_skeleton!(prob, dm; cip_gamma_u = gamma, cip_gamma_eta = gamma,
+                               model = dm, quad_degree = qdeg, p_eta = pe)
+    #  𝓝 on ⇒ the C⁰-CIP is mandatory (LaTeX §6.4): gamma > 0 sets it, gamma = 0 keeps
+    #  DEFAULT_CIP_GAMMA (an unpenalised 𝓝 operator no longer exists).
+    (gamma > 0 || model === :on) && attach_skeleton!(prob, dm;
+                                  cip_gamma_u = gamma > 0 ? gamma : DEFAULT_CIP_GAMMA,
+                                  cip_gamma_eta = gamma > 0 ? gamma : DEFAULT_CIP_GAMMA,
                                   stabilization = stab, cip_order = (stab === :jumpgrad ? order : 1),
                                   p_u = pu, p_eta = pe, degree = qdeg)
 

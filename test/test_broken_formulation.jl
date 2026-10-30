@@ -11,10 +11,13 @@
 #      part alone is reported as the control (it must be O(1) wrong on a rough state).
 #  G2  LAYER LIVE (rule 38d). The skeleton integral is a non-negligible part of the broken
 #      Class-III contribution on a rough state.
-#  G3  NO LEAKAGE / v2 API. attach_skeleton! with everything off leaves prob.skel = nothing for
-#      nl_pressure=false and the bare geometry for true, the residual BITWISE unchanged either
-#      way; the removed `broken` keyword, a v1 tier symbol and a full-pressure problem without a
-#      mesh are all refused.
+#  G3  NO LEAKAGE / v2 API / MANDATORY CIP. attach_skeleton! with everything off leaves
+#      prob.skel = nothing for nl_pressure=false, the residual BITWISE unchanged. With
+#      nl_pressure=true the first-order C⁰-CIP is MANDATORY (LaTeX §6.4, 2026-10-30): build_problem
+#      attaches it on both fields at DEFAULT_CIP_GAMMA; γ = 0 or a one-field penalty is refused,
+#      p_eta < 2 is refused, and global_residual refuses a 𝓝 problem whose penalty was removed.
+#      The removed `broken` keyword, a v1 tier symbol and a full-pressure problem without a mesh
+#      are all refused.
 #  G5  C⁰-IP ALGEBRA. symmetric, positive semidefinite, zero on a global polynomial of
 #      the trial degree (open mesh), and the η-penalty conserves mass (q ≡ 1).
 #  G6  C⁰-IP SELECTIVITY. Rayleigh quotient on a λ = 2dx mode ≫ on a resolved mode.
@@ -58,14 +61,15 @@ function state(S, a; rough = 0.0, seed = 1, kx = 1.0)
     return FEFunction(S.U, x)
 end
 
-"v2: `nlp=true` ⇒ all eight 𝓝 components, Class III by the broken formulation (the skeleton is
-built by build_problem); `skel=:cip` attaches the :jumpgrad penalty on top."
+"v2: `nlp=true` ⇒ all eight 𝓝 components, Class III cellwise + facet terms, and the mandatory
+C⁰-CIP at DEFAULT_CIP_GAMMA (all built by build_problem); `skel=:cip` re-attaches the :jumpgrad
+penalty at (gu, ge)."
 function mkprob(S; skel = :none, gu = 0.0, ge = 0.0, nlp = true, regime = :nonlinear,
                 bedf = bed, flat_bed = false)
     p = build_problem(vert; h_bathy = bedf, regime = regime, nl_pressure = nlp, flat_bed = flat_bed,
-                      model = S.model, quad_degree = QDEG)
+                      model = S.model, quad_degree = QDEG, p_eta = PE)
     skel == :cip && attach_skeleton!(p, S.model; cip_gamma_u = gu, cip_gamma_eta = ge,
-                                     degree = QDEG)
+                                     p_u = PU, p_eta = PE, degree = QDEG)
     return p
 end
 
@@ -150,13 +154,29 @@ let uh = state(S1, 1.0; rough = 0.01)
     attach_skeleton!(pn, S1.model; cip_gamma_u = 0.0, cip_gamma_eta = 0.0, degree = QDEG)
     chk("G3 nl_pressure=false, everything off ⇒ prob.skel stays nothing", pn.skel[] === nothing)
     chk("G3 nl_pressure=false residual bitwise unchanged", resid(pn, S1, uh) == r1)
-    pf = mkprob(S1; nlp = true)
-    r2 = resid(pf, S1, uh)
-    attach_skeleton!(pf, S1.model; cip_gamma_u = 0.0, cip_gamma_eta = 0.0, degree = QDEG)
-    chk("G3 nl_pressure=true, γ = 0 ⇒ the skeleton geometry is kept, no penalty",
-        pf.skel[] !== nothing && !has_cip(pf))
-    chk("G3 nl_pressure=true residual bitwise unchanged by a γ = 0 attach", resid(pf, S1, uh) == r2)
     refused(f) = try f(); false catch; true end
+    pf = mkprob(S1; nlp = true)
+    sk = pf.skel[]
+    chk("G3 nl_pressure=true ⇒ build_problem attaches the mandatory C⁰-CIP on both fields at DEFAULT_CIP_GAMMA",
+        has_mandatory_cip(pf) && sk.stab === :jumpgrad && sk.gu == DEFAULT_CIP_GAMMA &&
+        sk.ge == DEFAULT_CIP_GAMMA && sk.order_u == 1 && sk.order_eta == 1)
+    r2 = resid(pf, S1, uh)
+    chk("G3 nl_pressure=true: attach with γ = 0 is refused",
+        refused(() -> attach_skeleton!(pf, S1.model; cip_gamma_u = 0.0, cip_gamma_eta = 0.0,
+                                       p_u = PU, p_eta = PE, degree = QDEG)))
+    chk("G3 nl_pressure=true: a penalty on one field only is refused",
+        refused(() -> attach_skeleton!(pf, S1.model; cip_gamma_u = 0.3, cip_gamma_eta = 0.0,
+                                       p_u = PU, p_eta = PE, degree = QDEG)))
+    chk("G3 nl_pressure=true: a refused attach leaves the residual bitwise unchanged", resid(pf, S1, uh) == r2)
+    chk("G3 nl_pressure=true with p_eta = 1 is refused",
+        refused(() -> build_problem(vert; h_bathy = bed, regime = :nonlinear, nl_pressure = true,
+                                    model = S1.model, quad_degree = QDEG, p_eta = 1)))
+    chk("G3 nl_pressure=true without p_eta is refused",
+        refused(() -> build_problem(vert; h_bathy = bed, regime = :nonlinear, nl_pressure = true,
+                                    model = S1.model, quad_degree = QDEG)))
+    pr = mkprob(S1; nlp = true)
+    pr.skel[] = skeleton_nt(build_skeleton_ctx(S1.model; degree = QDEG))     # penalty removed by hand
+    chk("G3 global_residual refuses a 𝓝 problem without the mandatory C⁰-CIP", refused(() -> resid(pr, S1, uh)))
     chk("G3 the removed `broken` keyword is refused",
         refused(() -> attach_skeleton!(mkprob(S1), S1.model; broken = true, degree = QDEG)))
     chk("G3 a v1 tier symbol (:full) is refused",
@@ -269,7 +289,7 @@ println("\n  G9 — ghost-volume stabilisation")
 function gprob(Sm; stab = :ghostvolume, gu = 1.0, ge = 1.0, regime = :nonlinear, nlp = false,
                bedf = bed, flat_bed = false, pu = PU, pe = PE, order = 1)
     p = build_problem(vert; h_bathy = bedf, regime = regime, nl_pressure = nlp, flat_bed = flat_bed,
-                      model = Sm.model, quad_degree = 2 * pu + 4)
+                      model = Sm.model, quad_degree = 2 * pu + 4, p_eta = pe)
     attach_skeleton!(p, Sm.model; cip_gamma_u = gu, cip_gamma_eta = ge, stabilization = stab,
                      cip_order = order, p_u = pu, p_eta = pe, degree = 2 * pu + 4)
     return p
@@ -353,7 +373,7 @@ end
 
 let uh = state(S1, 1.0; rough = 0.01)
     p_def = build_problem(vert; h_bathy = bed, regime = :nonlinear, nl_pressure = true, flat_bed = false,
-                          model = S1.model, quad_degree = QDEG)
+                          model = S1.model, quad_degree = QDEG, p_eta = PE)
     attach_skeleton!(p_def, S1.model; cip_gamma_u = 0.3, cip_gamma_eta = 0.3, cip_order = 2, p_u = PU, p_eta = PE, degree = QDEG)
     p_jg = gprob(S1; stab = :jumpgrad, nlp = true, gu = 0.3, ge = 0.3, order = 2)
     chk("G9g default stabilization is :jumpgrad, bitwise", resid(p_def, S1, uh) == resid(p_jg, S1, uh))
@@ -377,7 +397,7 @@ end
 println("\n  G10 — broken Class-III Jacobian vs FD")
 function c3_gap(Sm, x0, d; h = 1e-7, bedf = bed, flat_bed = false)
     pb = build_problem(vert; h_bathy = bedf, regime = :nonlinear, nl_pressure = true, flat_bed = flat_bed,
-                       model = Sm.model, quad_degree = QDEG)
+                       model = Sm.model, quad_degree = QDEG, p_eta = PE)
     function Rc3(x)
         f = fields(pb, FEFunction(Sm.U, x), Sm.trian)
         assemble_vector(v -> broken_class3_residual(pb, pb.skel[], f.d_cf, f.η, f.H, f.dHx, f.dHy, f.Ux, f.Uy,

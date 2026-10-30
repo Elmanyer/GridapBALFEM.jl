@@ -71,7 +71,7 @@ function mkprob(S, c)
         end
     else
         p = build_problem(vert; h_bathy = bedf, regime = c.regime, nl_pressure = c.nl, flat_bed = c.flat,
-                          model = S.model, quad_degree = S.deg)
+                          model = S.model, quad_degree = S.deg, p_eta = S.pe)
         c.gamma > 0 && attach_skeleton!(p, S.model; cip_gamma_u = c.gamma, cip_gamma_eta = c.gamma,
                                         cip_order = c.order, stabilization = c.stab, p_u = S.pu,
                                         p_eta = S.pe, degree = S.deg)
@@ -84,6 +84,10 @@ C(name; regime = :nonlinear, nl = false, flat = false, gamma = 0.0, order = 1, s
     (name = name, regime = regime, nl = nl, flat = flat, gamma = gamma, order = order, stab = stab,
      pu = pu, periodic = periodic)
 
+#  2026-10-30: nl_pressure=true carries the MANDATORY C⁰-CIP (default γ, LaTeX §6.4) and needs
+#  p_eta ≥ 2. The recorded v1 references of nl1_flat / nl1_bed have no penalty, so for those two the
+#  comparison subtracts the default penalty's own (linear) contribution — the rest of the operator
+#  must still match to round-off. nl1_bed_q21 (Q2/Q1) is now REFUSED by design and gated as such.
 const CASES = [
     C("lin_flat"; regime = :linear, flat = true),
     C("lin_bed";  regime = :linear),
@@ -110,6 +114,13 @@ for c in CASES
     ONLY === nothing || c.name in ONLY || continue
     t0 = time()
     S  = setup(c.pu; periodic = c.periodic)
+    if !V1 && c.nl && S.pe < 2
+        refused = try mkprob(S, c); false catch; true end
+        global nfail += !refused
+        @printf("  %s  %-15s  nl_pressure=true with p_eta=%d is refused (mandatory p_eta ≥ 2)\n",
+                refused ? "PASS" : "FAIL", c.name, S.pe)
+        continue
+    end
     p  = mkprob(S, c)
     uh = state(S, 1.0; seed = 1, kx = 1.0)
     ud = state(S, 0.5; seed = 2, kx = 1.3)
@@ -117,6 +128,11 @@ for c in CASES
     R  = assemble_vector(v -> global_residual(0.0, tu, v, p, S.trian, S.dΩ), S.V)
     Ju = assemble_matrix((du, v) -> jacobian_u(0.0, tu, du, v, p, S.trian, S.dΩ), S.U, S.V)
     Jt = assemble_matrix((du, v) -> jacobian_u_t(0.0, tu, du, v, p, S.trian, S.dΩ), S.U, S.V)
+    if !V1 && c.nl && c.gamma == 0              # remove the default mandatory penalty (see CASES)
+        sk = p.skel[]
+        R  = R  - assemble_vector(v -> stab_contrib(p, sk, uh[1], uh[2], uh[3], v[1], v[2], v[3]), S.V)
+        Ju = Ju - assemble_matrix((du, v) -> stab_contrib(p, sk, du[1], du[2], du[3], v[1], v[2], v[3]), S.U, S.V)
+    end
     f  = joinpath(DIR, c.name * ".jls")
     if MODE == "record"
         serialize(f, (R = R, Ju = Ju, Jt = Jt))

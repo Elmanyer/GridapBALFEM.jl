@@ -54,7 +54,8 @@ bwm(x, t) = 2*exp(-((x[1]-x_wm)/σ_wm)^2)*(A1*ω1*cos(ω1*t) + A2*ω2*cos(ω2*t)
 sponge = make_sponge(((0.0,Lx),(0.0,Ly)), 15.0, 15.0, 0.0, 0.0, 8.0)
 prob = build_problem(vert; g=g, h_bathy=x -> d, regime=:nonlinear,
                      nl_pressure=true, flat_bed=true,      # constant-depth (flat bed); all 8 𝓝 comps
-                     model=model, quad_degree=qdeg,        # the broken Class-III skeleton
+                     model=model, quad_degree=qdeg,        # skeleton: Class-III facet terms + C⁰-CIP
+                     p_eta=p_u - 1,
                      mu_sponge=sponge, wm_src=bwm)
 attach_skeleton!(prob, model; stabilization=:ghostvolume, cip_gamma_u=0.01, cip_gamma_eta=0.01,
                  p_u=p_u, p_eta=p_u - 1, degree=qdeg)

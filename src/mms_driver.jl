@@ -69,10 +69,10 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         #  degradation (e_eta ratios 7.84 -> 5.46 while linear
                         #  holds 8.00). This kwarg is what tests it.
                         quad_extra::Int = 0,
-                        #  Skeleton stabilisation (src/broken.jl). Off by default. The penalty
-                        #  is (weakly) consistent, so the MMS orders must survive it — that is
-                        #  what these knobs let us measure (V2_SOLVER_PLAN.md §4 item 3).
-                        cip_gamma_u::Float64 = 0.0, cip_gamma_eta::Float64 = 0.0,
+                        #  Skeleton stabilisation (src/broken.jl). nothing → DEFAULT_CIP_GAMMA
+                        #  with nl_pressure=true (mandatory, LaTeX §6.4), 0 (off) otherwise. The
+                        #  penalty is (weakly) consistent, so the MMS orders must survive it.
+                        cip_gamma_u = nothing, cip_gamma_eta = nothing,
                         cip_hexp::Float64 = 2.0, cip_order::Int = 1,
                         stabilization::Symbol = :jumpgrad,
                         verbose::Bool = true,
@@ -88,6 +88,9 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                         diag_every::Int = -1,      # −1 = off; N>0 = sample every N steps
                         diag_csv::Bool  = false,   # write <output_dir>/diagnostics.csv
                         monitor         = nothing) # SolverMonitor ⇒ real t_solve / nl_iters
+    nl_pressure === true && check_nlp_surface_order(p_eta; where = "run_mms_case")
+    cip_gamma_u   = cip_gamma_u   === nothing ? (nl_pressure === true ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_u)
+    cip_gamma_eta = cip_gamma_eta === nothing ? (nl_pressure === true ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_eta)
     vert = vert_override === nothing ?
            assemble_vertical_tensors(M, p_vert, resolve_cbdy(M, c_bdy, p_vert)) : vert_override
     f    = field === nothing ?
@@ -119,6 +122,7 @@ function run_mms_case(; nx::Int, ny::Int, dt::Float64, T_final::Float64,
                          flat_bed    = flat_bed,
                          model       = model,         # nl_pressure=true: the broken Class-III
                          quad_degree = 2*max(p_u, pe) + 2 + quad_extra,  # layer's skeleton
+                         p_eta       = pe,            # 𝓝 needs p_eta ≥ 2
                          mu_sponge   = (x -> 0.0),    # sponge OFF
                          wm_src      = ((x, t) -> 0.0),  # wavemaker OFF
                          mms_src     = src)

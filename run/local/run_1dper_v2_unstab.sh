@@ -3,6 +3,11 @@
 #  run_1dper_v2_unstab.sh — the UNSTABILISED closed-box ladder on the v2 solver (2026-10-06)
 #  (V2_SOLVER_PLAN.md §4 item 1: the v2 evidence for the stability chapter)
 #
+#  ⚠ HISTORICAL FOR THE nlp1 ROWS (2026-10-30). nl_pressure=1 now carries the MANDATORY first-order
+#  C⁰-CIP (γ_u = γ_η = DEFAULT_CIP_GAMMA = 0.3 unless BALFEM_CIP_GU/GE are set; γ = 0 is refused) and
+#  requires p_eta ≥ 2 (the Q2/Q1 nlp1 rows are refused). Re-running this launcher therefore does NOT
+#  reproduce the unstabilised nlp1 runs recorded in STABILITY.md §3; the nlp0 rows are unchanged.
+#
 #  THE QUESTION. v1 showed, in the closed x-periodic box under Crank–Nicolson, that the
 #  full-pressure discretisation grows grid-scale modes and diverges (mixed Q2/Q1: 157 / 104 /
 #  90 / 31 s at 8 / 16 / 32 / 64 cells/λ; Q3/Q2 16 cells: 26 s; A = 0.15: 41 s; broken Q3/Q2

@@ -98,7 +98,9 @@ solver_sym() === :theta && push!(_extra, "theta")
 (solver_sym() === :sdirk && tableau_sym() !== :SDIRK_2_2) &&
     push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
-_cgu = genv_f("BALFEM_CIP_GU", 0.0); _cge = genv_f("BALFEM_CIP_GE", 0.0)
+#  γ: unset ⇒ the driver default (DEFAULT_CIP_GAMMA with 𝓝, where the C⁰-CIP is mandatory; 0 otherwise)
+_cgdef = nl_pressure_flag() ? DEFAULT_CIP_GAMMA : 0.0
+_cgu = genv_f("BALFEM_CIP_GU", _cgdef); _cge = genv_f("BALFEM_CIP_GE", _cgdef)
 _cgu > 0 && push!(_extra, @sprintf("cipu%g", _cgu))
 _cge > 0 && push!(_extra, @sprintf("cipe%g", _cge))
 haskey(ENV, "BALFEM_CIP_HEXP") && push!(_extra, "hexp" * ENV["BALFEM_CIP_HEXP"])

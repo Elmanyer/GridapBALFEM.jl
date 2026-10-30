@@ -77,10 +77,12 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
                                       #   of the forced problem. Independent of u ⇒ NO Jacobian
                                       #   contribution. See markdown_files/VERIFIED_SCOPE.md (the analytic-MMS plan itself is gone).
     skel         :: Base.RefValue{Any} # skeleton (interior-facet) context, or `nothing`. ALWAYS present
-                                      #   when `nl_pressure` (the broken Class-III layer lives on it; built
-                                      #   by `build_problem_raw`); otherwise present only if a stabilisation
-                                      #   is attached (`attach_skeleton!`, γ > 0). `nothing` ⇒ the residual
-                                      #   has no skeleton term at all. src/broken.jl.
+                                      #   when `nl_pressure`: the Class-III facet terms live on it AND the
+                                      #   C⁰-CIP penalty on ⟦∂ₙ𝖴⟧ and ⟦∂ₙη⟧ is MANDATORY there (LaTeX §6.4,
+                                      #   γ_u, γ_η > 0; built by `build_problem_raw` with the default γ,
+                                      #   refused by `global_residual` without it). Otherwise present only if
+                                      #   a stabilisation is attached (`attach_skeleton!`, γ > 0). `nothing`
+                                      #   ⇒ the residual has no skeleton term at all. src/broken.jl.
 end
 
 """
@@ -133,9 +135,12 @@ Assemble the problem bundle from the high-level physics selection (see
 variable bathymetry. For fine-grained control of the individual boolean flags —
 e.g. `lin_pressure` without `P_full` — call [`build_problem_raw`](@ref) directly.
 
-⚠ `nl_pressure=true` REQUIRES `model` and `quad_degree`: the Class-III terms are assembled
-by the broken formulation, whose skeleton layer lives on the mesh's interior facets. The
-skeleton context is built here, so a full-pressure problem can never exist without it.
+⚠ `nl_pressure=true` REQUIRES `model`, `quad_degree` and `p_eta ≥ 2`. The Class-III facet terms
+and the MANDATORY first-order C⁰-CIP penalty (LaTeX §6.4) live on the mesh's interior facets; both
+are attached here, the penalty with `γ_u = γ_η = DEFAULT_CIP_GAMMA`, so a full-pressure problem can
+never exist without them (`attach_skeleton!` may change γ, never switch it off). `p_eta ≥ 2`: the
+cellwise Class-III terms need it to converge (LaTeX §6.4.5), and the first-order η penalty locks
+the carrier on Q1 surface elements (STABILITY.md §4).
 """
 function build_problem(vert;
         g            :: Float64  = g,
@@ -145,6 +150,7 @@ function build_problem(vert;
         flat_bed     :: Bool     = false,
         model                    = nothing,
         quad_degree              = nothing,
+        p_eta                    = nothing,
         mu_sponge    :: Function = (x -> 0.0),
         wm_src       :: Function = ((x, t) -> 0.0),
         relax_bc     :: Bool     = false,
@@ -157,7 +163,7 @@ function build_problem(vert;
         linearised=phys.linearised, advection=phys.advection,
         lin_pressure=phys.lin_pressure, P_full=phys.P_full,
         nl_pressure=phys.nl_pressure, flat_bed=phys.flat_bed,
-        model=model, quad_degree=quad_degree,
+        model=model, quad_degree=quad_degree, p_eta=p_eta,
         mu_sponge=mu_sponge, wm_src=wm_src,
         relax_bc=relax_bc, relax_mu=relax_mu, relax_tg=relax_tg,
         mms_src=mms_src)
@@ -175,7 +181,8 @@ deliberately does not expose (e.g. `lin_pressure` without `P_full`, used by the
 oracle-equivalence test). `flat_bed=false` (default) assembles the bed-slope (∇h)
 terms; `true` drops them. Reshapes the `assemble_vertical_tensors` NamedTuple
 into constant Gridap tensors and bundles the flags. With `nl_pressure=true` it also builds
-the skeleton context (`model`, `quad_degree` required).
+the skeleton context and attaches the mandatory C⁰-CIP penalty (`model`, `quad_degree` and
+`p_eta ≥ 2` required; see [`build_problem`](@ref)).
 """
 function build_problem_raw(vert;
         g            :: Float64  = g,
@@ -188,6 +195,7 @@ function build_problem_raw(vert;
         flat_bed     :: Bool     = false,
         model                    = nothing,
         quad_degree              = nothing,
+        p_eta                    = nothing,
         mu_sponge    :: Function = (x -> 0.0),
         wm_src       :: Function = ((x, t) -> 0.0),
         relax_bc     :: Bool     = false,
@@ -219,14 +227,19 @@ function build_problem_raw(vert;
         error("build_problem_raw: nl_pressure=true with linearised=true — a linear model carries no 𝓝")
     nl_pressure && (model === nothing || quad_degree === nothing) &&
         error("build_problem: nl_pressure=true needs `model` and `quad_degree` — the Class-III " *
-              "terms are assembled by the broken formulation, whose skeleton layer lives on the " *
-              "mesh's interior facets (src/broken.jl)")
+              "facet terms and the mandatory C⁰-CIP penalty live on the mesh's interior facets " *
+              "(src/broken.jl)")
+    nl_pressure && check_nlp_surface_order(p_eta; where = "build_problem")
     prob = BALFEMProblem(g, h_bathy, vert.N_dof, Φ, Mv, Bv, P, Av, Kv, M3, G3,
                          A3, K3, P3, linearised, advection, lin_pressure,
                          P_full, nl_pressure, flat_bed, WK3, WP3,
                          mu_sponge, wm_src,
                          relax_bc, relax_mu, relax_tg, mms_src, Ref{Any}(nothing))
-    nl_pressure && (prob.skel[] = skeleton_nt(build_skeleton_ctx(model; degree = quad_degree)))
+    #  𝓝 ⇒ the mandatory first-order C⁰-CIP on both fields, at the default γ (LaTeX §6.4).
+    nl_pressure && attach_skeleton!(prob, model; cip_gamma_u = DEFAULT_CIP_GAMMA,
+                                    cip_gamma_eta = DEFAULT_CIP_GAMMA, cip_order = 1,
+                                    stabilization = :jumpgrad, p_u = p_eta + 1, p_eta = p_eta,
+                                    degree = quad_degree)
     return prob
 end
 
@@ -237,6 +250,7 @@ Single scalar Gridap residual, stacked layout. `u` is a TransientCellField
 (`∂t(u)` available); `u[1]=η`, `u[2]=𝖴x`, `u[3]=𝖴y`. No per-layer loops.
 """
 function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
+    require_mandatory_cip(prob; where = "global_residual")
     ut = ∂t(u)
     η,  Ux,  Uy  = u[1], u[2], u[3]
     ηt, Uxt, Uyt = ut[1], ut[2], ut[3]
@@ -406,8 +420,9 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
     end
 
     # ---- skeleton stabilisation (src/broken.jl): :jumpgrad or :ghostvolume, any model ------
-    #  Sign-definite damping of the inter-element mismatch; consistent (weakly). Absent unless a
-    #  γ > 0 is attached (`attach_skeleton!`).
+    #  Sign-definite damping of the inter-element mismatch; consistent (weakly). MANDATORY with
+    #  𝓝 (both fields, LaTeX §6.4; checked at the top of this function); otherwise absent unless
+    #  a γ > 0 is attached (`attach_skeleton!`).
     has_cip(prob) && (r = r + stab_contrib(prob, prob.skel[], η, Ux, Uy, q, Wx, Wy))
 
     # ---- analytic MMS forcing (verification only; `nothing` in every physical run) --
@@ -535,6 +550,7 @@ end
 
 "∂R/∂u — continuity + gravity + sponge + (nonlinear Acc η-term) + FULL advection derivative."
 function jacobian_u(t::Real, u, du, v, prob::BALFEMProblem, trian, dΩh)
+    require_mandatory_cip(prob; where = "jacobian_u")
     η,  Ux,  Uy  = u[1], u[2], u[3]
     dη, dUx, dUy = du[1], du[2], du[3]
     q,  Wx,  Wy  = v[1], v[2], v[3]
