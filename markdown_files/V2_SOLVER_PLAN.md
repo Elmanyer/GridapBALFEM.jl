@@ -2,8 +2,8 @@
 
 *Written 2026-10-05; updated the same day after the v1/v2 split.*
 
-> **State 2026-10-09: executed.** Steps 0–9 and 11 are done (§6). **Step 10, the distributed path,
-> is open.** The §4 campaign changed course:
+> **State 2026-10-30: executed.** Steps 0–11 are done (§6). Step 10, the distributed path, was done
+> on 2026-10-30 (record under step 10). The §4 campaign changed course:
 > * item 1 (the unstabilised ladder) is complete (`STABILITY.md` §3);
 > * items 2–5 (penalty-based stabilisation) are superseded by the filtering direction (`STATUS.md` §4).
 >
@@ -295,6 +295,22 @@ refusal.
 * **Gate:** a sequential-vs-distributed parity test of the residual and Jacobian, models 5–6.
 * The ghost-penalty distributed port and the GMRES + Jacobi conditioning with the penalty belong to
   the stabilisation follow-ups (§4).
+
+**Done 2026-10-30.** Together with the mandatory first-order C⁰-CIP (author's decision; `CLAUDE.md`
+rule 1c):
+* `build_skeleton_ctx` builds `h_F` and the facet count per rank (`_facet_size`, `_num_facets`);
+  `:jumpgrad` and the Class-III facet terms run on `DistributedDiscreteModel`; `:ghostvolume` is
+  refused there. The refusals in `setup_and_run_distributed`, `run_mms_case_distributed` and
+  `run_flume_1d.jl` are lifted.
+* **Bug found by the gate and fixed:** the depth `d` was built on the owned-cell triangulation, so
+  on a partition facet whose `plus` side is a ghost cell `H = d + η` read zero there (Class-III facet
+  pairing off by ×8, residual by 1e-4; the CIP term, which has no depth, matched). `depth_cf` in
+  `src/problem.jl` now builds `d` on `Triangulation(with_ghost, model)` when distributed; volume
+  integrals still run over owned cells. Sequential path unchanged.
+* **Gate:** `test/test_nlp_distributed_parity.jl` (models 5–6, 8×6 mesh, Q3/Q2, 2×2 ranks): facet
+  count, CIP term, Class-III facet term, full residual, `∂R/∂u` and `∂R/∂u̇` paired with fixed fields,
+  all ≤ 2.0e-12. **14/14 on the debug backend and 14/14 under `mpiexecjl -n 4`.** About 3 h each
+  (compilation of the Q3/Q2 skeleton terms), so it is run by hand, not from `runtests.jl`.
 
 ### Step 11 — Documentation
 

@@ -1,5 +1,17 @@
 # STATUS.md — where the project stands (2026-10-09)
 
+> **Update 2026-10-30 (supersedes §4 as the next step and the distributed item of §5).**
+> * **The first-order C⁰-CIP is now mandatory with `𝓝`** (author's decision; LaTeX §6.4,
+>   `CLAUDE.md` rule 1c): γ_u = γ_η = 0.3 by default, `p_η ≥ 2`, enforced in `global_residual`.
+> * **The full nonlinear model runs distributed** (`V2_SOLVER_PLAN.md` step 10): parity gate 14/14,
+>   debug backend and MPI. Gates on the new contract: `test_broken_formulation` 40/40,
+>   `test_jacobians_ad` 14/14 (M5/M6 at Q3/Q2), regression snapshot 12/12, `test_skeleton_ad` S0–S2
+>   `:jumpgrad` pass (the ghost-volume failures predate the change, OPEN_ISSUES §2).
+> * **The route now:** LaTeX chapter 8 = stability study of *this* solver (with first-order CIP):
+>   box ladder under CN, operator analysis, γ calibration. Chapter 9 = the stabilisation strategy built
+>   on those results; filtering (§4) and residual-based dissipation are candidates, not the decision.
+>   No v2 nonlinear box run with CIP exists yet.
+
 **Read this first.** One page on the state of the solver, the open problem, and what comes next.
 Evidence for every claim is in [`STABILITY.md`](STABILITY.md) (the stability record) and
 [`OPEN_ISSUES.md`](OPEN_ISSUES.md) (everything else that is open).
@@ -83,8 +95,8 @@ The skeleton penalties (`:jumpgrad`, `:ghostvolume`) stay in the code as the com
 
 * Nonlinear `p_η` order reduction at Q3/Q2 on fine meshes (advection block).
 * Ghost penalty under AD (`_shift` loses the minus side); `test_selfconsistency` step 12.
-* Distributed broken formulation and stabilisers (v2 plan step 10; the distributed driver refuses
-  `nl_pressure=true`).
+* ~~Distributed broken formulation~~ done 2026-10-30 (see the update at the top); `:ghostvolume`
+  stays sequential.
 * Gridap fork commit `3928b98b9` not pushed; Manifest uses `Pkg.develop`.
 * Cluster suite not re-run; sysimage stale.
 

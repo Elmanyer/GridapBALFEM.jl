@@ -27,7 +27,7 @@ the section names below give its matching section.*
 
 | test | state | next step |
 |---|---|---|
-| `test_skeleton_ad` S2 `:ghostvolume` (0.75), S3 (Newton NaN) | `_shift` in `src/broken.jl` has no method for `SkeletonCellFieldPair` or transient wrappers, so AD loses the minus side. Our code, not Gridap; hand-Jacobian runs are unaffected | add the methods (needs approval: existing library) |
+| `test_skeleton_ad` S2 `:ghostvolume` (0.75), S3 (AD run diverges: NaN on 2026-10-06, ‖r‖ 1e150 on 2026-10-30; the hand-Jacobian run completes) | `_shift` in `src/broken.jl` has no method for `SkeletonCellFieldPair` or transient wrappers, so AD loses the minus side. Our code, not Gridap; hand-Jacobian runs are unaffected | add the methods (needs approval: existing library) |
 | `test_selfconsistency` step 12 | Newton converges (‖r‖ 1.7e-15) to a **different discrete root**, 27 % off, at Q2/Q1, large amplitude, `𝓝` on. New in v2 | decide the test configuration (Q3/Q2, or a smaller amplitude) |
 | `test_mms_convergence` G7 | temporal window contaminated at both ends (`TEST_SUITE.md` §6); a specification decision, not a bug | re-specify (≈ 3× runtime) or gate the fields separately. **Do not widen ±0.3** |
 | `test_bc_generation` case C | 10.1 % against a 10 % gate | carried from v1; unexamined |
@@ -53,10 +53,13 @@ the section names below give its matching section.*
 
 ## 5. Distributed path behind the sequential one
 
-* **Step 10 of `V2_SOLVER_PLAN.md`:** the broken Class-III formulation and the stabilisers (and now
-  the filter) on `DistributedTriangulation`. `setup_and_run_distributed` refuses `nl_pressure=true`.
-* No MPI tier in `runtests.jl`. The four distributed tests are run by hand; this has cost three stale
-  constants. Fix: a tier that runs when `mpiexecjl` resolves and **skips loudly** otherwise.
+* ~~Step 10 of `V2_SOLVER_PLAN.md`~~ **done 2026-10-30:** the full nonlinear model (Class-III facet
+  terms + mandatory `:jumpgrad` CIP) runs distributed; parity gate 14/14 on the debug backend and
+  under MPI (`test_nlp_distributed_parity.jl`). Still sequential only: `:ghostvolume`. Not yet run:
+  a distributed transient run of models 5–6 (GMRES+Jacobi with the penalty) — first one before any
+  cluster campaign.
+* No MPI tier in `runtests.jl`. The five distributed tests (now including the parity gate) are run
+  by hand; this has cost three stale constants. Fix: a tier that runs when `mpiexecjl` resolves and **skips loudly** otherwise.
 * **Preconditioner** (the biggest performance item). GMRES+Jacobi needs 300–770 iterations; the
   cheap drop-ins are measured dead (`CONFIGURATION.md` §5). Next to try: field-split/Schur, then
   geometric multigrid.

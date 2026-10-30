@@ -205,8 +205,20 @@ partial tier (v1's `:native` = `{3,6,7,8}` was a numerical cut, not a physical m
     `broken_class3_residual`). The distributional gradient of the broken fields,
     `∇𝖲 = ∇_𝒯𝖲 − Σ_F ⟦𝖲⟧_F n_F δ_F` (and the same for `𝖻`): cellwise Hessians of the unknowns
     plus one skeleton integral of the jumps, both arms always. The `{1,2,5}` components collapse
-    onto one contraction (`W ⊙ Σ_a ∂_a𝖲 ⊗ U_a`, exact 4.4e-16). Consistent on `C⁰` (LaTeX broken
-    audit); the leading-pressure skeleton term `⟦𝒫⟧` is excluded on purpose.
+    onto one contraction (`W ⊙ Σ_a ∂_a𝖲 ⊗ U_a`, exact 4.4e-16). The skeleton integral is kind S
+    (consistent on `C⁰`; LaTeX §6.5 `sec: cellwise accuracy`); the leading-pressure skeleton term
+    `⟦𝒫⟧` is excluded on purpose.
+  * **Jump notation** (LaTeX §6.1.1, `eq: def jump avg operators`, `eq: def normal derivative jumps`): the
+    only jumps are the standard ones, ⟦q⟧ = (q⁺−q⁻)n_F (scalar → vector) and ⟦v⟧ = (v⁺−v⁻)·n_F
+    (vector → scalar), n_F = n⁺; the normal-derivative jump is ⟦∂ₙw⟧ ≡ ⟦∇w⟧ = (∇w⁺−∇w⁻)·n_F (scalar,
+    componentwise for vectors). The code's `plus − minus` differences are these with the n_F factored out.
+  * **The facet terms written out** (LaTeX §6.5.2, `eq: Nkj facet term block C/L`). With
+    `⟦s_k⟧·u_j = u_{j,n}(H n_F·⟦∂ₙu_k⟧ + u_{k,n}⟦∂ₙη⟧)`, `⟦b_j⟧·u_k = u_{k,n}u_{j,n}⟦∂ₙη⟧` and
+    `W_ikj = −T⁽¹⁾_ikj + T⁽²⁾_ikj − T⁽⁵⁾_ijk` (T = 𝓚 or 𝓟), each block adds, with a PLUS sign,
+    `Σ_F ∫_F Ψ̄_i Σ_kj [ (W + T⁽⁴⁾)_ikj u_{k,n}u_{j,n} ⟦∂ₙη⟧ + H W_ikj u_{j,n} n_F·⟦∂ₙu_k⟧ ]`,
+    `Ψ̄_i = H {∇H}·v_i` (block C) or `H² {∇·v_i}` (block L). The terms are linear in the same jumps
+    the CIP penalises (quadratic), independent of the orientation of `n_F`, and at least quadratic
+    in the amplitude.
 
 Jacobians: the Class-III blocks are linearised **exactly** (`broken_class3_jacobian`, gated against
 FD); `{3,6,7,8}` and the ∇h half stay **quasi-Newton** (`O(A²)`; they enter the residual, not the

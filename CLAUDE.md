@@ -46,10 +46,10 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 | path | what it is |
 |---|---|
 | `Project.toml` / `Manifest.toml` | the package `GridapBALFEM`, loaded with **`using GridapBALFEM`, never `include()`**; also the working environment |
-| `src/` (18 files) | `problem.jl`: `BALFEMProblem`, `resolve_physics`, the loop-free residual and hand Jacobians · `nlpressure.jl`: `𝓝` {3,6,7,8} and the ∇h half · `broken.jl`: broken Class III + exact Jacobian, the skeleton stabilisers `:jumpgrad`/`:ghostvolume` · `utilities.jl`: `setup_and_run`, `output_dir_name`, `check_v1_env`, `write_run_manifest` · `vopt.jl`, `mms.jl`, `vertical.jl`, … (`ARCHITECTURE.md` §2) |
-| `test/` | `runtests.jl` judges by gate output (never exit codes); `test/local/`, `test/cluster/`; `test_skeleton_ad.jl`; `test/v2_migration/regression_snapshot.jl` (v1→v2 gate, recording in `output/v2_baseline/`) |
+| `src/` (18 files) | `problem.jl`: `BALFEMProblem`, `resolve_physics`, the loop-free residual and hand Jacobians · `nlpressure.jl`: `𝓝` {3,6,7,8} and the ∇h half · `broken.jl`: Class III cellwise Hessians + kind-S facet terms + exact Jacobian, the C⁰-CIP `:jumpgrad` (**mandatory with 𝓝**) and `:ghostvolume`; sequential **and distributed** (ghost sequential only) · `utilities.jl`: `setup_and_run`, `output_dir_name`, `check_v1_env`, `write_run_manifest` · `vopt.jl`, `mms.jl`, `vertical.jl`, … (`ARCHITECTURE.md` §2) |
+| `test/` | `runtests.jl` judges by gate output (never exit codes); `test/local/`, `test/cluster/`; `test_skeleton_ad.jl`; `test_nlp_distributed_parity.jl` (models 5–6, sequential ↔ distributed, debug or MPI backend); `test/v2_migration/regression_snapshot.jl` (v1→v2 gate, recording in `output/v2_baseline/`) |
 | `examples/` | `local_1d/` (`run_flume_1d.jl`, `run_periodic_1d.jl` the closed box, `stability_eig.jl`, `cip_eigen_analysis.jl`, `cip_eigen_order_rule.jl`), `local_2d/`, `local_mms/`, `distributed/`, `validation/` |
-| `run/` | `local/balfem_local.sh`, `balfem_env.sh` (cluster), SLURM launchers, `SNELLIUS_ROME_LAUNCH_CONFIGS.md`; v2 box launchers `run/local/run_1dper_v2_unstab{,_extra,_q32}.sh` |
+| `run/` | `local/balfem_local.sh`, `balfem_env.sh` (cluster), SLURM launchers, `SNELLIUS_ROME_LAUNCH_CONFIGS.md`; `linear_production/` (v2 linear Snellius suite, single-node 1×42 directional); v2 box launchers `run/local/run_1dper_v2_unstab{,_extra,_q32}.sh` (⚠ their nlp1 rows are historical: 𝓝 now carries the mandatory CIP) |
 | `compile/` | cluster sysimage chain (`RUNNING.md` §5); `set_preferences.jl` adds the forks by URL |
 | `output/` · `output_v1/` | gitignored. `output/` = v2 only; every run writes `run_manifest.toml` |
 | `postprocessing/` | `GridapBALFEMPost`, its own environment; `examples/periodic_growth.jl` gives the band growth rates |
@@ -66,19 +66,35 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 * **Chapter map** (`LATEX_STRUCTURE.md`):
   * model 1–3;
   * checks without a solver 4–5;
-  * weak form on the broken domain 6;
+  * horizontal weak form 6: H² conformity, the 𝓛/𝓝 pressure blocks, C⁰-CIP (§6.4, incl. §6.4.5 accuracy
+    of the cellwise evaluation), the global residual `eq: multifield general residual`;
   * multi-field implementation 7;
   * stability 8;
   * stabilisation 9;
   * solver functionalities 10;
   * validation 11;
   * appendices A–C, which are v1 records.
-* Chapter 6 rests on **one** identity, `eq: broken integration by parts identity`.
-* Build in a scratch copy: `pdflatex`, `biber`, `pdflatex` ×2 → 272 pp, 0 errors. One pre-existing
-  undefined reference remains.
+* **Chapter 6 (2026-10-29):** Class III of blocks C and L is evaluated **cellwise**; the kind-S facet
+  terms are omitted from the documented global residual (consistent; one order less accurate, so 𝓝
+  needs `p_η ≥ 2`, §6.4.5) and the **first-order C⁰-CIP on η and every 𝖴 is part of the weak form**.
+  Chapter 7 documents the *implemented* residual = chapter 6 + the kind-S facet terms (`eq: implemented
+  global residual`, `tab: implemented vs weak form`). The broken identity
+  `eq: broken integration by parts identity` is the tool that classifies facet terms (kind 0/S/T).
+* Build in a scratch copy: `pdflatex`, `biber`, `pdflatex` ×2 → 282 pp, 0 errors. Chapters 6, 7, 10 have
+  no undefined references; chapters 8–9, `ModelVerification`, `StokesWaveFourierAnalysis` and the
+  appendices still cite removed broken-audit labels (they need rewriting, not redirecting).
 * ⚠ Never global-replace `H^2`/`L^2`: it hits the depth `H²`, `h²` and `\partial^2` (33 lines to
   restore on 2026-10-07).
-* Labels are `\label{chap:|sec:|subsec: name}`; cross-references are `\S\ref{…}`.
+* Labels are `\label{chap:|sec:|subsec:|subsubsec: name}`; cross-references are `\S\ref{…}`.
+* **Hyperlinked (2026-10-30).** `hyperref` (+ `bookmark`, `hypertexnames=false`) is the LAST package
+  in `main.tex`; biblatex has `backref=true`. Every `\ref`/`\eqref`/`\cite` and TOC entry is a link,
+  bookmarks are numbered. Keep it that way:
+  * **every** chapter/section/subsection/subsubsection carries a `\label` (all 70 missing ones added);
+  * a heading with math or `\cite` writes its bookmark text with
+    `\texorpdfstring{$\opNkj$}{N\_kj}` (literal UTF-8 Greek, `\texttwosuperior`, `\textzerosuperior`;
+    `\textsigma` etc. are NOT available);
+  * refer to a chapter by name with `\hyperref[chap: …]{text}`; never hand-type a number for an
+    internal target (the hand-typed ones left are all Yang & Liu's).
 * If you change the maths, change `MODEL.md` too.
 * Notation bridge (`MODEL.md` §2): LaTeX `M^V, 𝓜^V, 𝓖^V, A^V, K^V, 𝓐^V, 𝓚^V, Φ` ↔ code
   `Mmat, Mcal, Gcal, A, K, Acal, Kcal, Phi/D/C`; the unit basis is stored as `w_j = −φ_j_int`.
@@ -90,21 +106,27 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
     `∂R/∂u`, rule 5).
   * Integrators: `:sdirk` (`SDIRK_2_2`, default — **dissipative, rule 15**), `:theta` (CN),
     generalised-α, explicit RK.
-  * Sequential LU+Newton; distributed GMRES+Jacobi+Newton.
+  * Sequential LU+Newton; distributed GMRES+Jacobi+Newton, **all six models** (𝓝 distributed since
+    2026-10-30; facet size and count built per rank).
 * **Physics.** Advection, the full leading pressure `R_P`, and `𝓝` with all eight components when
   `nl_pressure=true`:
   * `{3,6,7,8}`: direct assembly;
-  * `{1,2,4,5}`: the ∇h half by exact integration by parts, and the **Class III** half by the
-    **broken formulation** (`broken_class3_residual`), i.e. cellwise `∇∇` plus one skeleton integral
-    of the jumps, with an exact Jacobian;
+  * `{1,2,4,5}`: the ∇h half (block B) by exact integration by parts, and the **Class III** half
+    (blocks C, L) by cellwise `∇∇` plus the kind-S facet term (`broken_class3_residual`), with an
+    exact Jacobian;
+  * **the first-order C⁰-CIP is mandatory** (2026-10-30): `build_problem` attaches it on both fields at
+    `DEFAULT_CIP_GAMMA = 0.3`; `attach_skeleton!`, `global_residual` and `jacobian_u` refuse 𝓝 without
+    it, and `p_eta < 2` is refused;
   * the `{1,2,5}` reduction is exact to 4.4e-16.
   * ⚠ The leading-pressure skeleton term `⟦𝒫⟧` is excluded on purpose (`h⁻⁴`-conditioned mass).
-* **Skeleton stabilisers** (`attach_skeleton!`), one per run:
-  * `:jumpgrad`: normal-derivative jumps of order ≤ `cip_order` ≤ 2;
+* **Skeleton penalties** (`attach_skeleton!`), one per run:
+  * `:jumpgrad`: normal-derivative jumps of order ≤ `cip_order` ≤ 2 (first order = the C⁰-CIP of
+    LaTeX §6.4, `γ τ h_F² ⟦∂ₙ·⟧⟦∂ₙ·⟧`, `τ_u = d√(gd)`, `τ_η = √(gd)`, `M^V`-weighted); sequential and
+    distributed;
   * `:ghostvolume`: direct ghost penalty, every order; uniform Cartesian meshes, sequential only.
 
-  Knobs `cip_gamma_u/_eta` (scaled by `d√(gd)`, `√(gd)`, `h^(s−2)`). **Being superseded by
-  filtering** (`STATUS.md` §4).
+  Knobs `cip_gamma_u/_eta` (`nothing` ⇒ 0.3 with 𝓝, 0 otherwise; the manifest records the resolved
+  value), `cip_hexp`, `cip_order`. Env: `BALFEM_CIP_GU/_GE` (unset ⇒ the default).
 * **Boundaries.** Wavemaker source, Dirichlet generation with WaveSpec `AiryState` sea states and
   the `:model` eigenmode polarisation; sponge (it must damp η); relaxation; walls; x/y periodic.
 * **Diagnostics.**
@@ -129,7 +151,7 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 | control | values | meaning |
 |---|---|---|
 | `regime` | `:linear` \| `:nonlinear` | linearised core / full nonlinear core with advection |
-| `nl_pressure` | `false` \| `true` | `𝓝` off / **all eight components** (requires `:nonlinear`; refuses a `Symbol`) |
+| `nl_pressure` | `false` \| `true` | `𝓝` off / **all eight components** (requires `:nonlinear` and `p_eta ≥ 2`; carries the mandatory C⁰-CIP; refuses a `Symbol`) |
 | `flat_bed` | `Bool` | `∇h ≡ 0`: every ∇h term dropped |
 
 * Six models:
@@ -149,41 +171,58 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 
 ## 5. Current Implementation Stage
 
-*2026-10-09. Full picture: [`markdown_files/STATUS.md`](markdown_files/STATUS.md).*
+*2026-10-30. Full picture: [`markdown_files/STATUS.md`](markdown_files/STATUS.md) (⚠ its route section
+predates the 2026-10-30 decision below).*
 
 **Working and verified.**
-* The v2 code base: broken Class III only; Boolean `nl_pressure`; v1 code deleted.
+* The v2 code base: Class III cellwise + kind-S facet terms; Boolean `nl_pressure`; v1 code deleted.
+* The implemented residual matches LaTeX chapters 6–7 term by term (re-read 2026-10-29, signs included).
 * v1→v2 equivalence entry by entry (12/12).
 * Linear models 1–2 at optimal order: 1-D and 2-D, sequential and distributed, five vertical bases.
 * Nonlinear models 3–4 MMS to `nx = 32`.
 * The Yang & Liu collapse.
-* `test_jacobians_ad` 14/14; fast suite 9/9; `test_broken_formulation` 35/35.
+* Fast suite 9/9 (on the code before the 2026-10-30 changes; not re-run since).
+* The unstabilised v2 box ladder (`STABILITY.md` §3). Re-analysed per harmonic 2026-10-29: the growing
+  mode sits at `n ≈ N_cells` (λ ≈ one element) at every resolution, i.e. it is **grid-locked**, a
+  discretisation instability, not a property of the model PDE.
 
-**The open problem: the nonlinear discretisation is unstable at the grid scale.**
-* The v2 closed-box ladder (CN, A = 0.10) reproduces it:
-  * with `𝓝`: Q2/Q1 at 64 cells/λ diverges at 81 s; Q3/Q2 diverges at 82 / 27 / 9 s for
-    16 / 32 / 64 cells;
-  * **without `𝓝`, too**: Q3/Q2 at 64 cells diverges at 44.6 s.
-* **The standard C⁰ interior penalty is not enough.** It removes the fastest growth, but nonlinear
-  mid-band modes keep growing (v1: +0.13 s⁻¹ from ≈ 110 s).
-* Higher-order penalties held the v1 box. But their order must grow with the element order, which
-  Gridap cannot provide beyond 2 (Q4/Q3 has no window), and the ghost penalty is
-  Cartesian/sequential/costly.
-* **Decision 2026-10-09: filtering, as Yang & Liu do.** Options F1–F4 are in `STATUS.md` §4;
-  evidence is in `STABILITY.md`.
+**Implemented and verified 2026-10-30 (committed 2026-10-30, not pushed).**
+* **Mandatory first-order C⁰-CIP with 𝓝** (author's decision): default γ_u = γ_η = 0.3; refused without
+  it or with `p_eta < 2`; all drivers resolve the default and record it in the manifest.
+* **The full nonlinear model distributed** (V2_SOLVER_PLAN step 10): skeleton facet terms and `:jumpgrad`
+  on `DistributedDiscreteModel`; refusals lifted in `setup_and_run_distributed`,
+  `run_mms_case_distributed` and `run_flume_1d.jl`; `:ghostvolume` stays sequential.
+* Distributed bug found by the parity gate and fixed: the depth was built on owned cells only, so
+  `H = d + η` read zero on a ghost side of a partition facet; `depth_cf` (`src/problem.jl`) builds it
+  with the ghost layer. **Any CellField that a skeleton term reads on both sides must include ghosts.**
+* Gates on the new contract: `test_nlp_distributed_parity` **14/14 on the debug backend and under
+  `mpiexecjl -n 4`** (all pairings ≤ 2e-12; ~3 h each, run by hand); `test_broken_formulation` 40/40;
+  `test_jacobians_ad` 14/14 (M5/M6 at Q3/Q2); regression snapshot 12/12 (subtracts the default CIP;
+  Q2/Q1 nlp1 is a refusal gate); `test_skeleton_ad` S0, S1, S2 `:jumpgrad` pass (S2 ghost and S3
+  fail as before, OPEN_ISSUES §2).
+* Not yet run: a distributed *transient* run of models 5–6.
+* LaTeX: chapter 7 updated (mandatory CIP, distributed); chapter 6 §6.5.2 gives the facet terms of
+  blocks C and L explicitly (`eq: Nkj facet term block C/L`).
+
+**The route now (author, 2026-10-30).**
+1. ~~Finish and verify the CIP-mandatory solver~~ done 2026-10-30 (above).
+2. **Chapter 8**: study the stability of *that* solver (with first-order CIP) — box ladder under CN,
+   operator analysis, γ calibration; report results and conclusions.
+3. **Chapter 9**: the stabilisation strategy built on those results (filtering F1–F4, or residual-based
+   / streamline dissipation as candidates), judged by `STABILITY.md` §6.
+
+**Known facts the study must start from.** Without CIP the box diverges with and without 𝓝 (Q3/Q2 64
+cells: 9 s with, 44.6 s without). First-order CIP was only ever tested on v1 (it delayed failure; late
+mid-band growth +0.13 s⁻¹); the v2 eigen-analysis predicts the same escape. No v2 nonlinear box run
+with CIP exists yet.
 
 **Other open items** (`OPEN_ISSUES.md`):
+* models 5–6 outside the verified MMS scope (`p_u` 3.94 → 1.97 on fine meshes, cause unknown);
 * nonlinear `p_η` order reduction at Q3/Q2;
-* `test_skeleton_ad` ghost arm (`_shift`);
-* `test_selfconsistency` step 12;
+* `test_skeleton_ad` ghost arm (`_shift`); `test_selfconsistency` step 12;
 * the variable-bed lee-shoulder mode;
-* models 5–6 outside the verified scope;
-* distributed broken path (step 10);
-* Gridap fork commit unpushed;
-* stale sysimage.
-
-**Committed 2026-10-09 (not pushed):** the documentation restructure, `cip_eigen_order_rule.jl` and
-the v2 box launchers. LaTeX chapter 8 still needs the Q3/Q2 rows.
+* LaTeX chapters 8–9 and appendices still cite removed broken-audit labels;
+* Gridap fork commit unpushed; stale sysimage (rebuild after these `src/` edits, rule 25).
 
 ## 6. The design decision everything rests on
 
@@ -214,10 +253,18 @@ unchanged, because code and documents cite them. Rules earned on v1 still apply:
 1b. **The `C⁰` objection applies to the trial space, not the test space.**
     * The model carries `∂³u`; the weak form carries `∂²u`.
     * The distributional `∂²` of a `C⁰` trial field is the cellwise Hessian plus a skeleton Dirac
-      layer, so typing `∇∇(u)` drops the layer. v2 assembles it (`src/broken.jl`).
+      layer, so typing `∇∇(u)` drops the layer. Dropping it is **consistent** (kind S) but costs one
+      order: those terms converge as `O(h^(p−1))` instead of `O(h^p)`, and at `p_η = 1` the η-curvature
+      part is absent at every resolution (LaTeX §6.4.5). v2 assembles it (`src/broken.jl`).
     * **Raising `fe_order` does not help:** Lagrange `H1` is `C⁰` for every `p`.
     * A test function's `∂²v` is computable cellwise.
     * The task is a *consistent* broken formulation, not a smoother space.
+
+1c. **With `𝓝`, the first-order C⁰-CIP is part of the model, not an option** (author, 2026-10-30;
+    LaTeX §6.4). Both fields, `γ > 0` (default 0.3), `p_η ≥ 2`. The code refuses anything else;
+    never add a back door. Tests that need the operator without it subtract `stab_contrib` explicitly.
+    The kind-S facet terms are a *different* object (linear in the jump, part of the operator); CIP
+    (quadratic, symmetric) cannot replace them.
 
 2. **`fe_order ≥ 2`.** Q1 zeroes `R_P` and all non-hydrostatic physics.
 
@@ -434,6 +481,11 @@ unchanged, because code and documents cite them. Rules earned on v1 still apply:
 
 * Run Julia via the **`julia-mcp`** tool. Runs longer than 30 min go detached, logging into
   `output/`.
+  * The MCP call aborts after **30 min without output** (the Julia process keeps running): redirect a
+    long `include` to a log file (`redirect_stdio(stdout=…)`) so the result survives.
+  * Sessions are keyed by the **resolved** project path: a trailing slash or a symlink reaches the same
+    (possibly busy) session. Revise is loaded, so `src/` edits apply at the next evaluation.
+  * Distributed code paths can be tested without MPI on PartitionedArrays' `with_debug` backend.
 * If you add `using X` to `src/`, add it to `[deps]`.
 * New design records go in `markdown_files/`; update `STATUS.md` when the state changes; move
   finished plans to `archive/`.
