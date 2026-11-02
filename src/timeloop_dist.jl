@@ -260,9 +260,12 @@ function run_time_loop_dist(ranks, op, solver, u0,
                                 check_tol  :: Float64 = 1e-8,
                                 rundiag               = nothing,   # RunDiagnostics
                                 diag_every :: Int     = 0,
-                                final_uh              = nothing)   # optional Ref: receives the last
+                                final_uh              = nothing,   # optional Ref: receives the last
                                                                    #   solution (MMS L² error needs
                                                                    #   the field, not just diags)
+                                step0      :: Int     = 0,         # step number of t0 (resume)
+                                checkpoint_every :: Int = 0,       # >0: checkpoint every N steps + at the end
+                                checkpoint_writer     = nothing)   # (step, t, u_n) -> path (COLLECTIVE)
     if i_am_main(ranks)
         mkpath(output_dir)
     end
@@ -277,19 +280,23 @@ function run_time_loop_dist(ranks, op, solver, u0,
     diags        = NamedTuple{(:t,:eta_max,:nl_iters,:res_nl,:t_solve),
                               Tuple{Float64,Float64,Int,Float64,Float64}}[]
     t_last_print = t0
-    step         = 0
+    step         = step0
     do_vtk       = !isnothing(trian) && save_every > 0
-    steps_total  = dt > 0 ? round(Int, (T_final - t0)/dt) : 0
+    steps_total  = step0 + (dt > 0 ? round(Int, (T_final - t0)/dt) : 0)
     wall0        = time()
     nl_total     = 0
     t_solve_tot  = 0.0
     n_vtk        = 0
+    do_ck        = checkpoint_every > 0 && checkpoint_writer !== nothing
+    last_state   = nothing     # (step, t, u_n) of the last step, for the final checkpoint
+    last_ck      = -1
 
     function _loop(pvd)
         for (t_n, u_n) in odesol
             step  += 1
             stats  = monitor === nothing ? nothing : take_step_stats!(monitor)
             final_uh === nothing || (final_uh[] = u_n)
+            do_ck && (last_state = (step, t_n, u_n))
             eta_n  = u_n[1]
             emax   = eta_max_distributed(eta_n)
             push!(diags, (t=t_n, eta_max=emax,
@@ -313,7 +320,7 @@ function run_time_loop_dist(ranks, op, solver, u0,
             if do_print
                 if i_am_main(ranks)
                     wall  = time() - wall0
-                    eta_s = steps_total > step ? (wall/step)*(steps_total - step) : NaN
+                    eta_s = steps_total > step ? (wall/(step - step0))*(steps_total - step) : NaN
                     println(step_report(step, t_n, emax, stats;
                                             eta_s=eta_s, tag="[dist]", fd=fd))
                     flush(stdout)
@@ -371,6 +378,14 @@ function run_time_loop_dist(ranks, op, solver, u0,
                 prev_vals = copy(get_free_dof_values(u_n))
             end
 
+            if do_ck && step % checkpoint_every == 0      # COLLECTIVE: every rank writes its part
+                ckp = checkpoint_writer(step, t_n, u_n)
+                if i_am_main(ranks)
+                    @printf("  [checkpoint] step %d, t=%.4f → %s\n", step, t_n, ckp)
+                    flush(stdout)
+                end
+                last_ck = step
+            end
 
             # D1: RELATIVE divergence guard (see the sequential twin).
             div_limit = rundiag === nothing ? 1.0e4 : rundiag.div_limit
@@ -391,9 +406,17 @@ function run_time_loop_dist(ranks, op, solver, u0,
     else
         _loop(nothing)
     end
+    #  the final state, completed or diverged (COLLECTIVE)
+    if do_ck && last_state !== nothing && last_state[1] != last_ck
+        ckp = checkpoint_writer(last_state...)
+        if i_am_main(ranks)
+            @printf("  [checkpoint] final, step %d, t=%.4f → %s\n", last_state[1], last_state[2], ckp)
+            flush(stdout)
+        end
+    end
 
     if i_am_main(ranks)
-        print(final_report(step, isempty(diags) ? t0 : diags[end].t,
+        print(final_report(step - step0, isempty(diags) ? t0 : diags[end].t,
                                time() - wall0, nl_total, t_solve_tot, n_vtk;
                                tag="[dist]", rundiag=rundiag))
         close_diagnostics(rundiag)

@@ -277,6 +277,7 @@ solver_sym() === :theta && push!(_extra, "theta")
 (solver_sym() === :sdirk && tableau_sym() !== :SDIRK_2_2) &&
     push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
+is_resume() && push!(_extra, "resume")
 #  γ: unset ⇒ the driver default (DEFAULT_CIP_GAMMA with 𝓝, where the C⁰-CIP is mandatory; 0 otherwise)
 _cgdef = nl_pressure_flag() ? DEFAULT_CIP_GAMMA : 0.0
 _cgu = genv_f("BALFEM_CIP_GU", _cgdef); _cge = genv_f("BALFEM_CIP_GE", _cgdef)
@@ -339,7 +340,8 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           print_every=genv_i("BALFEM_PRINT_EVERY", 10),
           check_every=genv_i("BALFEM_CHECK_EVERY", 0),
           diag_every=genv_i("BALFEM_DIAG_EVERY", 0),
-          div_factor=genv_f("BALFEM_DIV_FACTOR", 20.0))
+          div_factor=genv_f("BALFEM_DIV_FACTOR", 20.0),
+          checkpoint_kw()...)
 
 if use_mpi
     lowercase(genv("BALFEM_STAB", "jumpgrad")) == "ghostvolume" &&

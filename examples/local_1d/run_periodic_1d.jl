@@ -98,6 +98,7 @@ solver_sym() === :theta && push!(_extra, "theta")
 (solver_sym() === :sdirk && tableau_sym() !== :SDIRK_2_2) &&
     push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
+is_resume() && push!(_extra, "resume")
 #  γ: unset ⇒ the driver default (DEFAULT_CIP_GAMMA with 𝓝, where the C⁰-CIP is mandatory; 0 otherwise)
 _cgdef = nl_pressure_flag() ? DEFAULT_CIP_GAMMA : 0.0
 _cgu = genv_f("BALFEM_CIP_GU", _cgdef); _cge = genv_f("BALFEM_CIP_GE", _cgdef)
@@ -151,6 +152,7 @@ diags, vert, prob = setup_and_run(;
     check_every = genv_i("BALFEM_CHECK_EVERY", 0),     # θ-scheme self-check; meaningless under SDIRK
     diag_every = genv_i("BALFEM_DIAG_EVERY", 5),
     eta_ref = Awave,
-    div_factor = genv_f("BALFEM_DIV_FACTOR", 20.0))
+    div_factor = genv_f("BALFEM_DIV_FACTOR", 20.0),
+    checkpoint_kw()...)
 
 @printf("periodic_1d [%s] done: %d steps → %s\n", _name, length(diags), outdir)

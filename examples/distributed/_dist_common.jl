@@ -111,6 +111,19 @@ krylov_m_val()   = genv_i("BALFEM_KRYLOV_M", 100)
 #      does an exact LU on each rank's own block. See build_preconditioner.
 precond_sym()    = Symbol(genv("BALFEM_PRECOND", "jacobi"))
 
+#    BALFEM_CHECKPOINT_EVERY  write u_n every N steps + at the end (0 = off)   0
+#    BALFEM_CHECKPOINT_KEEP   keep the N most recent checkpoints (≤ 0: all)    2
+#    BALFEM_RESTART_FROM      resume from a checkpoint header / run dir        (unset)
+#                             T_final (PERIODS/TFINAL) stays ABSOLUTE; u_n only, not bit-exact
+#    BALFEM_RESTART_ALLOW_CHANGE  1: allow dt / integrator / tolerance changes 0
+#  See src/checkpoint.jl. The output name gets a `resume` token, so the resumed run never
+#  lands on its parent's directory.
+checkpoint_kw() = (checkpoint_every     = genv_i("BALFEM_CHECKPOINT_EVERY", 0),
+                   checkpoint_keep      = genv_i("BALFEM_CHECKPOINT_KEEP", 2),
+                   restart_from         = haskey(ENV, "BALFEM_RESTART_FROM") ? ENV["BALFEM_RESTART_FROM"] : nothing,
+                   restart_allow_change = genv_b("BALFEM_RESTART_ALLOW_CHANGE", 0))
+is_resume() = haskey(ENV, "BALFEM_RESTART_FROM")
+
 #  Extra output-name tokens (the trailing `[_<extra>...]` of the grammar in
 #  markdown_files/OUTPUT_NAMING_PROPOSAL.md). Use it whenever a launcher varies
 #  something the grammar has no field for -- dt, tolerances, rank count -- so the

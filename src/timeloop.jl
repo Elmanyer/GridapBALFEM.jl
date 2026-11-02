@@ -146,6 +146,12 @@ Runtime diagnostics:
   * `checker` (ResidualChecker) + `check_every` — every N steps reassemble
     the governing equations independently and verify ‖R‖∞ ≤ `check_tol`.
 Stops early on NaN or eta_max > 1e4.
+
+Resume and checkpoints (`src/checkpoint.jl`):
+  * `step0` — the step counter of `t0` (a resumed run continues the parent's numbering,
+    so VTK and diagnostics cadences and `diagnostics.csv` stay aligned);
+  * `checkpoint_every > 0` with `checkpoint_writer(step, t, u_n)` — write a checkpoint every
+    N steps (absolute numbering) and always after the last step (completed or diverged).
 """
 function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                            output_dir :: String  = "output",
@@ -170,12 +176,15 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                                                               #   sampling HIDES every sub-element mode of
                                                               #   Q2/Q3 — the band a grid-scale instability
                                                               #   lives in; spectral analyses need > 0.
-                           final_uh              = nothing)   # optional Ref: receives the last
+                           final_uh              = nothing,   # optional Ref: receives the last
                                                               #   solution FEFunction. Non-breaking
                                                               #   out-parameter — the MMS driver needs
                                                               #   the final state to form an L² error,
                                                               #   which `diags` (scalars only) cannot
                                                               #   provide.
+                           step0      :: Int     = 0,         # step number of t0 (resume)
+                           checkpoint_every :: Int = 0,       # >0: checkpoint every N steps + at the end
+                           checkpoint_writer     = nothing)   # (step, t, u_n) -> path
     mkpath(output_dir)
     odesol = solve(solver, op, t0, T_final, u0)
 
@@ -188,13 +197,16 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
     diags        = NamedTuple{(:t,:eta_max,:gauge_vals,:nl_iters,:res_nl,:t_solve),
                               Tuple{Float64,Float64,Vector{Float64},Int,Float64,Float64}}[]
     t_last_print = t0
-    step         = 0
+    step         = step0
     do_vtk       = !isnothing(trian) && save_every > 0
-    steps_total  = dt > 0 ? round(Int, (T_final - t0)/dt) : 0
+    steps_total  = step0 + (dt > 0 ? round(Int, (T_final - t0)/dt) : 0)
     wall0        = time()
     nl_total     = 0
     t_solve_tot  = 0.0
     n_vtk        = 0
+    do_ck        = checkpoint_every > 0 && checkpoint_writer !== nothing
+    last_state   = nothing     # (step, t, u_n) of the last step, for the final checkpoint
+    last_ck      = -1
 
     gauge_pts = map(g -> (g isa VectorValue ? g : VectorValue(Float64(g[1]), Float64(g[2]))),
                     gauges)
@@ -204,6 +216,7 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
             step  += 1
             stats  = monitor === nothing ? nothing : take_step_stats!(monitor)
             final_uh === nothing || (final_uh[] = u_n)
+            do_ck && (last_state = (step, t_n, u_n))
             eta_n  = u_n[1]
             emax   = maximum(abs.(get_free_dof_values(eta_n)))
             gauge_data = isempty(gauge_pts) ? Float64[] :
@@ -231,7 +244,7 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
             fd === nothing || diag_csv_row(rundiag, step, t_n, fd, stats)
             if do_print
                 wall  = time() - wall0
-                eta_s = steps_total > step ? (wall/step)*(steps_total - step) : NaN
+                eta_s = steps_total > step ? (wall/(step - step0))*(steps_total - step) : NaN
                 println(step_report(step, t_n, emax, stats; eta_s=eta_s, fd=fd))
                 flush(stdout)
                 t_last_print = t_n
@@ -287,6 +300,11 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                 prev_vals = copy(get_free_dof_values(u_n))
             end
 
+            if do_ck && step % checkpoint_every == 0
+                @printf("  [checkpoint] step %d, t=%.4f → %s\n", step, t_n, checkpoint_writer(step, t_n, u_n))
+                flush(stdout)
+                last_ck = step
+            end
 
             # D1: RELATIVE divergence guard. With a reference amplitude the limit
             # is div_factor·η_ref, so a linear A=1e-3 run is stopped at ~2 cm
@@ -307,8 +325,14 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
     else
         _loop(nothing)
     end
+    #  the final state, completed or diverged (a diverged one is kept for diagnosis)
+    if do_ck && last_state !== nothing && last_state[1] != last_ck
+        @printf("  [checkpoint] final, step %d, t=%.4f → %s\n", last_state[1], last_state[2],
+                checkpoint_writer(last_state...))
+        flush(stdout)
+    end
 
-    print(final_report(step, isempty(diags) ? t0 : diags[end].t,
+    print(final_report(step - step0, isempty(diags) ? t0 : diags[end].t,
                            time() - wall0, nl_total, t_solve_tot, n_vtk;
                            rundiag=rundiag))
     close_diagnostics(rundiag)

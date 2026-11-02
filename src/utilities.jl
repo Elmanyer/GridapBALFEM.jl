@@ -677,10 +677,27 @@ function setup_and_run(;
     write_w        :: Bool    = false,    # also write vertical-velocity fields w_s<σ> to VTK
     write_pressure :: Bool    = false,    # also write total-pressure fields p_s<σ> to VTK
     rho            :: Float64 = rho,      # water density [kg/m³] (used for the pressure output)
+    # ---- Checkpoints and resume (src/checkpoint.jl) --------------------------
+    checkpoint_every :: Int   = 0,        # >0: write u_n to output_dir/checkpoints every N steps + at the end
+    checkpoint_keep  :: Int   = 2,        # keep the N most recent checkpoints (≤ 0: all)
+    restart_from            = nothing,    # checkpoint header, checkpoints/ dir or run dir: resume from it.
+                                          #   T_final stays ABSOLUTE; the IC kwargs are ignored. u_n only:
+                                          #   NOT bit-exact (Newton starts from a different guess).
+    restart_allow_change :: Bool = false, # allow dt / integrator / tolerance changes on resume
 )
     #  ⚠ MUST STAY THE FIRST STATEMENT: at this point the only locals are the keyword arguments,
     #  so this is exactly the configuration the run uses (defaults included).
     _run_config = Base.@locals()
+    #  Resume: read the checkpoint header first (cheap), so a bad path fails before the JIT.
+    ck_hdr = restart_from === nothing ? nothing : read_checkpoint_header(String(restart_from))
+    t_start  = ck_hdr === nothing ? 0.0 : parse(Float64, ck_hdr["t"])
+    step_start = ck_hdr === nothing ? 0 : parse(Int, ck_hdr["step"])
+    t_start < T_final - 1e-12 ||
+        error("setup_and_run: the checkpoint is at t=$t_start ≥ T_final=$T_final (T_final is absolute)")
+    ck_hdr === nothing || parse(Int, ck_hdr["n_parts"]) == 1 ||
+        error("setup_and_run: a $(ck_hdr["n_parts"])-part (distributed) checkpoint cannot resume a " *
+              "sequential run (Gridap's DOF numbering depends on the partition)")
+    ck_hdr === nothing || (_run_config[:restart_checkpoint] = ck_hdr["header"])
     # Choose the σ-element boundaries: the paper's optimised set for this M when
     # available, otherwise a uniform split of [0,1]. One resolver, one definition.
     #  Pairing gate FIRST — before the σ-tensors, the mesh, the JIT and the hours.
@@ -953,9 +970,20 @@ function setup_and_run(;
               ResidualChecker(prob, U, V, trian, dΩh, dt, theta,
                                  solver_type == :theta) : nothing
 
-    # Initial condition. Four cases: hot-start from the incident wave; rest state
-    # for a generated sea; rest state (default); or a prescribed η₀(x) release.
-    u0 = if wi !== nothing && ic_from_bc
+    # Checkpoint fingerprint: the configuration that fixes the discrete problem.
+    ck_fp = checkpoint_fingerprint(_run_config; n_free = num_free_dofs(wi !== nothing ? U(0.0) : U),
+                                   bathy = bathymetry_sample(dfn, domain))
+
+    # Initial condition. Five cases: resume from a checkpoint; hot-start from the incident
+    # wave; rest state for a generated sea; rest state (default); or a prescribed η₀(x) release.
+    u0 = if ck_hdr !== nothing
+        soft = check_checkpoint_fingerprint(ck_hdr, ck_fp; allow_change = restart_allow_change,
+                                            where = "setup_and_run")
+        @printf("  RESUME from %s: step %d, t = %.4f (u_n only — not bit-exact)\n",
+                ck_hdr["header"], step_start, t_start)
+        isempty(soft) || println("  ⚠ resumed with a CHANGED time discretisation:\n    ", join(soft, "\n    "))
+        load_checkpoint_state(ck_hdr, wi !== nothing ? U(t_start) : U; where = "setup_and_run")
+    elseif wi !== nothing && ic_from_bc
         inc = incident_fields(wi)
         make_initial_conditions(U(0.0), vert.N_dof;
             eta0_func = x -> inc.eta(x, 0.0),
@@ -989,6 +1017,15 @@ function setup_and_run(;
                                      eta_ref=eta_ref_v, div_factor=div_factor,
                                      output_dir=output_dir, diag_csv=diag_csv,
                                      u0=u0) : nothing
+    #  resumed: mass/energy stay relative to the ORIGINAL t = 0 state
+    if rundiag !== nothing && ck_hdr !== nothing
+        m0, e0 = parse(Float64, ck_hdr["mass0"]), parse(Float64, ck_hdr["energy0"])
+        isnan(m0) || (rundiag.mass0 = m0)
+        isnan(e0) || (rundiag.energy0 = e0)
+    end
+    ck_writer = checkpoint_every > 0 ?
+        ((step, t, u) -> write_checkpoint(output_dir, step, t, u; fingerprint = ck_fp,
+                                          rundiag = rundiag, keep = checkpoint_keep)) : nothing
 
     # Print the solver-configuration banner (integrator, tolerances, dt/steps).
     println()
@@ -996,7 +1033,7 @@ function setup_and_run(;
         @sprintf("Newton (NLsolve, exact hand Jacobians) | max iters = %d | ftol (‖r‖∞) = %.1e",
                  nl_iter, nl_tol),
         "LU direct factorisation (sequential)";
-        solver_type=solver_type, theta=theta, tableau=tableau, dt=dt, t0=0.0, T_final=T_final,
+        solver_type=solver_type, theta=theta, tableau=tableau, dt=dt, t0=t_start, T_final=T_final,
         print_every=print_every, check_every=check_every, check_tol=check_tol,
         monitor=monitor, diag_every=max(diag_n, 0), eta_ref=eta_ref_v,
         div_limit=rundiag === nothing ? NaN : rundiag.div_limit)
@@ -1006,7 +1043,7 @@ function setup_and_run(;
     println("\n=== Time loop (algebraic) ===")
     diags = run_time_loop(op, solver,                   # Gridap operator + time integrator, constructed at build_ode_solver
                             u0,                         # initial condition (Gridap FE function)
-                            0.0,                        # initial time
+                            t_start,                    # initial time (0, or the checkpoint's t)
                             T_final;                    # final time
                             output_dir=output_dir,      # VTK/pvd destination (output directory)
                             save_every=save_every,      # write a VTK snapshot every N steps (0 = no VTK)
@@ -1023,7 +1060,10 @@ function setup_and_run(;
                             check_tol=check_tol,        # tolerance for that verification (‖R‖∞)
                             rundiag=rundiag,            # field-diagnostics state (max|η| location, invariants, RSS)
                             diag_every=max(diag_n, 0),  # sample the field diagnostics every N steps (0 = off)
-                            vtk_nsubcells=vtk_nsubcells) # >0: sub-cell VTK sampling (spectral analyses)
+                            vtk_nsubcells=vtk_nsubcells, # >0: sub-cell VTK sampling (spectral analyses)
+                            step0=step_start,           # step number of t_start (resume)
+                            checkpoint_every=checkpoint_every,   # checkpoint cadence (0 = off)
+                            checkpoint_writer=ck_writer)         # writes u_n + fingerprint
 
     return diags, vert, prob
 end

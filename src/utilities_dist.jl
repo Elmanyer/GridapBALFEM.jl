@@ -147,8 +147,23 @@ function setup_and_run_distributed(;
     diag_csv     :: Bool    = true,        # write output_dir/diagnostics.csv on rank 0
     eta_ref                 = nothing,     # reference amplitude for the divergence guard (auto)
     div_factor   :: Float64 = 20.0,        # abort when max|η| > div_factor · eta_ref
+    # ---- Checkpoints and resume (src/checkpoint.jl; same cpu_grid only) --------
+    checkpoint_every :: Int   = 0,         # >0: each rank writes its own u_n values every N steps + at the end
+    checkpoint_keep  :: Int   = 2,         # keep the N most recent checkpoints (≤ 0: all)
+    restart_from            = nothing,     # checkpoint header / checkpoints dir / run dir; T_final absolute
+    restart_allow_change :: Bool = false,  # allow dt / integrator / tolerance changes on resume
 )
     _run_config = Base.@locals()             # ⚠ FIRST statement: exactly the keyword arguments
+    #  Resume: read the header before MPI work starts, so every rank fails identically.
+    ck_hdr     = restart_from === nothing ? nothing : read_checkpoint_header(String(restart_from))
+    t_start    = ck_hdr === nothing ? 0.0 : parse(Float64, ck_hdr["t"])
+    step_start = ck_hdr === nothing ? 0 : parse(Int, ck_hdr["step"])
+    t_start < T_final - 1e-12 ||
+        error("setup_and_run_distributed: the checkpoint is at t=$t_start ≥ T_final=$T_final (T_final is absolute)")
+    ck_hdr === nothing || parse(Int, ck_hdr["n_parts"]) == prod(cpu_grid) ||
+        error("setup_and_run_distributed: the checkpoint has $(ck_hdr["n_parts"]) part(s), this run " *
+              "$(prod(cpu_grid)) ranks; resume on the same cpu_grid (Gridap's DOF numbering depends on it)")
+    ck_hdr === nothing || (_run_config[:restart_checkpoint] = ck_hdr["header"])
     n_procs = prod(cpu_grid)                 # total MPI ranks implied by the process grid
     #  v2 interim refusal, BEFORE MPI starts so every rank fails identically (step 5).
     resolve_physics(; regime = regime, nl_pressure = nl_pressure, flat_bed = flat_bed)
@@ -367,9 +382,22 @@ function setup_and_run_distributed(;
         checker = check_every > 0 ?
                   ResidualChecker(prob, U, V, trian, dΩh, dt, theta,
                                      solver_type == :theta) : nothing
+        ck_fp = checkpoint_fingerprint(_run_config; n_free = num_free_dofs(space_at(U, 0.0)),
+                                       bathy = bathymetry_sample(dfn, dom_flat))
         # Initial state via interpolate_everywhere (required for distributed spaces);
         # space_at evaluates a transient trial at t=0 (a no-op for static spaces).
-        u0 = if wi !== nothing && ic_from_bc
+        u0 = if ck_hdr !== nothing
+            soft = check_checkpoint_fingerprint(ck_hdr, ck_fp; allow_change = restart_allow_change,
+                                                where = "setup_and_run_distributed")
+            if i_am_main(ranks)
+                @printf("  RESUME from %s: step %d, t = %.4f (u_n only — not bit-exact)\n",
+                        ck_hdr["header"], step_start, t_start)
+                isempty(soft) || println("  ⚠ resumed with a CHANGED time discretisation:\n    ",
+                                         join(soft, "\n    "))
+            end
+            load_checkpoint_state(ck_hdr, space_at(U, t_start); ranks = ranks,
+                                  where = "setup_and_run_distributed")
+        elseif wi !== nothing && ic_from_bc
             inc = incident_fields(wi)
             make_initial_conditions(space_at(U, 0.0), vert.N_dof;
                 eta0_func = x -> inc.eta(x, 0.0),
@@ -403,6 +431,16 @@ function setup_and_run_distributed(;
                                           diag_csv=diag_csv, is_main=i_am_main(ranks),
                                           u0=u0) :
                     nothing
+        #  resumed: mass/energy stay relative to the ORIGINAL t = 0 state
+        if rundiag !== nothing && ck_hdr !== nothing
+            m0, e0 = parse(Float64, ck_hdr["mass0"]), parse(Float64, ck_hdr["energy0"])
+            isnan(m0) || (rundiag.mass0 = m0)
+            isnan(e0) || (rundiag.energy0 = e0)
+        end
+        ck_writer = checkpoint_every > 0 ?
+            ((step, t, u) -> write_checkpoint(output_dir, step, t, u; fingerprint = ck_fp,
+                                              rundiag = rundiag, keep = checkpoint_keep,
+                                              ranks = ranks)) : nothing
         if i_am_main(ranks)
             println()
             print_solver_banner(
@@ -410,7 +448,7 @@ function setup_and_run_distributed(;
                          nl_iter, nl_tol),
                 @sprintf("GMRES(%d) restarted + %s preconditioner | max iters = %d | rtol = %.1e, atol = 1.0e-14",
                          krylov_m, string(precond), ls_maxiter, ls_rtol);
-                solver_type=solver_type, theta=theta, tableau=tableau, dt=dt, t0=0.0, T_final=T_final,
+                solver_type=solver_type, theta=theta, tableau=tableau, dt=dt, t0=t_start, T_final=T_final,
                 print_every=print_every, print_dt=print_dt,
                 check_every=check_every, check_tol=check_tol,
                 monitor=monitor, diag_every=max(diag_n, 0), eta_ref=eta_ref_v,
@@ -423,7 +461,7 @@ function setup_and_run_distributed(;
         diags = run_time_loop_dist(ranks,                    # MPI rank handles
                     op, solver,                 # Gridap operator + distributed time integrator
                     u0,                         # initial condition (distributed FE function)
-                    0.0,                        # initial time
+                    t_start,                    # initial time (0, or the checkpoint's t)
                     T_final;                    # final time
                     output_dir  = output_dir,   # VTK/pvd destination (output directory)
                     save_every  = save_every,   # write a VTK snapshot every N steps (0 = no VTK)
@@ -439,7 +477,10 @@ function setup_and_run_distributed(;
                     check_every = check_every,  # re-verify the governing equations every N steps (0 = off)
                     check_tol   = check_tol,    # tolerance for that verification (‖R‖∞)
                     rundiag     = rundiag,      # field-diagnostics state (max|η| location, invariants, RSS)
-                    diag_every  = max(diag_n, 0)) # sample the field diagnostics every N steps (0 = off)
+                    diag_every  = max(diag_n, 0), # sample the field diagnostics every N steps (0 = off)
+                    step0       = step_start,   # step number of t_start (resume)
+                    checkpoint_every  = checkpoint_every,   # checkpoint cadence (0 = off)
+                    checkpoint_writer = ck_writer)          # COLLECTIVE: each rank writes its part
 
         return (diags, vert, prob)
     end

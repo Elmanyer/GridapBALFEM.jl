@@ -74,6 +74,7 @@ include("nlpressure.jl")     # nonlinear pressure 𝓝: {3,6,7,8} direct, ∇h h
 include("broken.jl")         # Class III by the BROKEN formulation + skeleton stabilisation
 include("reconstruct.jl")    # w / total-pressure σ-level VTK fields (serial + distributed)
 include("monitor.jl")        # solver monitor + governing-eq residual checker + reports
+include("checkpoint.jl")     # u_n checkpoints + resume (fingerprint-checked; sequential + distributed)
 include("timeloop.jl")       # ODE solver factory + sequential time loop (VTK + recon)
 include("utilities.jl")      # dispersion analysis, sponge, wavemakers, sequential driver
 include("vopt.jl")           # vertical grid optimisation: Yang & Liu total-relative-error functional
@@ -117,6 +118,7 @@ export raw_errors, vopt_medians, total_error, optimise_cbdy, vopt_selfcheck
 export build_ode_solver, build_preconditioner
 export make_initial_conditions
 export run_time_loop
+export write_checkpoint, read_checkpoint_header, load_checkpoint_state, check_checkpoint_fingerprint
 
 # Runtime diagnostics (solver monitoring + governing-eq verification)
 export SolverMonitor, take_step_stats!
