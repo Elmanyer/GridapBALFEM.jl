@@ -39,6 +39,15 @@
 #     BALFEM_NLAMBDA   wavelengths in the box          (default 1)
 #     BALFEM_NCELL     cells per wavelength            (default 16  → dx = λ/16 ≈ 0.25 m)
 #     BALFEM_NOISE     seed amplitude                  (default 1e-8; 0 = none)
+#     BALFEM_BED_SLOPE max bed slope of a PERIODIC cosine bed (default 0 = flat; needs FLAT_BED=0)
+#     BALFEM_BED_NW    bed undulations per box         (default 1)
+#
+#  VARIABLE BED (models 4/6). d(x) = D + δ·cos(2π·nw·x/Lx): smooth (C∞, so ∇h and the bed Hessian
+#  are exact) and periodic with the box, so the seam is invisible. δ = slope/(2π·nw/Lx) is set
+#  by the MAXIMUM SLOPE, the quantity that governs the ∇h terms. With nw = 1 and one wavelength
+#  in the box the bed wavenumber is k0, NOT Bragg-resonant (class-I Bragg needs k_bed = 2k0, nw = 2):
+#  the bed couples harmonics n ↔ n±1 without reflecting the carrier. The initial eigenmode is
+#  the flat-bed one at the mean depth D; on a mild bed it sheds a small bounded free part.
 #  RUN:  run/local/run_1dper_*.sh     (sequential: the case is a few hundred DOFs)
 # ==============================================================
 
@@ -62,7 +71,12 @@ ncell   = genv_i("BALFEM_NCELL", 16)
 noise   = genv_f("BALFEM_NOISE", 1e-8)
 periods = genv_f("BALFEM_PERIODS", 100.0)
 Tfinal  = periods * Twave
-flat_bed_flag(1) || error("run_periodic_1d: a periodic flume needs a FLAT bed (BALFEM_FLAT_BED=1)")
+bslope  = genv_f("BALFEM_BED_SLOPE", 0.0)
+bnw     = genv_i("BALFEM_BED_NW", 1)
+flatbed = flat_bed_flag(1)
+flatbed == (bslope == 0) ||
+    error("run_periodic_1d: BALFEM_FLAT_BED=$(Int(flatbed)) contradicts BALFEM_BED_SLOPE=$bslope " *
+          "(a variable bed needs FLAT_BED=0 and a slope > 0; a flat bed needs FLAT_BED=1, slope 0)")
 
 # ---- the base wave: the discrete linear eigenmode, no ramp ----------------------------
 vert0 = assemble_vertical_tensors(M, p_vert, Vector{Float64}(resolve_cbdy(M, cbdy_override(), p_vert)))
@@ -75,6 +89,9 @@ nx    = nlam * ncell
 dx    = Lx / nx
 Ly    = dx                                # one isotropic cell across, solid walls (rule 12)
 inc   = incident_fields(wi)
+kbed  = 2π * bnw / Lx
+δbed  = bslope / kbed                     # bed amplitude from the maximum slope
+hfun  = flatbed ? nothing : (x -> d + δbed * cos(kbed * x[1]))
 
 # ---- deterministic broadband seed at every representable harmonic --------------------
 #  harmonics n = 1 … p_u·nx of the BOX wavenumber 2π/Lx (up to the node Nyquist), equal
@@ -110,19 +127,21 @@ lowercase(genv("BALFEM_STAB", "jumpgrad")) == "ghostvolume" && push!(_extra, "gh
 _name = output_dir_name(; M = M, p_vert = p_vert, ny = 1, y_wall_bc = :wall,
                           wave_kind = "plane", wave_gen = :ic,
                           regime = regime_sym(), nl_pressure = nl_pressure_flag(),
-                          bed = "flat", p_u = feord, p_eta = p_eta,
+                          bed = flatbed ? "flat" : @sprintf("cosbed%gs%g", bnw, bslope), p_u = feord, p_eta = p_eta,
                           amplitude = Awave, period = Twave, irregular = false,
                           nx = nx, nx_in_name = false, extra = _extra)
 outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
          unique_output_dir(joinpath(ROOT, "output", "local_1d", "periodic"), _name)
 
 @printf("############################################################\n")
-@printf("# PERIODIC 1-D FLUME | %s %s flat | A=%g T=%g | %s\n",
-        regime_sym(), nl_pressure_flag(), Awave, Twave, "P$(p_vert)LFE-$(M)")
+@printf("# PERIODIC 1-D FLUME | %s %s %s | A=%g T=%g | %s\n",
+        regime_sym(), nl_pressure_flag(), flatbed ? "flat" : "cosine bed", Awave, Twave, "P$(p_vert)LFE-$(M)")
 @printf("#   box = %d × λ_model = %.4f m | k0 = %.4f (kd=%.2f, κa=%.3f) | %d cells/λ → dx=%.4f\n",
         nlam, Lx, k0, k0 * d, k0 * Awave, ncell, dx)
 @printf("#   NO inflow, NO relaxation, NO sponge, NO source | seed %.1e on %d harmonics\n",
         noise, nmax)
+flatbed || @printf("#   BED d(x) = %.3f + %.4f·cos(%.4f x): %d undulation(s)/box, max slope %.3f, d ∈ [%.3f, %.3f] m\n",
+                   d, δbed, kbed, bnw, bslope, d - δbed, d + δbed)
 @printf("#   dt=%g s | %g periods → T_final=%.1f s | out=%s\n", dt, periods, Tfinal, outdir)
 @printf("############################################################\n")
 flush(stdout)
@@ -136,7 +155,7 @@ diags, vert, prob = setup_and_run(;
     sponge_wL = 0.0, sponge_wR = 0.0, sponge_wB = 0.0, sponge_wT = 0.0,
     eta0_func = eta0, ux0_func = ux0,
     T_final = Tfinal, dt = dt,
-    regime = regime_sym(), nl_pressure = nl_pressure_flag(), flat_bed = true,
+    regime = regime_sym(), nl_pressure = nl_pressure_flag(), flat_bed = flatbed, h_bathy = hfun,
     use_ad = genv_b("BALFEM_USE_AD", 0),
     cip_gamma_u = _cgu, cip_gamma_eta = _cge,
     cip_hexp = genv_f("BALFEM_CIP_HEXP", 2.0),
