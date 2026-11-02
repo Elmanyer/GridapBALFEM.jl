@@ -328,7 +328,7 @@ by mtime when an image predates that stamp. Set `BALFEM_STRICT_SYSIMAGE=1` to ab
 | `T_ramp`, `ic_from_bc` | Hann start-up ramp (default 2 peak periods); hot start from the incident field (needs `T_ramp=0`) |
 | `relax_bc`, `relax_width` | generation/absorption relaxation zone at the inflow (strength `mu_max`, default width one peak wavelength) |
 | `y_wall_bc`, `x_wall_bc` | lateral BC **symbol** `{:wall, :open, :periodic}` (directional seas need `:open`/`:periodic`); `x_wall_bc::Bool` closed-x basin, mandatory for any IC-release problem |
-| `solver_type`, `tableau` | time integrator: `:sdirk` (default, `SDIRK_2_2`, L-stable) \| `:theta` (Crank–Nicolson); `:rk3` (`SDIRK_3_4`) sequential-only |
+| `solver_type`, `tableau` | time integrator: `:sdirk` (default, `SDIRK_2_2`, A-stable but **not** L-stable, dissipative; any Gridap tableau via `tableau`) \| `:theta` (Crank–Nicolson) |
 | `write_w`, `write_pressure`, `rho` | reconstruct vertical velocity / total pressure at every σ-node into VTK |
 | `save_every`, `output_dir`, `gauges` | VTK snapshot cadence, output directory, point-gauge stations (sequential only) |
 | **`diag_every`, `diag_csv`** | field-diagnostics sampling (`0` → follow `print_every`, `−1` → off) and the `diagnostics.csv` step log: **where** max\|η\| sits, its interior/damped split, \|u\|/\|η\|, mass & energy, GMRES saturation, per-rank RSS. Overhead measured within noise |

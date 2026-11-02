@@ -601,10 +601,9 @@ function setup_and_run(;
     # ---- Time integration ----------------------------------------------------
     T_final      :: Float64 = 12.8,       # final simulated time [s]
     dt           :: Float64 = 0.02,       # time step [s]
-    solver_type  :: Symbol  = :sdirk,     # integrator: :sdirk (default) | :theta | :gen_alpha | :rk3
+    solver_type  :: Symbol  = :sdirk,     # integrator: :sdirk (default) | :theta
     tableau      :: Symbol  = :SDIRK_2_2, # Runge–Kutta tableau when solver_type == :sdirk
     theta        :: Float64 = 0.5,        # θ for :theta (0.5 = Crank–Nicolson)
-    rho_inf      :: Float64 = 0.5,        # high-frequency damping for :gen_alpha (ρ∞∈[0,1])
     # ---- Output --------------------------------------------------------------
     output_dir   :: String  = joinpath(@__DIR__, "..", "output", "seq_out"),  # VTK/pvd destination
     save_every   :: Int     = 0,          # write a VTK snapshot every N steps (0 = no VTK)
@@ -939,9 +938,8 @@ function setup_and_run(;
     monitor = SolverMonitor()
 
     # Build the time integrator (SDIRK by default) around a Newton+LU nonlinear solve.
-    solver  = build_ode_solver(dt;  solver_type=solver_type,    # :sdirk | :theta | :gen_alpha | :rk3
+    solver  = build_ode_solver(dt;  solver_type=solver_type,    # :sdirk | :theta
                                     theta=theta,                # θ for :theta (0.5 = Crank–Nicolson)
-                                    rho_inf=rho_inf,            # high-frequency damping for :gen_alpha (ρ∞∈[0,1])
                                     tableau=tableau,            # SDIRK tableau for :sdirk
                                     nl_iter=nl_iter,            # max Newton iterations per stage
                                     nl_tol=nl_tol,              # Newton residual tolerance (‖r‖∞)

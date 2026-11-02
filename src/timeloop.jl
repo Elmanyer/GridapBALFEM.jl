@@ -10,22 +10,21 @@
 # ==============================================================
 
 """
-    build_ode_solver(dt; solver_type, theta, rho_inf, tableau, nl_iter, nl_tol,
+    build_ode_solver(dt; solver_type, theta, tableau, nl_iter, nl_tol,
                          show_trace, monitor)
 
 Gridap ODE solver factory (template: GridapSWE.jl `RungeKutta(nls, ls, dt,
 tableau)`). Options: `:sdirk` (fully-implicit diagonally-implicit Runge–Kutta,
 default — more stable than Crank–Nicolson; tableau `:SDIRK_2_2` = Gridap's `DIRK22(1,0,1)`,
 2nd-order, A-stable but NOT L-stable (R(∞) = −1/2), energy loss ≈ 0.75(ωΔt)⁴ per step — strongly
-dissipative), `:theta` (Crank–Nicolson θ=0.5, non-dissipative), `:gen_alpha`,
-`:rk3` (SDIRK_3_4). Nonlinear solve: Newton + LU. Pass a `SolverMonitor` as
+dissipative; any other Gridap tableau via `tableau`, e.g. `:SDIRK_Crouzeix_3_4`), `:theta`
+(Crank–Nicolson θ=0.5, non-dissipative). Nonlinear solve: Newton + LU. Pass a `SolverMonitor` as
 `monitor` to collect per-step convergence statistics (the monitor wraps the
 Newton solver transparently; for RK it accumulates over the implicit stages).
 """
 function build_ode_solver(dt::Float64;
                               solver_type :: Symbol  = :sdirk,
                               theta       :: Float64 = 0.5,
-                              rho_inf     :: Float64 = 0.5,
                               tableau     :: Symbol  = :SDIRK_2_2,
                               nl_iter     :: Int     = 50,
                               nl_tol      :: Float64 = 1e-5,
@@ -50,12 +49,8 @@ function build_ode_solver(dt::Float64;
         return RungeKutta(nls, ls, dt, tableau)
     elseif solver_type == :theta
         return ThetaMethod(nls, dt, theta)
-    elseif solver_type == :gen_alpha
-        return GeneralizedAlpha(nls, dt, rho_inf)
-    elseif solver_type == :rk3
-        return RungeKutta(nls, ls, dt, :SDIRK_3_4)
     else
-        error("Unknown solver_type; choose :sdirk, :theta, :gen_alpha, or :rk3")
+        error("Unknown solver_type; choose :sdirk or :theta")
     end
 end
 

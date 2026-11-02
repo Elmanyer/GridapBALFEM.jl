@@ -4,7 +4,7 @@
 #  Three tools, shared by the sequential and distributed time loops:
 #
 #  1. SolverMonitor — a transparent NonlinearSolver wrapper. The ODE
-#     machinery (ThetaMethod/GeneralizedAlpha/RungeKutta) calls solve! on it
+#     machinery (ThetaMethod/RungeKutta) calls solve! on it
 #     once per stage; the wrapper delegates to the real solver, wall-times
 #     the call and harvests the convergence data:
 #       * Gridap.Algebra.NLSolver  (sequential Newton+LU): NLsolve result
@@ -542,8 +542,7 @@ function print_solver_banner(nl_desc::String, ls_desc::String;
     #  themselves as SDIRK_2_2 (found 2026-09-23 on the c3r_* RK4 batch).
     tdesc = solver_type == :sdirk     ? "RungeKutta ($(tableau), " *
                                         (startswith(String(tableau), "EX") ? "EXPLICIT)" : "implicit)") :
-            solver_type == :theta     ? @sprintf("ThetaMethod (θ=%.2f)", theta) :
-            solver_type == :gen_alpha ? "GeneralizedAlpha" : "RungeKutta SDIRK-3"
+            @sprintf("ThetaMethod (θ=%.2f)", theta)
     @printf(io, "  Time integrator  : %s | dt=%g s | t ∈ [%g, %g] → %d steps\n",
             tdesc, dt, t0, T_final, n_steps)
     pdesc = print_dt === nothing ? @sprintf("every %d step(s)", print_every) :

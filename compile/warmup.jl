@@ -10,7 +10,7 @@
 #    * the execution path — CellField (sequential) vs DistributedCellField + GMRES (distributed);
 #    * the model — regime, nl_pressure (Class-III cellwise + facet terms + mandatory C⁰-CIP) and
 #      flat_bed (the ∇h terms and the bed Hessian) select different residual/Jacobian expressions;
-#    * the time integrator (RungeKutta / ThetaMethod / GeneralizedAlpha stage operators);
+#    * the time integrator (RungeKutta / ThetaMethod stage operators);
 #    * wave generation — interior source vs Dirichlet boundary generation (a TransientTrialFESpace),
 #      the WaveSpec sea-state conversion, the relaxation zone, the hot start;
 #    * boundaries and ICs — y walls / open / periodic, x-periodic box, closed basin release;
@@ -141,11 +141,6 @@ function sequential_cases(M, p)
 
     # every model, under both production integrators
     for m in MODELS, st in (:theta, :sdirk)
-        n = "seq $tag model$(m.id) $st inner"
-        seq(n; tank..., inner..., common(M, p, m; name = n)..., solver_type = st)
-    end
-    # the remaining integrators (time-loop specialisations), on a model without and with 𝓝
-    for m in MODELS[[1, 5]], st in (:gen_alpha, :rk3)
         n = "seq $tag model$(m.id) $st inner"
         seq(n; tank..., inner..., common(M, p, m; name = n)..., solver_type = st)
     end
