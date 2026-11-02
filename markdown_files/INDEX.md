@@ -9,6 +9,7 @@ gitignored, so anything load-bearing belongs here.
 1. [`../CLAUDE.md`](../CLAUDE.md): the repository map, physics switches and standing rules.
 2. [`STATUS.md`](STATUS.md): **where the solver stands, the open problem, the next step.**
 3. [`STABILITY.md`](STABILITY.md): the instability and every stabilisation attempt, condensed.
+3b. [`CH8_CAMPAIGN_TODO.md`](CH8_CAMPAIGN_TODO.md): **the working to-do list** from the current state to the running 1-D stability campaign (opened 2026-10-31).
 4. [`OPEN_ISSUES.md`](OPEN_ISSUES.md): every other open item, with its next step.
 
 ## Reference (current)
