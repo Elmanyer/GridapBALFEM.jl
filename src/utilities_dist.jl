@@ -132,11 +132,10 @@ function setup_and_run_distributed(;
                                            #   what limits the answer here — the Newton ITERATION
                                            #   COUNT is; see nl_tol in this file and utilities.jl.
     ls_maxiter   :: Int     = 1000,        # GMRES iteration cap per Newton step (a TIME bound)
-    precond      :: Symbol  = :jacobi,     # GMRES right preconditioner: :jacobi | :schwarz | :gs
+    precond      :: Symbol  = :jacobi,     # GMRES right preconditioner: :jacobi | :schwarz
                                            #   Jacobi is the historical default and is WEAK for this
-                                           #   operator (450-760 iters/solve measured); :schwarz does an
+                                           #   operator (R_P grad-div, κ ∝ (H p/h)²); :schwarz does an
                                            #   exact LU on each rank's own block — see build_preconditioner
-    gs_iters     :: Int     = 1,           # sweeps for precond=:gs
     krylov_m     :: Int     = 100,         # GMRES Krylov basis size, restart=true (a MEMORY bound:
                                            #   m+1 vectors + a dense (m+1)×m Hessenberg per rank).
                                            #   Distinct from ls_maxiter — see build_ode_solver_distributed.
@@ -363,7 +362,7 @@ function setup_and_run_distributed(;
                       ls_rtol=ls_rtol,          # GMRES relative tolerance
                       ls_maxiter=ls_maxiter,    # GMRES iteration cap per Newton step (time bound)
                       krylov_m=krylov_m,        # GMRES Krylov basis size, restart=true (memory bound)
-                      precond=precond, gs_iters=gs_iters,
+                      precond=precond,
                       monitor=monitor)          # wrap the Newton solver to harvest per-step stats
         checker = check_every > 0 ?
                   ResidualChecker(prob, U, V, trian, dΩh, dt, theta,

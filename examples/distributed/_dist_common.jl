@@ -106,7 +106,7 @@ nl_tol_val()     = genv_f("BALFEM_NL_TOL", 1e-5)
 ls_maxiter_val() = genv_i("BALFEM_LS_MAXITER", 1000)
 ls_rtol_val()    = genv_f("BALFEM_LS_RTOL", 1e-5)
 krylov_m_val()   = genv_i("BALFEM_KRYLOV_M", 100)
-#    BALFEM_PRECOND   GMRES preconditioner: jacobi|schwarz|gs   jacobi
+#    BALFEM_PRECOND   GMRES preconditioner: jacobi|schwarz      jacobi
 #      Jacobi is weak for this operator (450-760 iters/solve measured); :schwarz
 #      does an exact LU on each rank's own block. See build_preconditioner.
 precond_sym()    = Symbol(genv("BALFEM_PRECOND", "jacobi"))

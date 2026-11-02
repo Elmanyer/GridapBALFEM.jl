@@ -15,7 +15,7 @@
 #      the WaveSpec sea-state conversion, the relaxation zone, the hot start;
 #    * boundaries and ICs — y walls / open / periodic, x-periodic box, closed basin release;
 #    * the skeleton stabiliser (:jumpgrad order 1–2, :ghostvolume) and, distributed, the GMRES
-#      preconditioner (:jacobi / :schwarz / :gs);
+#      preconditioner (:jacobi / :schwarz);
 #    * the vertical basis SIZE Nσ = M·p + 1 — a TYPE PARAMETER (VectorValue{Nσ}): every extra Nσ
 #      compiles the whole solver again (BALFEM_WARMUP_VERT below).
 #    Values (mesh size, FE order, dt, amplitudes) do not matter, so the cases are minimal. Every
@@ -211,7 +211,7 @@ function distributed_cases(M, p)
         dist(n; tank..., inner..., dcommon(m; name = n)..., solver_type = st)
     end
     # the GMRES preconditioners
-    for pc in (:schwarz, :gs)
+    for pc in (:schwarz,)
         m = MODELS[1]; n = "dist $tag model1 precond $pc"
         dist(n; tank..., inner..., dcommon(m; name = n)..., precond = pc, solver_type = :theta)
     end

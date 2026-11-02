@@ -336,8 +336,8 @@ by mtime when an image predates that stamp. Set `BALFEM_STRICT_SYSIMAGE=1` to ab
 
 Distributed adds `cpu_grid=(px,py)`, the Krylov controls (`nl_iter`, `nl_tol`, `ls_rtol`,
 `ls_maxiter`, `krylov_m`, `nlp_cg_rtol`, `nlp_cg_maxiter`) and **`precond`**
-(`:jacobi` | `:schwarz` | `:gs`), plus the same `solver_type`/`tableau`; the linear solve is
-GMRES+Jacobi+Newton. It drops `gauges` (global reductions instead).
+(`:jacobi` | `:schwarz`, the latter an exact LU on each rank's own block), plus the same
+`solver_type`/`tableau`; the linear solve is GMRES+Newton with that preconditioner. It drops `gauges` (global reductions instead).
 
 > **Solver tolerances (retuned 2026-08-11/12, on measurement).** `ls_rtol = 1e-5`, `nl_tol = 1e-5`.
 > The two are **not** the same kind of knob:

@@ -42,29 +42,85 @@ function build_horizontal_model_distributed(ranks, cpu_grid::Tuple,
 end
 
 """
-    build_preconditioner(kind::Symbol; gs_iters=1) → LinearSolver
+    OwnBlockLUSolver() <: Gridap.Algebra.LinearSolver
 
-Right preconditioner for the distributed GMRES. `:jacobi` (default, the
-historical choice) is point-diagonal and **weak for this operator** — measured
-iteration counts are ~450–700 per solve on the local 2-D cases and ~760 on the
-quasi-1D flume, and they are *rank-independent*, which is the signature of a
-preconditioner problem rather than a decomposition one.
+Non-overlapping additive Schwarz (block Jacobi) for a `PSparseMatrix`: every rank factorises
+the **own×own** block of its local matrix with a sparse LU, and applying it solves each block
+exactly on the rank's owned DOFs, then makes the ghosts consistent. This is the `:schwarz`
+preconditioner of `build_preconditioner`.
 
-  * `:jacobi`  — `JacobiLinearSolver()`. Cheapest per iteration, most iterations.
-  * `:schwarz` — additive Schwarz with an exact **LU solve on each rank's own
-                 block** (`SchwarzLinearSolver(LUSolver())`). Much stronger per
-                 iteration and a natural fit to the existing MPI partition; the
-                 per-rank factorisation costs memory, so watch RSS.
-  * `:gs`      — `SymGaussSeidelSmoother(gs_iters)`. Between the two.
+Why not GridapSolvers' `SchwarzLinearSolver(LUSolver())`, which reads as the same thing:
+  * it factorises the whole local matrix, own **and ghost** rows; the ghost rows are
+    unassembled, i.e. structurally zero, so every rank ≥ 2 dies with `SingularException`
+    (measured 2026-09, `CONFIGURATION.md` §5);
+  * it has no `numerical_setup!`, so the refresh `NewtonSolver` makes every Newton iteration
+    falls through to Gridap's abstract stub (found by the 2026-10-30 sysimage warmup).
+Both are library gaps, so this type lives here and GridapSolvers stays untouched.
 
-`:schwarz` becomes *more* effective as ranks get bigger blocks, i.e. it rewards
-FEWER, FATTER ranks — the opposite of Jacobi's behaviour.
+The refresh re-factorises in place with `lu!` (same sparsity pattern, the symbolic analysis is
+reused). Measured on the quasi-1D flume θ-step matrix (Q3/Q2, 240 cells, sequential emulation
+with 4 / 12 x-strips): 16 / 22 GMRES iterations against Jacobi's 1106
+(`output/krylov_conditioning/kc3_precond.log`). No coarse space, so the count grows with the
+number of ranks; each rank holds one sparse LU of its block, so watch RSS.
 """
-function build_preconditioner(kind::Symbol; gs_iters::Int=1)
+struct OwnBlockLUSolver <: Gridap.Algebra.LinearSolver end
+
+struct OwnBlockLUSymbolicSetup <: Gridap.Algebra.SymbolicSetup end
+
+mutable struct OwnBlockLUNumericalSetup{F} <: Gridap.Algebra.NumericalSetup
+    factors :: F           # per rank: the LU of its own×own block
+end
+
+Gridap.Algebra.symbolic_setup(::OwnBlockLUSolver, ::PSparseMatrix) = OwnBlockLUSymbolicSetup()
+
+#  The own×own block of every rank as a plain SparseMatrixCSC. The row and column own sets of
+#  the square FE operator must be the same DOFs in the same order, or the block is not a
+#  diagonal block of A: checked, never assumed.
+function _own_blocks(A::PSparseMatrix)
+    map(partition(A), partition(axes(A, 1)), partition(axes(A, 2))) do Aloc, rows, cols
+        own_to_global(rows) == own_to_global(cols) ||
+            error("OwnBlockLUSolver: row and column own DOFs differ on this rank")
+        Aloc[own_to_local(rows), own_to_local(cols)]
+    end
+end
+
+function Gridap.Algebra.numerical_setup(::OwnBlockLUSymbolicSetup, A::PSparseMatrix)
+    return OwnBlockLUNumericalSetup(map(lu, _own_blocks(A)))
+end
+
+function Gridap.Algebra.numerical_setup!(ns::OwnBlockLUNumericalSetup, A::PSparseMatrix)
+    map(lu!, ns.factors, _own_blocks(A))
+    return ns
+end
+
+function Gridap.Algebra.solve!(x::PVector, ns::OwnBlockLUNumericalSetup, b::PVector)
+    map(own_values(x), ns.factors, own_values(b)) do xo, F, bo
+        xo .= F \ collect(bo)      # UMFPACK needs a dense strided RHS
+    end
+    consistent!(x) |> wait
+    return x
+end
+
+"""
+    build_preconditioner(kind::Symbol) → LinearSolver
+
+Right preconditioner for the distributed GMRES.
+
+  * `:jacobi`  — `JacobiLinearSolver()` (default). Cheapest per iteration, but it cannot remove
+                 the h-dependence of the non-hydrostatic grad-div term `R_P` in `J_ut`:
+                 κ(A·D⁻¹) ∝ (H·p/h)², so the iterations double with every halving of `dx` and
+                 triple from Q2/Q1 to Q3/Q2 (the 1000-iteration cap of the 2026-10-30 model-5/6
+                 flumes; `output/krylov_conditioning/`).
+  * `:schwarz` — `OwnBlockLUSolver()`: an exact sparse LU on each rank's own block (block Jacobi).
+                 Much stronger per iteration; rewards FEWER, FATTER ranks, the opposite of Jacobi.
+
+Symmetric Gauss–Seidel (`:gs`) was dropped on 2026-10-31: it completed zero steps in 12 h on the
+flume (`CONFIGURATION.md` §5) and GridapSolvers' smoother cannot be refreshed either.
+"""
+function build_preconditioner(kind::Symbol)
     kind === :jacobi  && return JacobiLinearSolver()
-    kind === :schwarz && return SchwarzLinearSolver(LUSolver())
-    kind === :gs      && return SymGaussSeidelSmoother(gs_iters)
-    error("build_preconditioner: kind must be :jacobi, :schwarz or :gs (got :$kind)")
+    kind === :schwarz && return OwnBlockLUSolver()
+    error("build_preconditioner: kind must be :jacobi or :schwarz (got :$kind)")
 end
 
 """
@@ -117,10 +173,9 @@ function build_ode_solver_distributed(dt::Float64;
                                           ls_maxiter  :: Int     = 1000,
                                           krylov_m    :: Int     = 100,
                                           precond     :: Symbol  = :jacobi,
-                                          gs_iters    :: Int     = 1,
                                           monitor                = nothing)
     ls  = GMRESSolver(krylov_m;                  # basis size (memory bound)
-                      Pr      = build_preconditioner(precond; gs_iters=gs_iters),
+                      Pr      = build_preconditioner(precond),
                       restart = true,            # cap the basis; do NOT let it grow
                       maxiter = ls_maxiter,      # iteration budget (time bound)
                       rtol    = ls_rtol,
