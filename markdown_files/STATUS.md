@@ -1,5 +1,20 @@
 # STATUS.md — where the project stands (2026-10-09)
 
+> **Update 2026-11-07: the chapter-8 1-D campaign is complete (supersedes the "no v2 nonlinear box run
+> with CIP exists yet" line below).** Results: [`STABILITY.md`](STABILITY.md) §3b, in full
+> `output/1D_stability_campaign/README.md` ("FINAL RESULTS").
+> * With the mandatory CIP, models 5 and 6 run **200 periods clean at 16 and 64 cells/λ**. Without
+>   it, model 5 failed at 81 and 9 s.
+> * **Not unconditionally stable.** At 32 cells/λ a late burst appears (245 s flat bed, ~295 s cosine
+>   bed); at 8 cells/λ a slow long-wave growth drains half the carrier from ~140 s. The dx dependence
+>   is not monotone.
+> * Every growing content observed, model 3 included, is a **vertical-structure velocity mode**: the
+>   layer velocities grow while the depth average and η barely move. A stabiliser must act on each u_j.
+> * Sponge-layer sweep (outside chapter 8): 26 of 84 cases done. The quadratic sponge reflects at its
+>   front, with Kr ≈ 0.21 μ_max/(ω k² W²). W = 24 m with μ_max = 8 gives Kr ≤ 0.3 % for T = 1.5–2.9 s.
+>   The sweep is paused; see [`SPONGE_SWEEP_RESULTS.md`](SPONGE_SWEEP_RESULTS.md).
+> * **Resume here:** [`CH8_CAMPAIGN_TODO.md`](CH8_CAMPAIGN_TODO.md) §0 lists the next actions in order.
+
 > **Update 2026-10-30 (supersedes §4 as the next step and the distributed item of §5).**
 > * **The first-order C⁰-CIP is now mandatory with `𝓝`** (author's decision; LaTeX §6.4,
 >   `CLAUDE.md` rule 1c): γ_u = γ_η = 0.3 by default, `p_η ≥ 2`, enforced in `global_residual`.

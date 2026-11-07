@@ -206,7 +206,8 @@ partial tier (v1's `:native` = `{3,6,7,8}` was a numerical cut, not a physical m
     `∇𝖲 = ∇_𝒯𝖲 − Σ_F ⟦𝖲⟧_F n_F δ_F` (and the same for `𝖻`): cellwise Hessians of the unknowns
     plus one skeleton integral of the jumps, both arms always. The `{1,2,5}` components collapse
     onto one contraction (`W ⊙ Σ_a ∂_a𝖲 ⊗ U_a`, exact 4.4e-16). The skeleton integral is kind S
-    (consistent on `C⁰`; LaTeX §6.5 `sec: cellwise accuracy`); the leading-pressure skeleton term
+    (consistent on `C⁰`; LaTeX §6.5 `sec: cellwise accuracy`): the facet terms `ℱ^C`, `ℱ^L` of the LaTeX
+    global residual, optional there (one order of accuracy), always assembled here; the leading-pressure skeleton term
     `⟦𝒫⟧` is excluded on purpose.
   * **Jump notation** (LaTeX §6.1.1, `eq: def jump avg operators`, `eq: def normal derivative jumps`): the
     only jumps are the standard ones, ⟦q⟧ = (q⁺−q⁻)n_F (scalar → vector) and ⟦v⟧ = (v⁺−v⁻)·n_F

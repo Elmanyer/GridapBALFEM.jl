@@ -50,6 +50,17 @@ the section names below give its matching section.*
   (2.997) but **`p_u` fell 3.94 → 1.97** for `nx` = 8–32. The cause is not established: either the
   trial Hessians are inherently O(h^{p−1}), or there is a defect.
 * **Next:** after the filter is chosen, run the models 5–6 MMS with and without it.
+* **The 1-D box campaign with the mandatory CIP (2026-11-07, `STABILITY.md` §3b) leaves three open
+  questions.**
+  * **The n32 anomaly:** a late burst at 32 cells/λ, but clean runs at 16 and 64. Next: an n24/n48
+    ladder and n32 at dt = 0.02.
+  * **The vertical-structure mode:** growth in the layer velocities with almost no depth average,
+    in every model including model 3. Next: the dispersion of the ω∞ branches about the carrier,
+    a resonance check.
+  * **The missing controls:** no-CIP model 6, model 3 + CIP, and m5 n8 without CIP past 160 s.
+  * Commands and order: `CH8_CAMPAIGN_TODO.md` "RESUME HERE".
+* **Cost:** models 5–6 take 52–69 s/step against 4–5 for model 3, which is the 𝓝 assembly overhead
+  (`CH8_CAMPAIGN_TODO.md` §1). Fix it before the next long 𝓝 campaign.
 
 ## 5. Distributed path behind the sequential one
 

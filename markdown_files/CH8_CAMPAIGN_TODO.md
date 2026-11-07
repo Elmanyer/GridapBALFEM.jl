@@ -9,10 +9,41 @@ Standing constraints:
 * No commits or pushes unless the author asks in that message.
 * Stop and report on any design error in existing code.
 * Runs longer than 30 min go detached, logging into `output/`.
-* At most about 6 Julia processes at once; give each one its own systemd scope (`workstation-ram-budget`).
+* **At most 3 busy Julia processes at once** (2026-11-07: thermal throttling above 3, §10; RAM
+  allows ~6). Give each one its own systemd scope (`workstation-ram-budget`).
 * Any `src/` edit makes the sysimage stale (rule 25).
 
 ---
+
+## ⇨ RESUME HERE (written 2026-11-07, before a planned machine shut-down)
+
+**State.** Nothing is running. The stability campaign (§5) finished, and every case was analysed:
+results in `output/1D_stability_campaign/README.md` ("FINAL RESULTS") and `STABILITY.md` §3b. The
+sponge sweep (§7, §9.2) is **paused** at 26 of 84 cases: results and resume procedure in
+`SPONGE_SWEEP_RESULTS.md`. The working tree is uncommitted (§3 "ASK: commit").
+
+**Next actions, in order.** Each needs the author's go-ahead to launch. Use ≤ 3 slots.
+1. **ASK: commit** the pending tree. That covers the checkpoint/bed/solver work, the launchers,
+   `_slot_throttle.sh` (MAXP default now 3), the sponge files, the no-CIP launcher and these docs.
+   The run manifests otherwise keep recording a dirty tree.
+2. **ASK: the assembly speed-up (§1)** before any further 𝓝 run. Models 5 and 6 cost 52–69 s/step
+   against 4–5 for model 3. The measured `_get_cache` fix gives −29 %, and Gridap performance mode
+   should remove another ~20 %. A 320 s model-5 run takes ~3.5 days even at full clock.
+3. **Chapter-8 discriminating runs** (questions in the campaign README, "Open questions"):
+   * (a) the no-CIP controls, §9.1 (prepared, never launched). They give the missing CIP axis for
+     model 6 and for m5 n8 past 160 s.
+   * (b) model 3 *with* the CIP at n32 and n8: separates 𝓝 from the CIP (rule 14c).
+   * (c) resume m6 n32 and m3 n8 from their t = 320 s checkpoints to ~480 s: does the onset saturate
+     or diverge?
+   * (d) the n32 anomaly: an n24/n48 ladder, and n32 at dt = 0.02.
+4. **Analysis without runs:** the dispersion of the vertical-structure (ω∞) branches about the
+   carrier. Is the vertical-structure growth a continuum (model-PDE) resonance or a discrete one?
+   The per-layer tool is `output/1D_stability_campaign/_logs/vertical_structure.jl`. All 11 cases are analysed.
+5. **Resume the sponge sweep** (≈ 12–15 h at 2–3 workers). First the replica check (W = 12, μ = 40
+   must reproduce Snellius), then stage B (§9.3), then the §7 "Apply" decision before Snellius round 2 (§8).
+6. **LaTeX chapter 8:** add the Q3/Q2 rows (STATUS §6) and the campaign results (§3b).
+   Chapter 9: the stabiliser must act on every u_j, and the rates to beat are 0.02–0.24 /s with
+   onsets at 140–300 s.
 
 ## 0. Already in flight (check these first)
 
@@ -181,15 +212,16 @@ the campaign, when `src/` has settled.
   * m6 has a cosine bed with slope 1:10.
   * Check `_batch.log`, which says whether the sysimage was used.
 - [x] Checkpoints are on (launcher `CHECKPOINT_EVERY=250`).
-- [ ] Monitor:
-  * one status line per case (t, max η, Newton iterations, s/step, RSS);
-  * divergences, with t and x_at_max;
-  * memory against the 5 G per-case cap.
-- [ ] Per run, when it ends:
-  `PG_NCELL=<n> PG_PU=3 julia --project=postprocessing postprocessing/examples/periodic_growth.jl <dir>`.
-  Report a growth rate per band, both early and late, read together with x_at_max (rules 38f and 40).
-- [ ] Compare against `output/1D_stability_campaign/model3_reference/` and the m3 reruns, then
-  write the results into `STABILITY.md` and report them to the author, for LaTeX chapter 8.
+- [x] (2026-10-31 → 11-07) Monitor: one status line per case (t, max η, Newton iterations, s/step,
+  RSS); divergences, with t and x_at_max; memory against the 5 G per-case cap. Interim checks are in
+  the campaign `README.md`.
+- [x] (2026-11-07) Per run, when it ends: `periodic_growth.jl` (`_logs/final_growth_<case>.log`;
+  driver `_logs/final_growth_all.jl`), band tables over time (`_logs/band_table.py`,
+  `final_band_table_2026-11-07.txt`), and per-layer energies (`_logs/vertical_structure.jl`,
+  `vertical_structure_2026-11-07.log`).
+- [x] (2026-11-07) Compared against `model3_reference/` and the m3 reruns, and written into
+  `STABILITY.md` §3b and the README ("FINAL RESULTS"). Reported to the author. **Next: LaTeX chapter 8
+  (author).**
 
 ## 6. Parked (waiting for a decision)
 
@@ -198,3 +230,208 @@ the campaign, when `src/` has settled.
 - [ ] 2-D with 𝓝: `:schwarz` at more ranks, which has no coarse space; check its iteration growth
   with the rank count.
 - [ ] γ calibration of the CIP (chapter 8 route, step 2).
+
+## 7. Sponge-layer reflection campaign (opened 2026-11-02; outside Chapter 8)
+
+> **2026-11-07: stage A paused at 26 of 84 cases.** Results, deductions (Kr ≈ 0.21 μ_max/(ω k² W²)
+> in the weak-damping regime; W = 24, μ_max = 8 passes at every T) and the resume procedure:
+> [`SPONGE_SWEEP_RESULTS.md`](SPONGE_SWEEP_RESULTS.md).
+
+**Why.** The Snellius linear production runs (`LINEAR_PRODUCTION_RESULTS.md`) reflect from the
+12 m outflow sponge (μ_max = 40, quadratic profile). The reflection is 0.5 % of the amplitude at
+T = 1.5 s, 5 % at 2.0 s, 9 % at 2.2 s and 18 % at 2.9 s. It shows up as a ±5 % standing-wave
+ripple over the whole interior at T = 2 s. The ring's 7 m sponges return about 10 %.
+
+**Hypothesis.** The far wall is not the source: e^{−2 μ_max W/(3 c_g)} ≈ e⁻²⁰⁰ at T = 2 s. The
+reflection comes from where μ rises at the front of the sponge. It grows with μ_max/ω and with
+λ/W, which matches the measured rise with period. μ_max = 40 is 2.5–3.6× past the saturation
+μ_max ≈ 5ω (rule 11), so the extra damping buys nothing and adds reflection. Expected optimum:
+μ_max ≈ 2–5ω of the longest component that matters, and W ≈ 1.5–2 λ of that component.
+
+**Design** (linear model, cheap; run it when the stability campaign frees cores, or on Snellius):
+- [x] (2026-11-06, prepared: §9.2) Driver: `examples/local_1d/run_flume_1d.jl`, sequential
+  (`BALFEM_MPI=0`); run through workers (`run/local/sponge_worker.jl`, several cases per process,
+  one 4 G scope per worker) instead of one process per case.
+  * `BALFEM_WAVE_GEN=bc`, `BALFEM_REGIME=linear`, flat bed.
+  * P1LFE-2, Q2/Q1 (`BALFEM_FE_ORDER=2`), `BALFEM_D=3.5`, dt = 0.02, CN (`BALFEM_SOLVER=theta`).
+  * ny = 1 with walls (the driver default), dx = 0.25 m (NX = LX/0.25), `BALFEM_RELAX=1`.
+  * These match the Snellius suite.
+- [ ] Geometry: relaxation zone `BALFEM_RELAX_W` (6 m), then a FIXED 32 m interior, then
+  `BALFEM_SPONGE_R` = W. So LX = 6 + 32 + W, and the measuring stretch (7–37 m) is the same in
+  every case.
+- [ ] Matrix, stage A: μ_max (`BALFEM_MUMAX`) ∈ {4, 8, 16, 25, 40} × W ∈ {6, 12, 18, 24} m ×
+  T ∈ {1.5, 2.0, 2.5, 2.9} s, i.e. 80 runs. Each run lasts until a steady state, then 10 periods
+  (rule 14: (x_sponge − x_inflow)/c_g + round trip + 10 T). 6 in parallel, about 9 h at an
+  estimated 0.5 s/step. Write a launcher `run/local/run_1d_sponge_sweep.sh` in the style of the
+  stability-campaign launcher (systemd scopes, LPT order, skip existing logs).
+- [ ] Controls in the same batch (rule 38c):
+  * **floor**: a very long, gentle sponge (W = 48 m, μ_max = 4). It measures what the inflow
+    relaxation zone and the generation reflect on their own.
+  * **round-1 replica**: W = 12, μ_max = 40. It must reproduce the Snellius Kr(T) (5 % at 2 s,
+    18 % at 2.9 s), or the 1-D set-up is not representative.
+- [ ] Stage B (after A): around the best (W, μ_max), run relaxation width
+  `BALFEM_RELAX_W` ∈ {6, 12} m, since the inflow zone is also under one long wavelength.
+- [x] (2026-11-06, written; first used on the smoke cases) Analysis script `postprocessing/examples/sponge_reflection.jl`:
+  * complex amplitude at ω over the last 10 periods, from vertex η (SAVE_EVERY 5);
+  * least-squares fit of incident + reflected over 7–37 m (the fit in `LINEAR_PRODUCTION_RESULTS.md`),
+    giving Kr;
+  * the residual of the fit, and the amplitude left at the wall end;
+  * table and heat map of Kr(μ_max, W) per T.
+- [ ] Pass criterion: Kr ≤ 1 % over T = 1.5–2.9 s (Tp = 2 band) at the smallest W that achieves
+  it. If no quadratic sponge reaches it, report the best one and propose a smoother profile (cubic
+  or exponential). That is a `src/utilities.jl` `make_sponge` change and needs the author's
+  approval.
+- [ ] Apply. All the distributed_small drivers already read `BALFEM_SPONGE_R` and `BALFEM_MUMAX`
+  (and the directional one `BALFEM_SPONGE_Y`). If the outflow sponge changes:
+  * the round-1 flat references must be rerun with it, or the big-bar comparisons lose their
+    reference;
+  * so decide this BEFORE submitting the big-bar launchers (§8).
+  * The ring's 7 m sponges and the directional 2 m lateral sponges also need sizing.
+  * Oblique incidence on the lateral sponges is not covered by a 1-D sweep. Follow-up: a 2-D
+    plane-wave case at θ = 20–40°.
+
+## 8. Linear production, round 2 (prepared 2026-11-02; `run/linear_production/README.md`)
+
+- [ ] Decide first whether §7 changes the sponge. If it does, edit the launchers and add flat
+  references.
+- [ ] Push `v2-solver` (needs the author's go-ahead), pull on Snellius, rebuild the sysimage
+  (`src/` changed; `BALFEM_STRICT_SYSIMAGE=1`).
+- [ ] Pilot `:schwarz` at 42 ranks:
+  `BALFEM_TFINAL=2.0 sbatch --time=02:00:00 run/linear_production/run_lin_directional_flat_schwarz.sh`.
+  Read `gmres=` (it must stay well below the restart length krylov_m = 100) and s/step. If it is
+  worse than Jacobi, fall back with `BALFEM_PRECOND=jacobi` plus checkpoint resubmission.
+- [ ] Submit `submit_all.sh schwarz`, then `submit_all.sh bigbar`. Never run it without a pattern:
+  that would resubmit all seven round-1 cases.
+- [ ] Analyse as in round 1 (the merged-piece reader, bar/flat ratios, incident/reflected fits).
+  For the big bar, add the phase and wavelength over the crest and, in the directional run, the
+  refraction of the oblique components.
+
+## 9. Queue for the freed cores (prepared 2026-11-06, NOT launched: the author launches)
+
+> **State 2026-11-07:**
+> * §9.1, the no-CIP controls: **never launched**.
+> * §9.2, the sponge sweep: launched 11-06 16:37 and stopped twice for CPU throttling (§10).
+>   Relaunched 11-07 02:25 at MAXP = 3, then paused at 26 of 84 cases at ~11:00 for the machine
+>   shut-down.
+> * §9.3: not started.
+
+State on 2026-11-06 ~10:00: the campaign's 11 cases have all started. Five are still running
+(m6 n64, m5 n8, m6 n8, m3 n16, m3 n8). At 11:45, m3 n16 and m3 n8 had reached about 200 s of
+320 s, so they finish at about 15:00 if they do not diverge first. The three batches below are
+prepared and smoke-tested. They all go through one shared slot gate (`run/local/_slot_throttle.sh`:
+at most `MAXP` = 6 local 1-D Julia processes in total, and `MemAvailable` ≥ `MIN_FREE_GB` = 6). So
+each launcher can be started at any time: it waits for free slots and never oversubscribes the
+machine, even with the campaign and the other launcher running beside it.
+
+### 9.1 The no-CIP controls (Chapter 8; launch first)
+
+Five cases with γ_u = γ_η = 0, otherwise identical to the campaign: `m6_q32_n{8,16,32,64}_nocip`
+(no model 6 without CIP exists) and `m5_q32_n8_nocip` (the October no-CIP m5 n8 stopped at 160 s).
+* Code: the git worktree `../GridapBALFEM_nocip.wt` (branch `diag/nocip-control`) = 68919a3, the
+  parent of the mandatory-CIP commit faa094f, plus the checkpoint feature and the periodic bed,
+  applied **uncommitted**. Why this base and not HEAD minus the refusal: the launcher header.
+  `Manifest.toml` is copied from the main tree, and `Gridap.jl` and `output` are symlinks into it.
+  Do not edit the worktree while cases run.
+* Checkpoints every 250 steps, all kept (`CHECKPOINT_KEEP=0`), so that a pre-onset restart is
+  possible.
+* Launch:
+  `nohup run/local/run_1d_nocip_controls.sh > output/1D_stability_campaign/_logs/_nocip_batch.out 2>&1 &`
+* Expected cost: n16–n64 should fail within minutes of simulated time, if they behave like m5
+  without CIP (9 / 27 / 81 s). The n8 pair may run the full 320 s, about 2–3 days each.
+* Afterwards: run `periodic_growth.jl` on each `output/1D_stability_campaign/*_nocip` case
+  (`PG_NCELL=<n> PG_PU=3 PG_NLAMBDA=1`). Then tabulate the failure time and the band rates against
+  the CIP case of the same name, and write the with/without table into `STABILITY.md` (model 5
+  table: campaign `README.md`, 2026-11-06).
+* Gate for the worktree: if the 10-step smoke test (`_smoke/m6_q32_n16_nocip_smoke.log`) matches
+  the campaign case it should match (see the smoke record below), the worktree reproduces the
+  campaign operator.
+
+### 9.2 Sponge sweep, stage A (§7; launch second, or together)
+
+84 cases (80 matrix + 4 floor), linear, cheap.
+* Files:
+  * `run/local/run_1d_sponge_sweep.sh` (launcher);
+  * `run/local/sponge_cases.py` (case table; writes `output/1D_sponge_sweep/_logs/_cases_A.tsv`);
+  * `run/local/sponge_worker.jl` (worker: one JIT per worker, up to 12 cases each, cases claimed
+    through `_logs/_claims/`);
+  * `postprocessing/examples/sponge_reflection.jl` (analysis).
+* Launch:
+  `mkdir -p output/1D_sponge_sweep/_logs && nohup run/local/run_1d_sponge_sweep.sh > output/1D_sponge_sweep/_logs/_batch_A.out 2>&1 &`
+* Monitor `_logs/_batch.log`, `_logs/_workers.out` (one start/done line per case) and the per-case
+  logs.
+* Analyse:
+  `julia --project=postprocessing postprocessing/examples/sponge_reflection.jl output/1D_sponge_sweep A`
+  It writes `kr_A.csv` and the heat maps, and prints Kr(μ, W) per T, the floor and the replica.
+* Check, in this order:
+  1. the replica reproduces the Snellius Kr(T) (≈ 5 % at 2.0 s, 18 % at 2.9 s);
+  2. the floor is well below 1 %;
+  3. the fit residuals are below Kr/2 (`?` marks);
+  4. then the pass criterion of §7.
+
+### 9.3 Sponge sweep, stage B (after 9.2)
+
+`STAGE=B BEST_W=<W> BEST_MU=<μ> nohup run/local/run_1d_sponge_sweep.sh > output/1D_sponge_sweep/_logs/_batch_B.out 2>&1 &`
+* 4 cases: relaxation width 12 m at the best stage-A pair. Their own fit stretch is [13, 43] m.
+* Analyse with argument `B`, and compare with the stage-A row at the same (W, μ), which has a
+  relaxation width of 6 m.
+
+### 9.4 Not queued (each needs a decision or other resources)
+
+* The m3 n8 no-CIP 200-period run is the campaign case `m3_q32_n8`. It is already running (started
+  2026-11-06 06:15), so nothing new is needed.
+* §6 parked:
+  * the 1-D flume CIP-monitor reruns (m5/m6, A = 0.02/0.05);
+  * the 2-D `:schwarz` rank-count scaling with 𝓝;
+  * the γ calibration of the CIP.
+* §8 Snellius round 2. It depends on §9.2/9.3 for the sponge, and on pushing `v2-solver`.
+* Diagnostic rerun of m5 n32 from just before its onset. It needs `restart_from_vtu`, an optional
+  item of §2 not built yet, because the campaign kept only 2 checkpoints.
+* Per-node u_j analysis of the m5 n8 VTK, to test the vertical-mode hypothesis. This is an
+  analysis, not a run.
+
+### 9.5 Smoke record (2026-11-06, run beside the 5 campaign cases with `MAXP` raised to 7/8)
+
+* **No-CIP worktree.** `m6_q32_n16_nocip_smoke`, 10 steps.
+  * Exit 0. The `periodic_1d [...] done: 10 steps` line is printed, along with the cosine-bed
+    banner and the "nl_pressure=true WITHOUT a skeleton stabilisation" warning.
+  * The manifest records `cip_gamma_u = cip_gamma_eta = 0.0`, branch `diag/nocip-control`.
+  * Against the campaign `m6_q32_n16` (CIP), at step 5:
+    * the energy ratio is identical (0.999653721);
+    * the mass is identical;
+    * `res0` is 2.8256e-2 vs 2.8216e-2;
+    * η_max is 0.1005631 vs 0.1005222, a 4e-4 relative difference. At t = 0.2 s that is the size
+      of the CIP's contribution (`cip_rate` ≈ 2e-5).
+  * Conclusion: the worktree reproduces the campaign operator minus the CIP.
+  * Cost: the first step (JIT) takes 31 min, about 46 s per step after that.
+* **Sponge sweep.** Two workers, `spA_T1.5_W48_mu4` (nx 344) and `spA_T2.9_W6_mu40` (nx 176),
+  50 steps each.
+  * Both print `flume_1d [...] done:`. The claims, `_workers.out` and the verdict line all behave
+    as designed.
+  * Cost: JIT ≈ 6.5 min per worker, then 1.07 s/step and 0.61 s/step, i.e. ≈ 3.3e-3 s per
+    cell-step (with 7–8 processes running).
+  * Estimate for stage A (8.9e7 cell-steps): ≈ 80 CPU-h, ≈ 14 h on 6 slots. This replaces the
+    0.5 s/step guess.
+  * `sponge_reflection.jl` is not exercised by the smoke: 1 s holds no 10 analysis periods. Its
+    first real test is the first finished stage-A case. Run it as soon as a few cases are done,
+    before the sweep ends.
+* The smoke outputs stay in `output/1D_stability_campaign/_smoke/` and `output/1D_sponge_sweep/_smoke/`.
+  They do not interfere with the real runs (separate directories and claim directories).
+
+
+## 10. The workstation throttles above 3 busy cores (measured 2026-11-06/07)
+
+HP ZBook Power 16 G11 A, Ryzen 7 8845HS: 8 cores / 16 threads, 30 GB.
+* **3 busy single-thread Julia runs:** 27–30 W, 4.6–4.8 GHz, 94–100 °C. Held for 20–25 min in two
+  tests, no slow phase.
+* **8 busy runs:** full clock for 1–3 min until the chip has sat at 100 °C, then the firmware drops
+  every core to ~1.1 GHz and 9–10 W (54 °C) for ~5 min, and the cycle repeats.
+  * Each run goes at roughly half speed.
+  * The 𝓝 campaign cases went from ~38 to 110–160 s/step.
+* **Not the cause** (all checked): the charger (the HP adapter changed nothing), the OS power
+  profile (performance; toggling it changed nothing), lid or dock.
+* Logs: `output/1D_sponge_sweep/_logs/_clock_*.txt`. Read the clock with `grep MHz /proc/cpuinfo` and
+  the package power with `cat /sys/class/hwmon/hwmon4/power1_average` (amdgpu, µW).
+* **Rule: MAXP = 3** (now the `_slot_throttle.sh` default). Check the clock after adding a process.
+* Better cooling (raised rear, cooling pad) may allow more; measure before relying on it.
+* The user has sudo. `ryzenadj` (not installed) could read the firmware limits. That was not pursued;
+  the author called the throttle a firmware bug.

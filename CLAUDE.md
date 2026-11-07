@@ -74,11 +74,14 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
   * solver functionalities 10;
   * validation 11;
   * appendices A–C, which are v1 records.
-* **Chapter 6 (2026-10-29):** Class III of blocks C and L is evaluated **cellwise**; the kind-S facet
-  terms are omitted from the documented global residual (consistent; one order less accurate, so 𝓝
-  needs `p_η ≥ 2`, §6.4.5) and the **first-order C⁰-CIP on η and every 𝖴 is part of the weak form**.
-  Chapter 7 documents the *implemented* residual = chapter 6 + the kind-S facet terms (`eq: implemented
-  global residual`, `tab: implemented vs weak form`). The broken identity
+* **Chapter 6 (rev. 2026-11-06):** Class III of blocks C and L is evaluated **cellwise** and completed
+  by the kind-S **distributed-Hessian facet terms** `ℱ^C`, `ℱ^L` (§6.5 `sec: cellwise accuracy`; stacked
+  form `eq: multifield general residual facet terms`, §6.7). They are **in the global residual
+  `eq: multifield general residual`, marked optional**: dropping them stays consistent but costs one
+  order (and at `p_η = 1` the η curvature). The **first-order C⁰-CIP on η and every 𝖴 is part of the weak
+  form**. The reduced weights `𝒲^K`, `𝒲^P` carry component 5 **transposed** (`T⁽⁵⁾_{ijk}`, as in the code
+  and `eq: class III reduction`). Chapter 7's implemented residual = chapter 6 with the facet terms always
+  on (`eq: implemented global residual`, `tab: implemented vs weak form`). The broken identity
   `eq: broken integration by parts identity` is the tool that classifies facet terms (kind 0/S/T).
 * Build in a scratch copy: `pdflatex`, `biber`, `pdflatex` ×2 → 282 pp, 0 errors. Chapters 6, 7, 10 have
   no undefined references; chapters 8–9, `ModelVerification`, `StokesWaveFourierAnalysis` and the
@@ -211,7 +214,19 @@ predates the 2026-10-30 decision below).*
 3. **Chapter 9**: the stabilisation strategy built on those results (filtering F1–F4, or residual-based
    / streamline dissipation as candidates), judged by `STABILITY.md` §6.
 
-**Known facts the study must start from.** Without CIP the box diverges with and without 𝓝 (Q3/Q2 64
+**Chapter-8 1-D campaign: DONE 2026-11-07** (`STABILITY.md` §3b; full record in
+`output/1D_stability_campaign/README.md`; **next actions: `CH8_CAMPAIGN_TODO.md` "RESUME HERE"**).
+* Models 5 and 6 with the mandatory CIP run 200 periods clean at 16 and 64 cells/λ.
+* At 32 cells/λ there is a late burst (245 s flat bed, ~295 s cosine bed); at 8 cells/λ a slow
+  long-wave growth drains the carrier. The dx dependence is non-monotone.
+* Model 3 diverged at n32 (246 s) and grew at n16 and n8.
+* Every growing content is a **vertical-structure velocity mode** (layer velocities grow, depth average
+  and η barely move), so a stabiliser must act on each u_j.
+* Open: the no-CIP and m3+CIP controls, and the n32 anomaly.
+* Sponge sweep paused at 26 of 84 (`SPONGE_SWEEP_RESULTS.md`).
+* **Use ≤ 3 concurrent runs on this workstation** (rule 47).
+
+**Known facts the study started from (before the campaign).** Without CIP the box diverges with and without 𝓝 (Q3/Q2 64
 cells: 9 s with, 44.6 s without). First-order CIP was only ever tested on v1 (it delayed failure; late
 mid-band growth +0.13 s⁻¹); the v2 eigen-analysis predicts the same escape. No v2 nonlinear box run
 with CIP exists yet.
@@ -411,6 +426,9 @@ unchanged, because code and documents cite them. Rules earned on v1 still apply:
     * Ending the GNOME session kills detached runs unless linger is enabled (it is).
     * Suspend is safe; reboot is not.
     * A traceback ending in `createpvd` is not a VTK failure: `grep -m1 '^ERROR'`.
+    * **More than 3 busy cores throttle it** (2026-11-07). After a few minutes at 100 °C the firmware
+      drops every core to ~1.1 GHz for ~5 min, repeatedly, so 8 runs go at about half speed each.
+      Keep `MAXP = 3` (the `_slot_throttle.sh` default; `CH8_CAMPAIGN_TODO.md` §10).
 
 ### Testing and measurement
 

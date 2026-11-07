@@ -49,7 +49,8 @@ mixed/projected/broken treatment with component 4 omitted (`C3_MASK=gs`) and `:n
   the Ohyama bar).
 * **The model without `𝓝` has the same instability, weaker.** It appears only once the effective
   resolution (cells × order) is high enough. Its mechanism is not identified; the advection block is
-  the candidate.
+  the candidate. Its growing content is a vertical-structure velocity mode with almost no depth average,
+  the same signature as the 𝓝 + CIP growth (§3b, 2026-11-07).
 * ⚠ Frozen growth rates are **not** predictive (they rank `𝓝`-off above `𝓝`-on). Only the spectral
   radius and the box's Floquet-type rates are.
 * The lower frequency branch of the frozen `𝓝`-on spectrum is unexplained.
@@ -77,6 +78,35 @@ the late growth rate if the run was still bounded at 160 s:
 **v1 for comparison (mixed `:full`, CN, Q2/Q1):** onset 157 / 104 / 90 / 31 s at 8 / 16 / 32 / 64
 cells/λ. Q3/Q2 at 16 cells: 26 s. Projected treatment: 8.8 s. `:native` diverged at Q2/Q1 64 cells
 (146 s) and grew at Q3/Q2 16 cells (+0.10 s⁻¹).
+
+## 3b. The chapter-7 solver (𝓝 + mandatory first-order CIP γ = 0.3): the 1-D campaign (2026-10-31 → 11-07)
+
+Closed box, Q3/Q2, CN, A = 0.10, dt = 0.04, **200 periods (320 s)**. Model 6 has a periodic cosine
+bed (slope 1:10, one undulation per λ). Full record: `output/1D_stability_campaign/README.md`
+("FINAL RESULTS").
+
+| cells/λ | m3 (no 𝓝, no CIP) | m5 (𝓝 + CIP, flat) | m6 (𝓝 + CIP, cosine bed) | m5 *without* CIP (2026-10-07) |
+|---|---|---|---|---|
+| 64 | 44.6 s (reference, §3) | **clean** | **clean** | 9 s |
+| 32 | **246 s** (mid band, σ_E 0.11–0.13 /s from t ≈ 20 s) | burst from 245 s, saturates against the CIP; carrier −12 % | onset ~290–300 s (cut off at 320 s) | 27 s |
+| 16 | growing, σ_E ≈ 0.02 /s, still small at 320 s | **clean** | **clean** | 81 s |
+| 8 | grid-locked u growth, then E/E0 → 1.11 from 300 s | long-wave u growth from ~140 s; carrier −49 % | the same from ~180–200 s; carrier −38 % | bounded to 160 s (end of run) |
+
+"Clean" means every band flat relative to the carrier for 320 s, carrier −0.4 %, CIP dissipation rate
+1e-9 to 4e-6 /s.
+
+* **The CIP removes the fast 𝓝 instability, but not every growth.** The n32 onset is late and the
+  n8 one is slow. The dx dependence is **not monotone** (n16 and n64 clean, n32 not). Cause unknown.
+* **New: the growing content is a vertical-structure velocity mode, in every case including model 3.**
+  The layer velocities u₁, u₂, u₃ carry comparable energy while the depth average ū = Σ D_j u_j
+  (the only thing continuity sees) stays far below the physical surface-wave share. So η barely
+  moves at onset.
+  * This is the non-hydrostatic branch (ω∞, §2).
+  * The CIP, which penalises ⟦∂ₙ𝖴⟧, cannot reach its long-wave form (n8: n = 2–4).
+  * A stabiliser must act on every u_j, not on η or ū.
+  * Evidence: `output/1D_stability_campaign/_logs/vertical_structure_2026-11-07.log`.
+* ⚠ Two axes separate m3 from m5 (𝓝 and the CIP, rule 14c). The prepared no-CIP controls
+  (`run/local/run_1d_nocip_controls.sh`) and an m3 + CIP arm have not been run.
 
 ## 4. What was tried, and what each did (v1 unless stated otherwise)
 

@@ -10,6 +10,8 @@ gitignored, so anything load-bearing belongs here.
 2. [`STATUS.md`](STATUS.md): **where the solver stands, the open problem, the next step.**
 3. [`STABILITY.md`](STABILITY.md): the instability and every stabilisation attempt, condensed.
 3b. [`CH8_CAMPAIGN_TODO.md`](CH8_CAMPAIGN_TODO.md): **the working to-do list** from the current state to the running 1-D stability campaign (opened 2026-10-31).
+3c. [`LINEAR_PRODUCTION_RESULTS.md`](LINEAR_PRODUCTION_RESULTS.md): the Snellius linear production suite checked (2026-11-02): bar vs flat, sponge reflection, the periodic "irregular" sea, the directional time-out.
+3d. [`SPONGE_SWEEP_RESULTS.md`](SPONGE_SWEEP_RESULTS.md): the 1-D sponge-reflection sweep, stage A partial (26/84, 2026-11-07): Kr law, best (W, μ_max), how to resume.
 4. [`OPEN_ISSUES.md`](OPEN_ISSUES.md): every other open item, with its next step.
 
 ## Reference (current)
