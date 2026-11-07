@@ -20,10 +20,10 @@ Standing constraints:
 **State.** Nothing is running. The stability campaign (§5) finished, and every case was analysed:
 results in `output/1D_stability_campaign/README.md` ("FINAL RESULTS") and `STABILITY.md` §3b. The
 sponge sweep (§7, §9.2) is **paused** at 26 of 84 cases: results and resume procedure in
-`SPONGE_SWEEP_RESULTS.md`. The working tree is uncommitted (§3 "ASK: commit").
+`SPONGE_SWEEP_RESULTS.md`. The main tree is committed (2026-11-07, not pushed).
 
 **Next actions, in order.** Each needs the author's go-ahead to launch. Use ≤ 3 slots.
-1. **ASK: commit** the pending tree. That covers the checkpoint/bed/solver work, the launchers,
+1. ~~**ASK: commit** the pending tree.~~ **Done 2026-11-07** (8aa27f7, 58071da, 2348286 on `v2-solver`, not pushed; the no-CIP worktree `../GridapBALFEM_nocip.wt` stays uncommitted by design). That covers the checkpoint/bed/solver work, the launchers,
    `_slot_throttle.sh` (MAXP default now 3), the sponge files, the no-CIP launcher and these docs.
    The run manifests otherwise keep recording a dirty tree.
 2. **ASK: the assembly speed-up (§1)** before any further 𝓝 run. Models 5 and 6 cost 52–69 s/step
