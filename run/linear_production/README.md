@@ -92,3 +92,50 @@ the integrator and every knob. `unique_output_dir` never overwrites an existing 
 * Variable bed: the lee-shoulder growth (`markdown_files/OPEN_ISSUES.md` §3) was observed in
   nonlinear runs only. These are the first long linear bar runs in 2-D, so read the bar's downwave
   shoulder before calling them clean.
+
+## Second round (prepared 2026-11-02)
+
+The first round's results are in [`markdown_files/LINEAR_PRODUCTION_RESULTS.md`](../../markdown_files/LINEAR_PRODUCTION_RESULTS.md).
+Two follow-ups:
+
+| launcher | what | ranks | reference |
+|---|---|---|---|
+| `run_lin_directional_flat_schwarz.sh` | directional flat, **rerun**: the Jacobi run was killed by the wall at t = 69.2 s | 42 | (reference for both directional bar runs) |
+| `run_lin_directional_bar_schwarz.sh` | directional bar (crest 2.0 m), **rerun**: killed at t = 66.8 s | 42 | directional_flat_schwarz |
+| `run_lin_bcplane_bigbar.sh` | plane wave, **big bar** | 28 | bcplane_flat (round 1) |
+| `run_lin_irregular_bigbar.sh` | irregular sea, **big bar** | 28 | irregular_flat (round 1) |
+| `run_lin_directional_bigbar.sh` | directional sea, **big bar** | 42 | directional_flat_schwarz |
+
+All five differ from round 1 in three ways:
+* `BALFEM_PRECOND=schwarz` (OwnBlockLUSolver). The directional Jacobi solves took ~930 GMRES
+  iterations each. The preconditioner changes nothing above the ls_rtol level.
+* Checkpoints every 500 steps, so a run killed by the wall can be resumed:
+  `BALFEM_RESTART_FROM=<its output dir> sbatch <launcher>`, on the same rank grid.
+* An output-name token: `schwarz` or `bigbar`.
+
+**The big bar.**
+* Shape: `BALFEM_HBAR=2.85 BALFEM_WBAR=6 BALFEM_SRAMP=3`, i.e.
+  d = 3.5 − 1.425[tanh((x−20)/3) − tanh((x−32)/3)].
+  * True crest depth 0.753 m. HBAR is nominal, because the tanh does not saturate at SRAMP = 3.
+  * Max slope 0.47.
+  * The bed is flat to 1.5 % outside x = 14–38 m.
+* `BALFEM_SRAMP` is new in the three drivers. Its default is WBAR/3, so round-1 launchers are
+  unchanged.
+* Expected at T = 2 s from linear theory, against the 2.0 m crest:
+  * wavelength over the crest −31 % (was −3 %);
+  * phase gained across the bar ≈ 3.2 rad (was 0.3);
+  * crest amplitude −7.5 % (was −4 %). Shoaling bottoms out near kd ≈ 1, so amplitude stays the
+    weak signal.
+
+**Before submitting.**
+1. The code these launchers need (OwnBlockLUSolver, checkpoints, BALFEM_SRAMP) is on `v2-solver`
+   but **not pushed**. Push, pull on Snellius, and **rebuild the sysimage** (`src/` changed;
+   `BALFEM_STRICT_SYSIMAGE=1` refuses a stale one).
+2. **Pilot the :schwarz cost.** It is unmeasured at 28–42 ranks: block Jacobi has no coarse space,
+   so its iteration count grows with the number of ranks. Pilot command:
+   `BALFEM_TFINAL=2.0 sbatch --time=02:00:00 run/linear_production/run_lin_directional_flat_schwarz.sh`.
+   Then read `gmres=` and the s/step in the `.out`.
+3. Submit by pattern: `submit_all.sh schwarz` and `submit_all.sh bigbar`.
+   ⚠ `submit_all.sh` without a pattern would also resubmit the seven completed round-1 cases.
+4. Unset `BALFEM_RESTART_FROM` in the submitting shell unless you mean to resume. sbatch exports
+   the environment to the job.
