@@ -9,8 +9,9 @@
 #  A slot is free when the memory left after every running case reaches its expected peak is
 #  ≥ MIN_FREE_GB (the 2026-10-30 OOM: memory is the binding limit on this workstation; one 𝓝
 #  case ≈ 2.5–2.8 GB, a linear flume worker ≈ 1.5–2 GB). A case starts small and grows during
-#  JIT, so each running case younger than its peak is charged RUN_GB − RSS on top of what it
-#  already holds; MemAvailable alone would admit several cases before any of them has grown.
+#  JIT, so each running case younger than YOUNG_S (still in JIT/warm-up) is charged RUN_GB − RSS on
+#  top of what it already holds; MemAvailable alone would admit several cases before any of them has
+#  grown. Older cases are not charged: they have plateaued (an m3 case stays at ≈ 1.6 GB for days).
 #  The check and the launch happen under one flock, followed by a stagger, so two launchers
 #  can never both see the same free slot.
 #
@@ -25,16 +26,19 @@
 MAXP="${MAXP:-0}"
 MIN_FREE_GB="${MIN_FREE_GB:-6}"
 RUN_GB="${RUN_GB:-3}"                   # GB: expected peak RSS of one case (𝓝 ≈ 2.8)
+YOUNG_S="${YOUNG_S:-2400}"              # s: a case younger than this may still grow (𝓝 JIT ≈ 25 min)
 SLOT_STAGGER="${SLOT_STAGGER:-60}"      # s: let a new process take the precompile lock first
 SLOT_LOCK="${SLOT_LOCK:-$PROJ/output/.local_slots.lock}"
 
 slots_busy() {
   pgrep -fc '^[^ ]*julia .*(run_periodic_1d|run_flume_1d|sponge_worker)[.]jl'
 }
-mem_free_gb() {   # MemAvailable minus the growth still owed by the running cases, in GB
-  local avail owed=0 rss pid peak=$(( RUN_GB * 1048576 ))
+mem_free_gb() {   # MemAvailable minus the growth still owed by the young running cases, in GB
+  local avail owed=0 rss age pid peak=$(( RUN_GB * 1048576 ))
   avail=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
   for pid in $(pgrep -f '^[^ ]*julia .*(run_periodic_1d|run_flume_1d|sponge_worker)[.]jl'); do
+    age=$(ps -o etimes= -p "$pid" 2>/dev/null) || continue
+    [ -n "$age" ] && [ "$age" -lt "$YOUNG_S" ] || continue
     rss=$(awk '/^VmRSS:/ {print $2}' "/proc/$pid/status" 2>/dev/null) || continue
     [ -n "$rss" ] && [ "$rss" -lt "$peak" ] && owed=$(( owed + peak - rss ))
   done

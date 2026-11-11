@@ -429,7 +429,7 @@ unchanged, because code and documents cite them. Rules earned on v1 still apply:
     * Suspend is safe; reboot is not.
     * A traceback ending in `createpvd` is not a VTK failure: `grep -m1 '^ERROR'`.
     * **Memory is the only cap on local parallel runs** (author, 2026-11-10). `_slot_throttle.sh`
-      admits a case while MemAvailable, minus the growth still owed by younger cases (`RUN_GB` = 3 each),
+      admits a case while MemAvailable, minus the growth still owed by cases younger than `YOUNG_S` = 40 min (`RUN_GB` = 3 each),
       stays ≥ `MIN_FREE_GB` = 6. The 2026-11-07 thermal throttle (> 3 busy cores → 1.1 GHz) was a
       machine fault cleared by a reboot; the old `MAXP = 3` rule is withdrawn.
 
