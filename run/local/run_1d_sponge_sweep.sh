@@ -27,9 +27,9 @@
 #  launcher through run/local/_slot_throttle.sh (MAXP processes, MemAvailable ≥ MIN_FREE_GB).
 #  Estimated cost: 8.9e7 cell-steps in total; measured in the smoke run (2026-11-06) ≈ 3.3e-3 s
 #  per cell-step + ≈ 6.5 min JIT per worker ⇒ ≈ 80 CPU-h, ≈ 14 h on 6 slots.
-#  ⚠ Measured in the real run (2026-11-07): at full clock (≤ 3 busy cores) 26 cases took ≈ 8 h on 2
-#  workers. Above 3 busy cores the CPU thermally throttles (to ~1.1 GHz for minutes at a time), so
-#  run with MAXP=3. State, results and how to resume: markdown_files/SPONGE_SWEEP_RESULTS.md.
+#  Measured in the real run (2026-11-07): 26 cases took ≈ 8 h on 2 workers. (The thermal throttle
+#  above 3 busy cores seen then was a machine fault, cleared by a reboot; memory is the only slot
+#  cap since 2026-11-10.) State, results and how to resume: markdown_files/SPONGE_SWEEP_RESULTS.md.
 #
 #  ANALYSIS:  julia --project=postprocessing postprocessing/examples/sponge_reflection.jl \
 #                 output/1D_sponge_sweep [A|B]
@@ -38,7 +38,7 @@
 #  while the sweep runs (rule 38h). A case whose claim directory or log exists is skipped; to re-run
 #  it delete output/1D_sponge_sweep/_logs/_claims/<case>/, its log and its output directory.
 #
-#  USAGE:  run/local/run_1d_sponge_sweep.sh                    (STAGE=A, MAXP=3, MIN_FREE_GB=6)
+#  USAGE:  run/local/run_1d_sponge_sweep.sh                    (STAGE=A, MIN_FREE_GB=6, no process cap)
 #  Detach: nohup run/local/run_1d_sponge_sweep.sh > output/1D_sponge_sweep/_logs/_batch_A.out 2>&1 &
 #  Smoke:  SMOKE=1 run/local/run_1d_sponge_sweep.sh   (2 cases × 1 s into output/1D_sponge_sweep/_smoke)
 # ==============================================================

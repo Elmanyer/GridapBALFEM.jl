@@ -164,9 +164,9 @@ Quality of the measurement:
   cd - && MAXP=3 MIN_FREE_GB=4 setsid nohup run/local/run_1d_sponge_sweep.sh >> output/1D_sponge_sweep/_logs/_batch_A.out 2>&1 < /dev/null &
   ```
   The launcher skips every case with a log, so the 26 finished cases are not re-run.
-* **Use MAXP = 3** (counting every local 1-D Julia process) on this workstation. Above 3 busy cores the
-  CPU overheats and the firmware throttles it to 1.1 GHz for minutes at a time. See
-  [`CH8_CAMPAIGN_TODO.md`](CH8_CAMPAIGN_TODO.md) §10.
+* **Memory is the only slot limit** (2026-11-10). The earlier MAXP = 3 rule (thermal throttling above
+  3 busy cores, [`CH8_CAMPAIGN_TODO.md`](CH8_CAMPAIGN_TODO.md) §10) is withdrawn: it was a machine fault
+  cleared by a reboot. The `MAXP=3` in the resume command above can be dropped.
 * **Cost at full speed** (3 busy cores, 4.6 GHz): 0.3–2 s per step depending on nx. A worker's 12 cases
   take about 6 h. The remaining 58 cases are the cheaper end of the queue (the queue is ordered longest
   first): about 12–15 h on 2–3 workers.

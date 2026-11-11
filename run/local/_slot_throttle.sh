@@ -6,9 +6,11 @@
 #    * the box driver   examples/local_1d/run_periodic_1d.jl  (main tree AND the no-CIP worktree)
 #    * the flume driver examples/local_1d/run_flume_1d.jl
 #    * the sponge worker run/local/sponge_worker.jl
-#  A slot is free when fewer than MAXP of them run AND MemAvailable ≥ MIN_FREE_GB (the
-#  2026-10-30 OOM: memory, not cores, is the binding limit on this workstation; one 𝓝 case
-#  ≈ 2.5–2.8 GB, a linear flume worker ≈ 1.5–2 GB).
+#  A slot is free when the memory left after every running case reaches its expected peak is
+#  ≥ MIN_FREE_GB (the 2026-10-30 OOM: memory is the binding limit on this workstation; one 𝓝
+#  case ≈ 2.5–2.8 GB, a linear flume worker ≈ 1.5–2 GB). A case starts small and grows during
+#  JIT, so each running case younger than its peak is charged RUN_GB − RSS on top of what it
+#  already holds; MemAvailable alone would admit several cases before any of them has grown.
 #  The check and the launch happen under one flock, followed by a stagger, so two launchers
 #  can never both see the same free slot.
 #
@@ -17,22 +19,29 @@
 #    with_slot <command> [args…]     # blocks until a slot is free, then runs the command in the
 #                                    # background; the PID is in $SLOT_PID
 # ==============================================================
-#  MAXP default 3 (2026-11-07): with more than 3 busy cores this workstation reaches 100 °C within
-#  minutes and the firmware drops every core to ~1.1 GHz (9–10 W) for ~5 min at a time, so 8
-#  processes run at roughly half speed each and the campaign cases at a third (CH8_CAMPAIGN_TODO §10).
-MAXP="${MAXP:-3}"
+#  MEMORY IS THE ONLY CAP (author, 2026-11-10). The 2026-11-07 thermal throttle (> 3 busy cores →
+#  1.1 GHz) was a machine fault that a reboot cleared; the old MAXP = 3 default is withdrawn.
+#  MAXP stays as an optional process cap for one batch (unset or 0 = none).
+MAXP="${MAXP:-0}"
 MIN_FREE_GB="${MIN_FREE_GB:-6}"
+RUN_GB="${RUN_GB:-3}"                   # GB: expected peak RSS of one case (𝓝 ≈ 2.8)
 SLOT_STAGGER="${SLOT_STAGGER:-60}"      # s: let a new process take the precompile lock first
 SLOT_LOCK="${SLOT_LOCK:-$PROJ/output/.local_slots.lock}"
 
 slots_busy() {
   pgrep -fc '^[^ ]*julia .*(run_periodic_1d|run_flume_1d|sponge_worker)[.]jl'
 }
-mem_free_gb() {
-  awk '/^MemAvailable:/ {printf "%d", $2/1048576}' /proc/meminfo
+mem_free_gb() {   # MemAvailable minus the growth still owed by the running cases, in GB
+  local avail owed=0 rss pid peak=$(( RUN_GB * 1048576 ))
+  avail=$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)
+  for pid in $(pgrep -f '^[^ ]*julia .*(run_periodic_1d|run_flume_1d|sponge_worker)[.]jl'); do
+    rss=$(awk '/^VmRSS:/ {print $2}' "/proc/$pid/status" 2>/dev/null) || continue
+    [ -n "$rss" ] && [ "$rss" -lt "$peak" ] && owed=$(( owed + peak - rss ))
+  done
+  echo $(( (avail - owed) / 1048576 ))
 }
 slot_free() {
-  [ "$(slots_busy)" -lt "$MAXP" ] && [ "$(mem_free_gb)" -ge "$MIN_FREE_GB" ]
+  { [ "$MAXP" -le 0 ] || [ "$(slots_busy)" -lt "$MAXP" ]; } && [ "$(mem_free_gb)" -ge "$MIN_FREE_GB" ]
 }
 
 with_slot() {

@@ -226,7 +226,7 @@ predates the 2026-10-30 decision below).*
   and η barely move), so a stabiliser must act on each u_j.
 * Open: the no-CIP and m3+CIP controls, and the n32 anomaly.
 * Sponge sweep paused at 26 of 84 (`SPONGE_SWEEP_RESULTS.md`).
-* **Use ≤ 3 concurrent runs on this workstation** (rule 47).
+* **Local parallel runs are capped by memory only** (rule 47; the 3-run cap is withdrawn, 2026-11-10).
 
 **Known facts the study started from (before the campaign).** Without CIP the box diverges with and without 𝓝 (Q3/Q2 64
 cells: 9 s with, 44.6 s without). First-order CIP was only ever tested on v1 (it delayed failure; late
@@ -428,9 +428,10 @@ unchanged, because code and documents cite them. Rules earned on v1 still apply:
     * Ending the GNOME session kills detached runs unless linger is enabled (it is).
     * Suspend is safe; reboot is not.
     * A traceback ending in `createpvd` is not a VTK failure: `grep -m1 '^ERROR'`.
-    * **More than 3 busy cores throttle it** (2026-11-07). After a few minutes at 100 °C the firmware
-      drops every core to ~1.1 GHz for ~5 min, repeatedly, so 8 runs go at about half speed each.
-      Keep `MAXP = 3` (the `_slot_throttle.sh` default; `CH8_CAMPAIGN_TODO.md` §10).
+    * **Memory is the only cap on local parallel runs** (author, 2026-11-10). `_slot_throttle.sh`
+      admits a case while MemAvailable, minus the growth still owed by younger cases (`RUN_GB` = 3 each),
+      stays ≥ `MIN_FREE_GB` = 6. The 2026-11-07 thermal throttle (> 3 busy cores → 1.1 GHz) was a
+      machine fault cleared by a reboot; the old `MAXP = 3` rule is withdrawn.
 
 ### Testing and measurement
 

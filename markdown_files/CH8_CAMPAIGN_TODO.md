@@ -53,9 +53,9 @@ sponge sweep (§7, §9.2) is **paused** at 26 of 84 cases: results and resume pr
 >   5 no-CIP cases start as sponge workers exit (`_nocip_batch.out`).
 > * Check the clock (§10). At 12:56, during JIT, it read 3.4 GHz / 22 W.
 
-**Next actions, in order.** Each needs the author's go-ahead to launch. Use ≤ 3 slots.
+**Next actions, in order.** Each needs the author's go-ahead to launch. Slots are limited by memory only (2026-11-10, §10).
 1. ~~**ASK: commit** the pending tree.~~ **Done 2026-11-07** (8aa27f7, 58071da, 2348286 on `v2-solver`, not pushed; the no-CIP worktree `../GridapBALFEM_nocip.wt` stays uncommitted by design). That covers the checkpoint/bed/solver work, the launchers,
-   `_slot_throttle.sh` (MAXP default now 3), the sponge files, the no-CIP launcher and these docs.
+   `_slot_throttle.sh` (MAXP default then 3; memory-only since 2026-11-10), the sponge files, the no-CIP launcher and these docs.
    The run manifests otherwise keep recording a dirty tree.
 2. **ASK: the assembly speed-up (§1)** before any further 𝓝 run. Models 5 and 6 cost 52–69 s/step
    against 4–5 for model 3. The measured `_get_cache` fix gives −29 %, and Gridap performance mode
@@ -462,7 +462,8 @@ HP ZBook Power 16 G11 A, Ryzen 7 8845HS: 8 cores / 16 threads, 30 GB.
   profile (performance; toggling it changed nothing), lid or dock.
 * Logs: `output/1D_sponge_sweep/_logs/_clock_*.txt`. Read the clock with `grep MHz /proc/cpuinfo` and
   the package power with `cat /sys/class/hwmon/hwmon4/power1_average` (amdgpu, µW).
-* **Rule: MAXP = 3** (now the `_slot_throttle.sh` default). Check the clock after adding a process.
+* ~~**Rule: MAXP = 3**~~ **Withdrawn 2026-11-10** (author): the throttling was a machine fault that a
+  reboot cleared and no longer occurs. Memory is the only cap; `_slot_throttle.sh` defaults to no process cap.
 * Better cooling (raised rear, cooling pad) may allow more; measure before relying on it.
 * The user has sudo. `ryzenadj` (not installed) could read the firmware limits. That was not pursued;
   the author called the throttle a firmware bug.
