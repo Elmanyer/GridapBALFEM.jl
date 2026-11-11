@@ -167,7 +167,7 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
   (`V2_SOLVER_PLAN.md` §0).
 * Numerical options:
   * `stabilization`, `cip_*`;
-  * `solver_type` (**stability claims under `:theta` only**);
+  * `solver_type` (**diagnosis under `:theta`; dissipative remedies state their carrier cost**, rule 15);
   * `use_ad` (diagnosis only).
 * Environment variables: `BALFEM_NL_PRESSURE`, `BALFEM_STAB`, `BALFEM_CIP_*`, `BALFEM_SOLVER`,
   `BALFEM_OUTDIR`.
@@ -213,8 +213,12 @@ predates the 2026-10-30 decision below).*
 1. ~~Finish and verify the CIP-mandatory solver~~ done 2026-10-30 (above).
 2. **Chapter 8**: study the stability of *that* solver (with first-order CIP) — box ladder under CN,
    operator analysis, γ calibration; report results and conclusions.
-3. **Chapter 9**: the stabilisation strategy built on those results (filtering F1–F4, or residual-based
-   / streamline dissipation as candidates), judged by `STABILITY.md` §6.
+3. **Chapter 9**: the stabilisation strategy built on those results, judged by `STABILITY.md` §6.
+   **First step (author, 2026-11-11): numerical dissipation through the time integrator, before any
+   new term in the weak form.** CN has shown the discrete nonlinear operator is unstable; the next
+   study measures what dissipative integrators (Gridap tableaus, `dt`) buy against what they cost on
+   the carrier (`STABILITY.md` §6b, `CH8_CAMPAIGN_TODO.md` "RESUME HERE"). Only if that fails, or
+   costs too much accuracy, do new weak-form terms follow (filtering F1–F4, SUPG / VMS / residual-based).
 
 **Chapter-8 1-D campaign: DONE 2026-11-07** (`STABILITY.md` §3b; full record in
 `output/1D_stability_campaign/README.md`; **next actions: `CH8_CAMPAIGN_TODO.md` "RESUME HERE"**).
@@ -365,12 +369,20 @@ unchanged, because code and documents cite them. Rules earned on v1 still apply:
 14c. **A crash is not evidence until its control runs.** Pair every failure with the run that
      differs in exactly one axis.
 
-15. **`SDIRK_2_2` is Gridap's `DIRK22(1,0,1)`.**
-    * It is A-stable but not L-stable, and loses ≈ `0.75(ωΔt)⁴` per step: 100× the textbook SDIRK2.
-    * **No stability claim may rest on it.** Pair every stability run with Crank–Nicolson
-      (`BALFEM_SOLVER=theta`).
-    * Never fix a non-dissipative test by moving a threshold.
-    * Read the tableau before quoting its damping.
+15. **Dissipation is a legitimate stabiliser; name it and measure it** (rewritten 2026-11-11, author).
+    `SDIRK_2_2` is Gridap's `DIRK22(1,0,1)` (A-stable, not L-stable, `R(∞) = −½`; not the textbook
+    SDIRK2). It removes ≈ `0.36(ωΔt)⁴` of a mode's amplitude per step (`0.75(ωΔt)⁴` of its energy):
+    at Δt = 0.04, T = 1.6 s the carrier loses 0.0054 s⁻¹ in amplitude, ≈ 82 % over 200 periods.
+    * **Diagnosis** (what the discretisation grows, and how fast) uses Crank–Nicolson
+      (`BALFEM_SOLVER=theta`): it neither adds nor removes energy, so nothing hides the growth.
+    * **Remedy** runs may use any dissipation (integrator, CIP, filter). Each reports the carrier's
+      amplitude loss over the target duration (the accuracy cost), the damping at the growing modes'
+      frequencies or wavenumbers, and the CN run it is compared with. A dissipative run is
+      "stabilised at cost X", never "stable" without that number.
+    * Integrator damping acts by **frequency**; it cannot reach steady (ω = 0) grid modes directly.
+    * Never fix a non-dissipative test by moving a threshold. Read the tableau before quoting its
+      damping. ⚠ Gridap's `SDIRK_3_3` is only first order, and `SDIRK_LobattoIIIC_2_2` is the explicit
+      Heun scheme (2026-11-11): do not use them.
 
 16. **Distributed linear solve: `NewtonSolver(GMRESSolver(Pr=Jacobi))`.**
 

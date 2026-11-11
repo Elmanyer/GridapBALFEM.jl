@@ -274,7 +274,8 @@ supporting measurement is in the linked document.
     dissipation grows with `dt` and can *mask* a growing mode, so **a run that completes may simply
     be one whose dissipation exceeded the growth rate.** This is rule 15's trap in a new guise, and
     the rule stands on its own merits — but note how it was DISCHARGED for 12b, because that is the
-    template: the same case was run on `SDIRK_2_2` (2nd order, dissipative), `SDIRK_3_3` (3rd order) and
+    template: the same case was run on `SDIRK_2_2` (2nd order, dissipative), `SDIRK_3_3` ("3rd order" by
+    its label; ⚠ Gridap's tableau is in fact first order, found 2026-11-11 — rule 15) and
     **explicit `EXRK_RungeKutta_4_4`** (essentially non-dissipative). All three stayed flat, and RK4
     tracked SDIRK_2_2 to within 1–5 % with the same envelope shape — the offset being exactly the
     SDIRK_2_2 damping. **Three integrators of different order and stability character agreeing is what
@@ -304,26 +305,56 @@ supporting measurement is in the linked document.
     (generation-region, velocity-led) wearing the same symptom. Pair every failure with the run
     that differs in exactly one axis.
 
-15. **THE DEFAULT INTEGRATOR `SDIRK_2_2` IS STRONGLY DISSIPATIVE — AND IT IS NOT THE SCHEME ITS NAME
-    SUGGESTS (corrected 2026-09-26).** Gridap's `:SDIRK_2_2` is `DIRK22(1,0,1)`
+15. **DISSIPATION IS A LEGITIMATE STABILISER; NAME IT AND MEASURE IT (rewritten 2026-11-11, author).**
+    The rule used to read "no stability claim may rest on `SDIRK_2_2`". That treated all numerical
+    dissipation as cheating. It is not: long simulations routinely carry dissipation (in the
+    integrator or as weak stabilisation terms) because under-resolved sub-grid content is always there,
+    and Yang & Liu themselves integrate with RK4. What the rule protects is the separation of two
+    questions:
+    * **Diagnosis**: what does the discretisation grow, and how fast? Crank–Nicolson (`|R(iy)| ≡ 1`)
+      neither adds nor removes energy, so it hides nothing. Chapter 8 is answered under CN.
+    * **Remedy**: does a given dissipation keep the run usable over the target duration, at an
+      accuracy cost we accept? Any dissipation may be a remedy. Each remedy run reports (1) the
+      carrier's amplitude loss over the target duration, (2) the damping at the growing modes'
+      frequencies (integrator) or wavenumbers (spatial term), (3) the CN run it is compared with. It is
+      "stabilised at cost X", never "stable" without that number.
+    * A time integrator damps by **frequency**, a stabilisation term by **wavenumber**. A growing mode
+      with a steady (ω = 0) member, like the m3 decay triad, cannot be damped directly by any
+      integrator (`R(0) = 1`); it is reached only through its oscillating partners.
+    * The selectivity of an integrator is the ratio of its damping at the growing modes to its damping
+      at the carrier: `(ω_g/ω₀)^(p+1)`-like for a scheme whose loss is `∝ y^(p+1)`; the ratio does not
+      change with `dt`, only the overall level does.
+
+    The facts about the default integrator, which stand:
+    **`SDIRK_2_2` IS STRONGLY DISSIPATIVE — AND IT IS NOT THE SCHEME ITS NAME SUGGESTS (corrected
+    2026-09-26).** Gridap's `:SDIRK_2_2` is `DIRK22(1,0,1)`
     (`Gridap.jl/src/ODEs/ODESolvers/TableausDIM.jl`): `A = [1 0; −1 1]`, `b = (½, ½)`,
     `R(z) = (1 − z − z²/2)/(1 − z)²`. It is A-stable but **not** L-stable (`R(∞) = −½`), and it removes
     `(¾)y⁴/(1+y²)² ≈ 0.75 y⁴` of a neutral mode's energy per step, `y = ωΔt` — **100× the textbook
     L-stable `γ = 1 − 1/√2` SDIRK2** (0.0074 y⁴), which every earlier note here had assumed. At
     `Δt` = 0.04: carrier 0.011 s⁻¹ (exactly the carrier decay of every periodic run), `ω∞` 0.15 s⁻¹,
-    fastest `:full` modes 2–10 s⁻¹.
+    fastest `:full` modes 2–10 s⁻¹. ⚠ These are ENERGY rates; the amplitude loss is half,
+    `≈ 0.36 y⁴`: the carrier amplitude decays at 0.0054 s⁻¹ (verified on the m3 SDIRK box, 2026-11-11).
     * Any test measuring a non-dissipative property must pin `solver_type=:theta`. **Do not remove those
       pins, and never fix such a failure by moving a threshold.** Recognise it by: amplitude damped
       while **phase is correct**, error **growing with frequency**, and **refining the mesh does not
       help**. (`TEST_SUITE.md` §4)
-    * ⛔ **NO STABILITY CLAIM MAY REST ON `SDIRK_2_2` ALONE.** It masked the `:full` interior instability:
+    * **Why the diagnosis must be CN** (the evidence behind the old wording). `SDIRK_2_2` masked the `:full` interior instability:
       Q2/Q1 at 32 cells/λ ran 100 periods bounded under SDIRK and **diverged at ≈ 90 s under
       Crank–Nicolson**; the 64-cell SDIRK run showed no growth at all and **diverged at 31 s under
       Crank–Nicolson**; and SDIRK hid a `:native` instability altogether (Q2/Q1 64 cells/λ diverges at
-      146 s under CN). Pair every stability run with a
-      Crank–Nicolson repeat (`BALFEM_SOLVER=theta`), which has `|R(iy)| ≡ 1`.
+      146 s under CN). A diagnosis therefore runs under Crank–Nicolson (`BALFEM_SOLVER=theta`), and
+      every dissipative remedy run is paired with that CN run.
     * Before quoting any tableau's damping, read the tableau in `TableausDIM.jl` — never infer it from
-      the name.
+      the name. ⚠ Checked 2026-11-11 against the order conditions: Gridap's `SDIRK_3_3` is only FIRST
+      order (b·c = 1.02, not ½; it loses 1.3 % of the carrier amplitude per step at Δt = 0.04), and
+      `SDIRK_LobattoIIIC_2_2` is the explicit Heun scheme (A = [0 0; 1 0]), unstable on the imaginary
+      axis. Do not use either. (Library defects in the fork, reported, not patched.)
+    * Amplitude loss per step, `1 − |R(iy)|`, at Δt = 0.04, T = 1.6 s (carrier y = 0.157, 2ω₀ y = 0.314):
+      `SDIRK_2_2` 2.2e-4 / 3.0e-3; explicit RK3 (all 3-stage 3rd order) 2.5e-5 / 3.9e-4 (y⁴/24);
+      explicit classical RK4 1.0e-7 / 6.6e-6 (y⁶/144); `DIRK_TRBDF_3_2` (L-stable) 2.2e-6 / 3.5e-5;
+      `SDIRK_4_3` 1.3e-5 / 2.0e-4; `SDIRK_Crouzeix_3_4` 6.2e-6 / 3.1e-4; CN and `SDIRK_QinZhang_2_2` 0.
+      Explicit schemes amplify beyond `y = √3` (RK3) and `2√2` (RK4) for the fastest discrete mode.
 16. **Distributed linear solve = `NewtonSolver(GMRESSolver(Pr=Jacobi))`.** A direct LU does not scale
     to partitioned matrices at cluster size.
 17. **`krylov_m` (basis size, memory) and `ls_maxiter` (iteration budget, time) are different

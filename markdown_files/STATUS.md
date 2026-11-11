@@ -1,5 +1,17 @@
 # STATUS.md — where the project stands (2026-10-09)
 
+> **Update 2026-11-11: the next step is dissipation through the time integrator (author's decision;
+> supersedes §4 as the immediate next step).**
+> * CN has shown the discrete nonlinear operator is unstable in every box run. Before any new term in
+>   the weak form (filtering F1–F4, SUPG, VMS, residual-based), measure what dissipative time
+>   integrators buy (growth suppressed) against what they cost (carrier attenuation). No code change:
+>   Gridap tableaus via `BALFEM_TABLEAU`, plus `BALFEM_DT`. Plan, candidates and predictions:
+>   [`STABILITY.md`](STABILITY.md) §6b; actions: [`CH8_CAMPAIGN_TODO.md`](CH8_CAMPAIGN_TODO.md) "RESUME HERE".
+> * Rule 15 rewritten: dissipation is a legitimate stabiliser, named and measured ("stabilised at
+>   cost X"); the diagnosis stays under CN.
+> * First evidence (m3 n32, `SDIRK_2_2`, Δt = 0.04): the CN-unstable modes stay at seed level past the
+>   CN divergence time (254 s vs 246 s), but the carrier has lost 93 % of its energy.
+
 > **Update 2026-11-07: the chapter-8 1-D campaign is complete (supersedes the "no v2 nonlinear box run
 > with CIP exists yet" line below).** Results: [`STABILITY.md`](STABILITY.md) §3b, in full
 > `output/1D_stability_campaign/README.md` ("FINAL RESULTS").
@@ -81,7 +93,7 @@ with refinement. That is the grid-scale signature: under-resolution would improv
 (rule 38b). v2 fails 1.4–3× later than v1, but it does fail. Stabilisation history and analysis:
 [`STABILITY.md`](STABILITY.md).
 
-## 4. Next: filtering — the options
+## 4. Filtering — the options (after the time-integrator study, STABILITY §6b, 2026-11-11)
 
 Requirement, unchanged since v1: a **wavenumber-selective energy sink** that removes the mid, high
 and sub-element bands faster than the nonlinear transfer feeds them (≈ 0.1–0.5 s⁻¹ measured). It must
@@ -100,7 +112,7 @@ Shared implementation points:
   Under θ/CN the state is `u` alone. Generalised-α carries a velocity too.
 * **Test bed:** the v2 unstabilised box runs above are the baseline: same launchers
   (`run/local/run_1dper_v2_unstab*.sh`), same seeds, `periodic_growth.jl`. Acceptance is the four
-  criteria of [`STABILITY.md`](STABILITY.md) §6, all under Crank–Nicolson (rule 15).
+  criteria of [`STABILITY.md`](STABILITY.md) §6, under Crank–Nicolson (rule 15).
 * Then the flume, the bar (the lee-shoulder mode of OPEN_ISSUES §3 is exactly where Yang & Liu
   filter), MMS at the chosen strength, and a 100-period box regression gate in the suite.
 

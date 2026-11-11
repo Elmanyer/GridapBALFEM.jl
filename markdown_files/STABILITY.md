@@ -19,7 +19,8 @@ mixed/projected/broken treatment with component 4 omitted (`C3_MASK=gs`) and `:n
 * **Two earlier "instabilities" were artefacts, now closed:**
   * equal-order `Q2/Q2` pairings: an inf-sup checkerboard at `λ ≈ 2dx`, cured by Taylor–Hood (rule 12b);
   * `SDIRK_2_2` masking: Gridap's `DIRK22(1,0,1)` damps the fastest modes at 2–10 s⁻¹ and hid the
-    growth. **Stability claims are made under Crank–Nicolson only** (rule 15).
+    growth. **The diagnosis (what grows, how fast) is made under Crank–Nicolson** (rule 15, rewritten
+    2026-11-11: dissipation is a legitimate remedy, named and measured, §6b).
 * **It is interior.** The flume always failed at the inflow, so the **closed x-periodic box** was built:
   * one model wavelength, `x_periodic=true`, one cell across with walls;
   * no inflow, relaxation, sponge or source;
@@ -158,21 +159,80 @@ All arms below are the closed box at Q3/Q2, 16 cells/λ, CN, A = 0.10, 160 s, un
 **Decision (author, 2026-10-09): pursue filtering, as Yang & Liu do.** The options are in
 [`STATUS.md`](STATUS.md) §4. The penalties stay in the code as the comparison arm.
 
-## 6. Acceptance criteria for any stabiliser (unchanged since v1)
+## 6. Acceptance criteria for any stabiliser (v1; adapted 2026-11-11 for integrator dissipation)
 
-All measured under Crank–Nicolson, box first, then flume:
+Box first, then flume. A weak-form stabiliser is measured under Crank–Nicolson. A dissipative time
+integrator is measured with itself, paired with the CN run of the same case (rule 15):
 1. mid-, high- and sub-element-band σ_E ≤ 0 on the discriminating cells:
    * Q3/Q2 at 16 and 32 cells/λ;
    * Q2/Q1 at 32 and 64 cells/λ;
    * A = 0.10 and 0.15;
    * `𝓝` on and off;
 2. the carrier unattenuated over 100 periods. The unstabilised CN trace has |σ_E| < 4e-5 s⁻¹;
-   state the loss as a percentage of the energy;
+   state the loss as a percentage of the energy. For an integrator this is the deciding cost; the
+   accepted budget is the author's to set (§6b gives each candidate's figure);
 3. the MMS orders of [`VERIFIED_SCOPE.md`](VERIFIED_SCOPE.md) preserved;
 4. the amplitude ceiling it buys measured and stated, since the transfer rate grows with A.
 
 Then: the flume factorial, the bar (where Yang & Liu filter and limit the slope), and a 100-period
 CN box regression gate in the suite, which today has no long-duration stability gate.
+
+## 6b. Next: dissipation through the time integrator, before new weak-form terms (author, 2026-11-11)
+
+**The decision.** CN has shown that the discrete nonlinear operator is unstable (every box run so far).
+Before adding stabilisation terms (filtering F1–F4, SUPG, VMS, residual-based) to an already complex
+weak form, measure what numerical dissipation through the time integration buys, and at what cost.
+
+**Why first.**
+* No code change: every Gridap tableau runs through `BALFEM_SOLVER=sdirk BALFEM_TABLEAU=<name>`, and
+  `BALFEM_DT` sets the second knob. The weak form, its verification (MMS, AD, parity) and the
+  residual stay untouched.
+* It is the reference model's own practice: Yang & Liu integrate with RK4.
+* It measures how much damping, at which frequencies, the CN-unstable modes need. A later weak-form
+  stabiliser has to deliver the same, so the numbers carry over.
+
+**What it can and cannot do (predictions to test).**
+* An integrator damps by **frequency**. Per step it removes `≈ c y^q` of a mode's amplitude,
+  `y = ωΔt`. The **selectivity** between a growing mode at ω_g and the carrier at ω₀ is `(ω_g/ω₀)^q`,
+  fixed by the scheme; `dt` moves only the overall level.
+* A steady member (ω = 0) cannot be damped by any integrator (`R(0) = 1`). The m3 decay triad (steady
+  shear + 2ω₀ partner) is reachable only through the partner: SDIRK_2_2 damps 2ω₀ 16× more than the
+  carrier, RK4 64× more, but RK4 at Δt = 0.04 only at ≈ 1.6e-4 s⁻¹ against a CN growth of ≈ 0.075 s⁻¹.
+* Growth at frequencies near ω₀ (the broadband n64 band at T = 1.4/1.5 s, CH8_CAMPAIGN_TODO 2026-11-09
+  interim) has selectivity ≈ 1: no integrator can remove it without removing the carrier. That case
+  is the expected limit of the approach.
+* Explicit schemes amplify every mode faster than `y = √3` (RK3) or `2√2` (RK4): the fastest discrete
+  frequency × Δt must stay below that.
+
+**Candidates** (Gridap fork, read from the tableaus 2026-11-11; amplitude loss per step at Δt = 0.04,
+T = 1.6 s, and the carrier amplitude lost over 100 periods):
+
+| tableau | stages / order | L-stable | carrier y = 0.157 | 2ω₀ y = 0.314 | y = 1 | carrier, 100 periods |
+|---|---|---|---|---|---|---|
+| `SDIRK_2_2` (default) | 2 / 2 | no (R(∞) = −½) | 2.2e-4 | 3.0e-3 | 9.9e-2 | 58 % |
+| `SDIRK_4_3` | 4 / 3 | yes | 1.3e-5 | 2.0e-4 | 1.7e-2 | 5 % |
+| `SDIRK_Crouzeix_3_4` | 3 / 4 | no (0.63) | 6.2e-6 | 3.1e-4 | 4.7e-2 | 2.4 % |
+| `DIRK_TRBDF_3_2` (TR-BDF2) | 3 / 2 | yes | 2.2e-6 | 3.5e-5 | 3.1e-3 | 0.9 % |
+| `EXRK_SSP_3_3` (RK3) | 3 / 3, explicit | — | 2.5e-5 | 3.9e-4 | 2.8e-2 | 10 % |
+| `EXRK_RungeKutta_4_4` (RK4) | 4 / 4, explicit | — | 1.0e-7 | 6.6e-6 | 6.1e-3 | 0.04 % |
+| CN / `SDIRK_QinZhang_2_2` | — | — | 0 | 0 | 0 | 0 |
+
+⚠ Excluded: Gridap's `SDIRK_3_3` (first order in fact) and `SDIRK_LobattoIIIC_2_2` (explicit Heun).
+
+**Plan.**
+0. *No runs.* Measure the frequencies of the growing modes in every CN-unstable run (temporal
+   spectrum: the m3 triad, the m5/m6 n32 burst, the n8 long-wave growth, the n64 broadband band), and
+   the fastest discrete frequency (`stability_eig.jl`) for the explicit limits. Tabulate each
+   candidate's damping at those frequencies against its carrier cost.
+1. *m3 n32 box* (cheapest CN-unstable case; CN diverges at 246 s): every candidate at Δt = 0.04, plus
+   a Δt ladder (0.02, 0.08) on the most promising. `SDIRK_2_2` is running (2026-11-10): the CN-unstable
+   modes n = 15–16 stay at seed level to 254 s, at a carrier cost of 93 % of the energy.
+2. *The hard, cheap case:* m3 T = 1.4/1.5 s n64 (CN diverges at 8.7/12.9 s), the predicted limit.
+3. *The full model:* m5/m6 n32 (CN burst ≈ 245 s) with the best one or two; then a steeper carrier
+   (k₀A = 0.25, `SDIRK_2_2` launched 2026-11-11).
+4. Judge by §6 (σ ≤ 0 over the target duration; carrier loss within the author's budget; MMS orders
+   of the chosen scheme; the amplitude ceiling). Only if no integrator passes, or the accuracy cost is
+   too high, move to weak-form terms (STATUS §4).
 
 ## 7. Tools
 

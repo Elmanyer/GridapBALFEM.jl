@@ -9,13 +9,37 @@ Standing constraints:
 * No commits or pushes unless the author asks in that message.
 * Stop and report on any design error in existing code.
 * Runs longer than 30 min go detached, logging into `output/`.
-* **At most 3 busy Julia processes at once** (2026-11-07: thermal throttling above 3, §10; RAM
-  allows ~6). Give each one its own systemd scope (`workstation-ram-budget`).
+* **Memory is the only cap on parallel runs** (2026-11-10; the 3-process thermal rule of §10 is
+  withdrawn). Give each one its own systemd scope (`workstation-ram-budget`).
 * Any `src/` edit makes the sysimage stale (rule 25).
 
 ---
 
 ## ⇨ RESUME HERE (written 2026-11-07, before a planned machine shut-down)
+
+> **2026-11-11: NEXT = the time-integrator dissipation study** (author's decision; plan, candidates and
+> predictions in [`STABILITY.md`](STABILITY.md) §6b). CN has shown the discrete operator unstable;
+> before any new weak-form term, measure what dissipative integration buys and costs. Rule 15 is
+> rewritten accordingly (remedy runs report the carrier cost). Actions, in order:
+> 1. **In flight** (launched 2026-11-10/11): `SDIRK_2_2` box at Δt = 0.04 for m3 and m5 n32
+>    (`run_1d_sdirk_box.sh`) and at k₀A = 0.25 (`run_1d_sdirk_box_kA25.sh`); the M = 1 triad controls
+>    (`run_1d_m3_M1_controls.sh`: M = 2 at T = 3.0 s, M = 1 at n64). Analyse with `energy_history`
+>    (groups + modes 14–18, 32) against the CN twins.
+> 2. **No runs:** frequencies of the growing modes of every CN-unstable run (temporal spectrum), the
+>    fastest discrete frequency (`stability_eig.jl`, explicit limits), and the damping/carrier-cost table
+>    per candidate tableau and Δt (STABILITY §6b).
+> 3. **ASK: launch the m3 n32 integrator ladder:** `DIRK_TRBDF_3_2`, `SDIRK_4_3`,
+>    `SDIRK_Crouzeix_3_4`, `EXRK_SSP_3_3`, `EXRK_RungeKutta_4_4` at Δt = 0.04, plus a Δt ladder on the
+>    best. First a 2-step smoke of each explicit tableau (v2 has never run one).
+> 4. **ASK:** the hard case m3 T = 1.4/1.5 s n64 (CN 8.7/12.9 s) under the best candidates.
+> 5. **ASK:** m5/m6 n32 with the best one or two (cost: m5 ≈ 1–2 weeks per run under SDIRK; the
+>    assembly speed-up of item 2 below would cut it).
+> 6. Write the outcome in STABILITY §6b and LaTeX chapter 9. Weak-form stabilisers (STATUS §4, SUPG/VMS)
+>    only if no integrator passes §6 within the accuracy budget.
+>
+> ⚠ Excluded tableaus: Gridap's `SDIRK_3_3` is first order and `SDIRK_LobattoIIIC_2_2` is explicit
+> Heun (library defects found 2026-11-11, not patched).
+
 
 > **2026-11-08: the m3 mechanism and the period test.** The temporal-spectrum analysis of every m3 run
 > found a **decay triad**: the carrier's second harmonic (n = 2, 2ω₀) feeds a steady vertical-shear
