@@ -17,10 +17,41 @@ Standing constraints:
 
 ## ⇨ RESUME HERE (written 2026-11-07, before a planned machine shut-down)
 
+> **2026-11-08: the m3 mechanism and the period test.** The temporal-spectrum analysis of every m3 run
+> found a **decay triad**: the carrier's second harmonic (n = 2, 2ω₀) feeds a steady vertical-shear
+> pattern (n_s, ω ≈ 0) and a backward short surface wave (n_s − 2, ω ≈ 2ω₀ ≈ ω∞); equal growth rates,
+> frequency closure, locked triad phase. Record: `output/1D_stability_campaign/README.md` ("What the m3
+> growth oscillates at"); LaTeX chapter 9 §9.2 (`sec: stabilisation triad`, 2026-11-08, not pushed to
+> Overleaf). **Running since 19:02: the period test** (`run/local/run_1d_m3_period.sh`, 13 cases,
+> MAXP = 10, output `output/1D_period_test/`). When it ends: band growth with periodic_growth.jl, the
+> triad test with `temporal_spectrum.jl` (`ts_triad`, pair 9/−7 at T = 1.7 s), then fill the "result"
+> column of `tab: triad period test`. Sponge stage B finished 2026-11-08 11:49 (not analysed yet).
+>
+> **2026-11-09 11:30, interim.** Sponge stage B analysed: relaxation 12 m gives the same Kr as 6 m to
+> < 0.1 % (`SPONGE_SWEEP_RESULTS.md` §0b). Period test: the T = 1.6 n64 control reproduced the
+> October divergence exactly (44.56 s). **T = 1.4 and 1.5 at n64 diverged FASTER (8.72 s, 12.92 s),
+> against the triad prediction** ("closed" periods). It is not the triad: the same grid-scale band
+> n ≈ 40–50 (≈ 1.3–1.6 cells per wavelength) grows in all three n64 runs, but at T = 1.4/1.5 every
+> harmonic of the band grows together at σ ≈ 1.2–1.7 /s, with mixed frequencies (single-frequency fit
+> residual 1.5–2.3) near ω₀, and no steady/fast pair; at T = 1.6 the band shows the clean triad
+> (n 47 steady, n 45/−48 at 2ω₀, σ = 0.28, residual < 0.4). So at n64 a second, faster, broadband
+> grid-scale instability opens as T shortens (onset 3.6 / 4.4 / ≈ 14 s at T = 1.4 / 1.5 / 1.6).
+> Still running at 11:23: T1.7/T1.8 n64 (≈ 175 s, alive), all n32 (211–231 s, alive), T1.4/T1.5 n16
+> (181–216 s, alive); T1.7/T1.8 n16 queued.
+
 **State.** Nothing is running. The stability campaign (§5) finished, and every case was analysed:
 results in `output/1D_stability_campaign/README.md` ("FINAL RESULTS") and `STABILITY.md` §3b. The
 sponge sweep (§7, §9.2) is **paused** at 26 of 84 cases: results and resume procedure in
 `SPONGE_SWEEP_RESULTS.md`. The main tree is committed (2026-11-07, not pushed).
+
+> **LAUNCHED 2026-11-07 12:48–12:56 at the author's request, with MAXP = 8 (author: "fill at least
+> the 8 cores"; this overrides the MAXP = 3 throttle rule of §10 for this batch; MIN_FREE_GB = 4).**
+> * 3(b), n8 only: `m3_q32_n8_cip` (new launcher `run/local/run_1d_m3cip.sh`; γ = 0.3, all
+>   checkpoints kept), log `output/1D_stability_campaign/_logs/m3_q32_n8_cip.log`.
+> * 5: the sponge sweep was resumed (RESERVED-STOP claims removed; 7 workers), `_batch_A.out`.
+> * 3(a): `run_1d_nocip_controls.sh` was started after the 8 slots filled. It waits in the slot gate, so the
+>   5 no-CIP cases start as sponge workers exit (`_nocip_batch.out`).
+> * Check the clock (§10). At 12:56, during JIT, it read 3.4 GHz / 22 W.
 
 **Next actions, in order.** Each needs the author's go-ahead to launch. Use ≤ 3 slots.
 1. ~~**ASK: commit** the pending tree.~~ **Done 2026-11-07** (8aa27f7, 58071da, 2348286 on `v2-solver`, not pushed; the no-CIP worktree `../GridapBALFEM_nocip.wt` stays uncommitted by design). That covers the checkpoint/bed/solver work, the launchers,
