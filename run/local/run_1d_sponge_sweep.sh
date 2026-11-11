@@ -87,7 +87,7 @@ if [ -f "$IMAGE" ] && [ -f "$IMAGE.src.sha256" ] && [ "$(cat "$IMAGE.src.sha256"
   JFLAGS=(-J "$IMAGE")
 fi
 
-claimed()   { find "$PROJ/$LOG/_claims" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | wc -l; }
+claimed()   { find "$PROJ/$LOG/_claims" -mindepth 1 -maxdepth 1 -type d -name "sp${STAGE}_*" 2>/dev/null | wc -l; }   # this stage only
 unclaimed() { echo $(( NCASES - $(claimed) )); }
 
 start_worker() {

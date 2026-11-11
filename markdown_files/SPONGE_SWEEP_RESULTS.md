@@ -4,6 +4,62 @@
 §7 and §9.2. This file holds what was measured. The sweep is **paused, not finished**: 26 of 84 cases
 are done. How to resume is in §4.*
 
+## 0. Stage A COMPLETE (2026-11-08): all 84 cases, analysed
+
+The sweep was resumed 2026-11-07 12:48 and finished at 21:03, with no errors. Analysis:
+`output/1D_sponge_sweep/kr_A_2026-11-08.log`, `kr_A.csv` (84/84), heat maps `kr_A_T*.png`.
+§2 below is the partial (26-case) record and is superseded by this table.
+
+Kr [%] (`?` = fit residual > Kr/2, not resolved):
+
+| T | W = 6: μ 4 / 8 / 16 / 25 / 40 | W = 12 | W = 18 | W = 24 |
+|---|---|---|---|---|
+| 1.5 | 0.15 / 0.33 / 0.79 / 2.43 / 5.21 | 0.04? / 0.09 / 0.18 / 0.29 / 0.32 | 0.02? / 0.04? / 0.08 / 0.12 / 0.21 | 0.01? / 0.02? / 0.04? / 0.07 / 0.11 |
+| 2.0 | 0.93 / 3.96 / 9.08 / 12.93 / 17.17 | 0.19 / 0.33 / 0.84 / 2.52 / 5.35 | 0.08 / 0.17 / 0.32 / 0.34 / 1.14 | 0.05 / 0.09 / 0.19 / 0.30 / 0.32 |
+| 2.5 | 5.78 / 12.18 / 17.55 / 20.97 / 24.60 | 0.33 / 1.94 / 6.01 / 9.47 / 13.45 | 0.23 / 0.30 / 1.48 / 3.62 / 6.79 | 0.12 / 0.26 / 0.31 / 1.05 / 3.03 |
+| 2.9 | 13.18 / 17.75 / 21.73 / 24.24 / 27.00 | 1.58 / 5.39 / 10.71 / 14.38 / 18.13 | 0.27 / 1.19 / 4.61 / 7.79 / 11.57 | 0.23 / 0.26 / 1.61 / 3.81 / 6.99 |
+
+Checks (in the order of §4):
+1. **Replica passes.** W = 12, μ = 40 gives 5.35 % at T = 2.0 s and 18.13 % at 2.9 s, against
+   Snellius 5 % and 18 %. The 1-D set-up represents the 2-D production runs.
+2. **Floor:** 0.003–0.054 % (W = 48, μ = 4), ≪ 1 %.
+3. **Residuals:** below Kr/2 everywhere except the T = 1.5 s cases marked `?`, where Kr < 5e-4.
+4. **Pass criterion (Kr ≤ 1 % for T = 1.5–2.9 s):**
+   * W = 18 with μ = 4 (max 0.27 %), and W = 24 with μ = 4 (max 0.23 %) or μ = 8 (max 0.26 %).
+   * W ≤ 12 fails at every μ.
+   * ⚠ **W = 18, μ = 4 is not robust.** At T = 2.9 s, η at the wall is 0.236 |a_I|. A wall node
+     carries incoming + reflected, so ≈ 0.12 arrives and ≈ 0.12² ≈ 1.4 % should come back. The
+     measured Kr of 0.27 % is therefore probably a phase cancellation between the front reflection
+     and the wall return, and would move with T and d.
+   * **Recommended: W = 24 m, μ_max = 8** (≈ 2–4 ω over T = 1.5–2.9 s). Kr ≤ 0.26 %, and
+     a_end ≤ 2.8e-3, so the wall return is negligible (≈ 1e-6) and the result does not depend on the
+     wall. W = 24, μ = 4 also passes, but a_end reaches 0.044 at T = 2.9 s.
+   * Stage B (§9.3 of the to-do) is not yet launched. It would use `BEST_W=24 BEST_MU=8`.
+
+## 0b. Stage B COMPLETE (finished 2026-11-08 11:49, analysed 2026-11-09): the inflow relaxation width does not matter
+
+The question was whether the 6 m inflow relaxation zone, which is shorter than one wavelength at long
+periods, adds reflection of its own. Stage B repeats the recommended sponge (W = 24 m, μ_max = 8) with a
+**12 m** relaxation zone (Lx = 68 m, nx = 272, fit window shifted with the zone to 13–43 m, so the
+fitted stretch keeps the same distance from the sponge). Knob verified live: the manifests record
+`relax_width = 12.0` against 6.0 in stage A. Analysis: `output/1D_sponge_sweep/kr_B_2026-11-09.log`,
+`kr_B.csv`.
+
+| T [s] | Kr, relax 6 m (stage A) | Kr, relax 12 m (stage B) | fit residual | generated \|a_I\|/A (6 / 12 m) | a_end |
+|---|---|---|---|---|---|
+| 1.5 | 0.022 % ? | 0.022 % ? | 2.4e-4 | 1.0181 / 1.0181 | 2.7e-8 |
+| 2.0 | 0.0925 % | 0.0925 % | 1.3e-4 | 1.0059 / 1.0059 | 4.7e-5 |
+| 2.5 | 0.2623 % | 0.2623 % | 1.9e-4 | 1.0029 / 1.0026 | 8.3e-4 |
+| 2.9 | 0.2580 % | 0.2581 % | 2.1e-4 | 1.0012 / 1.0015 | 2.8e-3 |
+
+* Doubling the relaxation zone changes Kr by < 0.1 % of its value at every period, and the generated
+  amplitude by ≤ 0.03 %. The reflection measured in stage A is **the outflow sponge's**, not the
+  generation's. This agrees with the stage-A floor (W = 48, μ = 4, relax 6 m: 0.003–0.054 %), which
+  already bounded what the inflow side returns.
+* (`?` at T = 1.5 s: Kr is below the constant fit-residual floor of that period, as in stage A.)
+* **Decision input for §7 "Apply":** keep the 6 m relaxation zone; use W = 24 m, μ_max = 8 for the
+  outflow sponge (Kr ≤ 0.26 % over T = 1.5–2.9 s). Nothing in stage B argues for a longer inflow zone.
+
 ## 1. Set-up (as run)
 
 * **Launcher and code.**
