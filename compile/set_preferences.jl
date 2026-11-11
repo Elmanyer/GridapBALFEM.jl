@@ -1,5 +1,5 @@
 # ==============================================================
-#  set_preferences.jl — pin MPI.jl to the cluster's SYSTEM OpenMPI
+#  set_preferences.jl — pin MPI.jl to the cluster's SYSTEM OpenMPI, Gridap to performance mode
 #
 #  WHY: without this, MPI.jl uses its bundled JLL binary (MPICH). A sysimage
 #  built in that state bakes in MPICH, and launching it under the cluster's
@@ -46,6 +46,19 @@ Pkg.add(url = "https://github.com/Elmanyer/WaveSpec.jl.git")
 
 # Add Gridap from repository, with the fix for multifield transient calculation of Jacobians using AD.
 Pkg.add(url = "https://github.com/Elmanyer/Gridap.jl.git", rev = "fix-transient-multifield-ad")
+
+# Gridap in PERFORMANCE mode (author, 2026-11-11): Gridap's internal `@check` consistency checks
+# are compiled away (≈ 20 % of a model-5 step in the 2026-10-31 profile). Real errors (`@assert`,
+# `error`, `@notimplemented`) stay and the numerics are unchanged. The verification gates run in
+# debug mode on the development machine; production runs in performance mode. Like the MPI
+# binding, the mode is baked into the sysimage: set it BEFORE the build, rebuild after changing it.
+# BALFEM_GRIDAP_MODE=debug keeps the checks (e.g. to chase an obscure crash on the cluster).
+using Preferences
+const GRIDAP_UUID = Base.UUID("56d4f2e9-7ea1-5844-9cf6-b9c51ca7ce8e")
+gridap_mode = get(ENV, "BALFEM_GRIDAP_MODE", "performance")
+gridap_mode in ("performance", "debug") || error("BALFEM_GRIDAP_MODE must be performance or debug")
+set_preferences!(GRIDAP_UUID, "execution_mode" => gridap_mode; force = true)
+@info "Gridap execution_mode = $gridap_mode (LocalPreferences.toml)"
 
 # Rebuild MPI's precompile cache now so the system binding is in place BEFORE the
 # sysimage build bakes it.
