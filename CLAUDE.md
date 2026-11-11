@@ -68,11 +68,13 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
   * checks without a solver 4–5;
   * horizontal weak form 6: H² conformity, the 𝓛/𝓝 pressure blocks, C⁰-CIP (§6.4, incl. §6.4.5 accuracy
     of the cellwise evaluation), the global residual `eq: multifield general residual`;
-  * multi-field implementation 7;
-  * stability 8;
-  * stabilisation 9;
-  * solver functionalities 10;
-  * validation 11;
+  * multi-field implementation 7 (the complete model only);
+  * multi-fidelity implementation 8 (2026-11-09: the switches `regime`/`nl_pressure`/`flat_bed`, the six
+    models, the term classification with activation conditions, their code realisation; moved out of 6–7);
+  * stability 9;
+  * stabilisation 10;
+  * solver functionalities 11;
+  * validation 12;
   * appendices A–C, which are v1 records.
 * **Chapter 6 (rev. 2026-11-06):** Class III of blocks C and L is evaluated **cellwise** and completed
   by the kind-S **distributed-Hessian facet terms** `ℱ^C`, `ℱ^L` (§6.5 `sec: cellwise accuracy`; stacked
