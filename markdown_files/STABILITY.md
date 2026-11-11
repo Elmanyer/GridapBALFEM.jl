@@ -224,6 +224,9 @@ T = 1.6 s, and the carrier amplitude lost over 100 periods):
    spectrum: the m3 triad, the m5/m6 n32 burst, the n8 long-wave growth, the n64 broadband band), and
    the fastest discrete frequency (`stability_eig.jl`) for the explicit limits. Tabulate each
    candidate's damping at those frequencies against its carrier cost.
+   **Launchers (2026-11-11): `run/integrator_study/`** (cases.py → cases.tsv/packs.tsv, run_pack.sh,
+   submit.sh, README): the plan below as a cluster matrix focused on the full model at high kA,
+   with five integrators (author's choice): CN, SDIRK_2_2, SDIRK_4_3, RK4, RK3. 120 cases.
 1. *m3 n32 box* (cheapest CN-unstable case; CN diverges at 246 s): every candidate at Δt = 0.04, plus
    a Δt ladder (0.02, 0.08) on the most promising. `SDIRK_2_2` is running (2026-11-10): the CN-unstable
    modes n = 15–16 stay at seed level to 254 s, at a carrier cost of 93 % of the energy.

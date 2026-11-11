@@ -28,9 +28,12 @@ Standing constraints:
 > 2. **No runs:** frequencies of the growing modes of every CN-unstable run (temporal spectrum), the
 >    fastest discrete frequency (`stability_eig.jl`, explicit limits), and the damping/carrier-cost table
 >    per candidate tableau and Δt (STABILITY §6b).
-> 3. **ASK: launch the m3 n32 integrator ladder:** `DIRK_TRBDF_3_2`, `SDIRK_4_3`,
->    `SDIRK_Crouzeix_3_4`, `EXRK_SSP_3_3`, `EXRK_RungeKutta_4_4` at Δt = 0.04, plus a Δt ladder on the
->    best. First a 2-step smoke of each explicit tableau (v2 has never run one).
+> 3. **ASK: launch the cluster study** `run/integrator_study/` (2026-11-11, replaces the local
+>    m3 ladder): 120 box cases in tiers P (pilot) A–E, five integrators (CN, SDIRK_2_2, SDIRK_4_3,
+>    RK4, RK3; TR-BDF2, Crouzeix and generalised-α dropped) × m5/m6/m3 × kA up to 0.32 × kd
+>    5.5/3.0/1.7 × n16/32/64 × dt. Packs of 8 on rome 1/8 nodes, automatic checkpoint segments.
+>    Order: sysimage build → pilot (P) → E → A → C → B → D. README in that folder.
+>    (The 2-step smoke of every tableau: `test/local/smoke_integrators.jl`.)
 > 4. **ASK:** the hard case m3 T = 1.4/1.5 s n64 (CN 8.7/12.9 s) under the best candidates.
 > 5. **ASK:** m5/m6 n32 with the best one or two (cost: m5 ≈ 1–2 weeks per run under SDIRK; the
 >    assembly speed-up of item 2 below would cut it).

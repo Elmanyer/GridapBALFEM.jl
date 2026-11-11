@@ -38,6 +38,7 @@
 #  DT, PERIODS, SOLVER/TABLEAU, USE_AD, plus
 #     BALFEM_NLAMBDA   wavelengths in the box          (default 1)
 #     BALFEM_NCELL     cells per wavelength            (default 16  → dx = λ/16 ≈ 0.25 m)
+#     BALFEM_KA        steepness k₀A (model k₀); overrides BALFEM_AWAVE   (default unset)
 #     BALFEM_NOISE     seed amplitude                  (default 1e-8; 0 = none)
 #     BALFEM_BED_SLOPE max bed slope of a PERIODIC cosine bed (default 0 = flat; needs FLAT_BED=0)
 #     BALFEM_BED_NW    bed undulations per box         (default 1)
@@ -87,6 +88,10 @@ flatbed == (bslope == 0) ||
 # ---- the base wave: the discrete linear eigenmode, no ramp ----------------------------
 vert0 = assemble_vertical_tensors(M, p_vert, Vector{Float64}(resolve_cbdy(M, cbdy_override(), p_vert)))
 Nσ    = vert0.N_dof
+#  BALFEM_KA, the steepness k₀A with k₀ the MODEL's wavenumber at T, overrides BALFEM_AWAVE: a
+#  campaign over T at fixed steepness needs no table of amplitudes (2026-11-11).
+haskey(ENV, "BALFEM_KA") &&
+    (Awave = genv_f("BALFEM_KA", 0.0) / GridapBALFEM.model_wavenumber(vert0, 2π / Twave, d, 9.81))
 wi    = WaveInput(vert0; A = Awave, T = Twave, d = d, T_ramp = 0.0, profile = :model)
 k0    = wi.ks[1]
 λ0    = 2π / k0
