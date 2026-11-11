@@ -81,6 +81,7 @@ include("vopt.jl")           # vertical grid optimisation: Yang & Liu total-rela
 include("waveinput.jl")      # Dirichlet boundary wave generation + WaveSpec coupling
 include("timeloop_dist.jl")  # DISTRIBUTED mesh builder + GMRES solver + time loop
 include("utilities_dist.jl") # DISTRIBUTED driver setup_and_run_distributed
+include("configuration.jl")  # CONFIGURATION.txt: the readable identity card of every run
 include("errors.jl")         # L² error norms + convergence-rate fitting
 include("mms.jl")            # ANALYTIC (verification) MMS forcing — independent of problem.jl
 include("mms_driver.jl")     # MMS solve + spatial/temporal refinement studies
@@ -97,6 +98,7 @@ export alg_dx, alg_dy, alg_mul, alg_dot, alg_dc3, alg_outer, alg_vec2
 export build_horizontal_model
 export build_fe_spaces, check_taylor_hood
 export build_time_integrator, check_time_integrator, DEFECTIVE_TABLEAUS, tableau_R
+export write_run_configuration, model_number, carrier_amplification
 export output_dir_name, unique_output_dir, model_token, domain_token, wave_token,
        regime_token, nlp_token, discr_token, check_v1_env, write_run_manifest
 

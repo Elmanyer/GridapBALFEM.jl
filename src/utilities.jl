@@ -1030,6 +1030,13 @@ function setup_and_run(;
         ((step, t, u) -> write_checkpoint(output_dir, step, t, u; fingerprint = ck_fp,
                                           rundiag = rundiag, keep = checkpoint_keep)) : nothing
 
+    # The readable identity card of the run (src/configuration.jl), before the time loop.
+    _cfg_path = try_write_run_configuration(output_dir, _run_config; vert = vert, c_bdy = c_bdy,
+                    n_free = num_free_dofs(wi !== nothing ? U(0.0) : U), git = _git,
+                    driver = "setup_and_run", solver_desc = (monitor.nls_desc, monitor.ls_desc),
+                    t_start = t_start)
+    _cfg_path === nothing || println("=== Run configuration: ", _cfg_path)
+
     # Print the solver-configuration banner (integrator, tolerances, dt/steps).
     println()
     print_solver_banner(

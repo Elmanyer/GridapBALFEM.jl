@@ -191,10 +191,8 @@ function setup_and_run_distributed(;
         end
 
         #  Provenance (V2_SOLVER_PLAN.md step 9), written once, by rank 0.
-        if i_am_main(ranks)
-            println("=== Run manifest: ", joinpath(output_dir, "run_manifest.toml"), "  [",
-                    write_run_manifest(output_dir, _run_config; driver = "setup_and_run_distributed"), "]")
-        end
+        _git = i_am_main(ranks) ? write_run_manifest(output_dir, _run_config; driver = "setup_and_run_distributed") : ""
+        i_am_main(ranks) && println("=== Run manifest: ", joinpath(output_dir, "run_manifest.toml"), "  [", _git, "]")
 
         #  Pairing gate FIRST, on EVERY rank — before the tensors, the mesh and the JIT.
         #  Every rank checks, so a bad pairing fails identically everywhere instead of
@@ -444,6 +442,16 @@ function setup_and_run_distributed(;
             ((step, t, u) -> write_checkpoint(output_dir, step, t, u; fingerprint = ck_fp,
                                               rundiag = rundiag, keep = checkpoint_keep,
                                               ranks = ranks)) : nothing
+        #  The readable identity card of the run (src/configuration.jl), by rank 0; the free DOF
+        #  count is global (computed on every rank, no communication).
+        _n_free = num_free_dofs(wi !== nothing ? U(0.0) : U)
+        if i_am_main(ranks)
+            _cfg_path = try_write_run_configuration(output_dir, _run_config; vert = vert, c_bdy = c_bdy_used,
+                            n_free = _n_free, git = _git, driver = "setup_and_run_distributed",
+                            nranks = n_procs, solver_desc = (monitor.nls_desc, monitor.ls_desc),
+                            t_start = t_start)
+            _cfg_path === nothing || println("=== Run configuration: ", _cfg_path)
+        end
         if i_am_main(ranks)
             println()
             print_solver_banner(
