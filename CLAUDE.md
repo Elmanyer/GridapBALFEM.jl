@@ -109,8 +109,10 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 * **Solver core.**
   * The stacked `[η,𝖴x,𝖴y]` loop-free residual with hand Jacobians (exact `∂R/∂u̇`; quasi-Newton
     `∂R/∂u`, rule 5).
-  * Integrators: `:sdirk` (`SDIRK_2_2`, default — **dissipative, rule 15**), `:theta` (CN),
-    generalised-α, explicit RK.
+  * Integrators (`build_time_integrator`, 2026-11-11): `:theta` (θ; 0.5 = CN), `:sdirk` = `:rk` (any
+    Gridap tableau, diagonally implicit or explicit `EXRK_*`; default `SDIRK_2_2`, **dissipative, rule
+    15**), `:gen_alpha` (ρ∞). Refused before the build: IMEX tableaus, unknown names, θ ∉ (0,1],
+    ρ∞ ∉ [0,1]; warned: defective tableaus and those that amplify neutral oscillations.
   * Sequential LU+Newton; distributed GMRES+Jacobi+Newton, **all six models** (𝓝 distributed since
     2026-10-30; facet size and count built per rank).
 * **Physics.** Advection, the full leading pressure `R_P`, and `𝓝` with all eight components when
@@ -169,8 +171,10 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
   * `stabilization`, `cip_*`;
   * `solver_type` (**diagnosis under `:theta`; dissipative remedies state their carrier cost**, rule 15);
   * `use_ad` (diagnosis only).
-* Environment variables: `BALFEM_NL_PRESSURE`, `BALFEM_STAB`, `BALFEM_CIP_*`, `BALFEM_SOLVER`,
-  `BALFEM_OUTDIR`.
+* Environment variables: `BALFEM_NL_PRESSURE`, `BALFEM_STAB`, `BALFEM_CIP_*`, `BALFEM_SOLVER`
+  (`theta|sdirk|rk|gen_alpha`), `BALFEM_TABLEAU`, `BALFEM_THETA_T`, `BALFEM_RHO_INF`, `BALFEM_DT`,
+  `BALFEM_OUTDIR`. The output name carries the integrator (`theta`, `theta0.60`, `galpha0.50`, a
+  tableau name); `test/local/smoke_integrators.jl` runs every choice through the box driver.
 * `check_v1_env()` refuses the v1 knobs.
 * Output names carry `nlp0`/`nlp1` (`output_dir_name`, rule 2c).
 

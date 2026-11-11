@@ -32,7 +32,7 @@ const CHECKPOINT_HARD_KEYS = (:M, :p_vertical, :c_bdy, :domain, :partition, :cpu
     :wave_gen, :wave_dir, :bc_side, :bc_profile, :relax_bc, :relax_width, :T_ramp)
 #  Keys that change the time discretisation, not the problem: refused unless
 #  restart_allow_change = true (the resumed run is then a different discretisation in time).
-const CHECKPOINT_SOFT_KEYS = (:dt, :solver_type, :tableau, :theta, :nl_tol, :nl_iter,
+const CHECKPOINT_SOFT_KEYS = (:dt, :solver_type, :tableau, :theta, :rho_inf, :nl_tol, :nl_iter,
     :ls_rtol, :ls_maxiter, :krylov_m, :precond)
 
 _ck_q(x) = repr(string(x))
@@ -60,6 +60,9 @@ its sample, and the initial-condition functions are irrelevant to a resumed run.
 function checkpoint_fingerprint(config::AbstractDict; n_free::Integer, bathy::AbstractString)
     fp = Pair{String,String}[]
     for k in (CHECKPOINT_HARD_KEYS..., CHECKPOINT_SOFT_KEYS...)
+        #  ρ∞ (added 2026-11-11) belongs to the fingerprint of a generalised-α run only, so a
+        #  checkpoint written before the key existed still resumes under the other integrators.
+        k === :rho_inf && get(config, :solver_type, nothing) !== :gen_alpha && continue
         haskey(config, k) && push!(fp, string(k) => repr(config[k]))
     end
     push!(fp, "n_free" => string(n_free))

@@ -68,8 +68,10 @@ flat_bed_flag(default::Int=1) = genv_b("BALFEM_FLAT_BED", default)
 # ---- Time integrator + nonlinear/linear solver controls ---------------------
 #  Default integrator is the fully-implicit RungeKutta :SDIRK_2_2 (L-stable,
 #  more robust than Crank–Nicolson). Override caps/tolerances per cluster job:
-#    BALFEM_SOLVER      integrator: sdirk|theta        sdirk
-#    BALFEM_TABLEAU     RK tableau (solver=sdirk)       SDIRK_2_2
+#    BALFEM_SOLVER      integrator: sdirk|rk|theta|gen_alpha   sdirk   (sdirk = rk: any Gridap tableau)
+#    BALFEM_TABLEAU     RK tableau (solver=sdirk|rk)    SDIRK_2_2  (implicit SDIRK_*/DIRK_* or explicit EXRK_*)
+#    BALFEM_THETA_T     θ of the θ-method (solver=theta) 0.5       (0.5 = Crank–Nicolson; > 0.5 damps)
+#    BALFEM_RHO_INF     ρ∞ of generalised-α              0.5       (1 = no damping, 0 = strongest)
 #    BALFEM_NL_ITER     max Newton iterations / stage    50
 #    BALFEM_NL_TOL      Newton tolerance (production)    1e-5
 #    BALFEM_LS_MAXITER  max GMRES iterations / Newton    1000   (TIME bound)
@@ -101,6 +103,17 @@ eta_ref_val()    = haskey(ENV, "BALFEM_ETA_REF") ? genv_f("BALFEM_ETA_REF", 0.0)
 
 solver_sym()     = Symbol(genv("BALFEM_SOLVER", "sdirk"))
 tableau_sym()    = Symbol(genv("BALFEM_TABLEAU", "SDIRK_2_2"))
+theta_t_val()    = genv_f("BALFEM_THETA_T", 0.5)       # θ of the θ-method (not BALFEM_THETA_MAX, a wave angle)
+rho_inf_val()    = genv_f("BALFEM_RHO_INF", 0.5)
+"Output-name token of the integrator: `theta` (CN), `theta0.60`, `galpha0.50`, a lower-cased tableau
+name for any tableau other than the default `SDIRK_2_2`, or nothing (the default integrator)."
+function integrator_tag()
+    s = solver_sym()
+    s === :theta && return theta_t_val() == 0.5 ? "theta" : @sprintf("theta%.2f", theta_t_val())
+    s === :gen_alpha && return @sprintf("galpha%.2f", rho_inf_val())
+    tableau_sym() === :SDIRK_2_2 && return nothing
+    return lowercase(replace(String(tableau_sym()), "_" => ""))
+end
 nl_iter_val()    = genv_i("BALFEM_NL_ITER", 50)
 nl_tol_val()     = genv_f("BALFEM_NL_TOL", 1e-5)
 ls_maxiter_val() = genv_i("BALFEM_LS_MAXITER", 1000)

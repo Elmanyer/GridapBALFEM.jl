@@ -42,6 +42,12 @@
 #     BALFEM_BED_SLOPE max bed slope of a PERIODIC cosine bed (default 0 = flat; needs FLAT_BED=0)
 #     BALFEM_BED_NW    bed undulations per box         (default 1)
 #
+#  TIME INTEGRATOR (src/timeloop.jl build_time_integrator; the output name carries the choice):
+#     BALFEM_SOLVER    theta | sdirk (= rk: any Gridap tableau) | gen_alpha       (default sdirk)
+#     BALFEM_TABLEAU   SDIRK_*/DIRK_* (implicit) or EXRK_* (explicit)            (default SDIRK_2_2)
+#     BALFEM_THETA_T   θ of the θ-method, 0.5 = Crank–Nicolson                    (default 0.5)
+#     BALFEM_RHO_INF   ρ∞ of generalised-α, 1 = no damping, 0 = strongest         (default 0.5)
+#
 #  VARIABLE BED (models 4/6). d(x) = D + δ·cos(2π·nw·x/Lx): smooth (C∞, so ∇h and the bed Hessian
 #  are exact) and periodic with the box, so the seam is invisible. δ = slope/(2π·nw/Lx) is set
 #  by the MAXIMUM SLOPE, the quantity that governs the ∇h terms. With nw = 1 and one wavelength
@@ -111,9 +117,7 @@ end
 # ---- output name (the standard grammar; wave token `icplane`, extras mark the box) ----
 _extra = String["xper", "nlam$(nlam)", "n$(ncell)"]
 noise > 0 && push!(_extra, @sprintf("seed%.0e", noise))
-solver_sym() === :theta && push!(_extra, "theta")
-(solver_sym() === :sdirk && tableau_sym() !== :SDIRK_2_2) &&
-    push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
+integrator_tag() === nothing || push!(_extra, integrator_tag())
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
 is_resume() && push!(_extra, "resume")
 #  γ: unset ⇒ the driver default (DEFAULT_CIP_GAMMA with 𝓝, where the C⁰-CIP is mandatory; 0 otherwise)
@@ -165,7 +169,7 @@ diags, vert, prob = setup_and_run(;
     #  sub-cell VTK sampling: 2·p_u samples per cell resolves every polynomial mode up to
     #  the NODE Nyquist (vertex-only output would alias all sub-element content away)
     vtk_nsubcells = genv_i("BALFEM_VTK_NSUB", 2 * feord),
-    solver_type = solver_sym(), tableau = tableau_sym(),
+    solver_type = solver_sym(), tableau = tableau_sym(), theta = theta_t_val(), rho_inf = rho_inf_val(),
     nl_iter = nl_iter_val(), nl_tol = nl_tol_val(),
     print_every = genv_i("BALFEM_PRINT_EVERY", 25),
     check_every = genv_i("BALFEM_CHECK_EVERY", 0),     # θ-scheme self-check; meaningless under SDIRK

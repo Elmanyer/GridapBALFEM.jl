@@ -162,13 +162,19 @@ function sequential_cases(M, p)
         seq(n; tank..., inner..., common(M, p, m; name = n)..., y_wall_bc = :open,
             sponge_wB = 0.5, sponge_wT = 0.5, solver_type = :theta)
     end
-    # the closed x-periodic box (the stability study): models 3, 5, 6 under CN
-    for m in MODELS[[3, 5, 6]]
-        n = "seq $tag model$(m.id) xperiodic box"
+    # the closed x-periodic box (the stability study): models 3, 5, 6 under every integrator KIND
+    # (compiled code is keyed on the kind, not on the tableau name or on θ/ρ∞: θ-method, a diagonally
+    # implicit RK, an explicit RK, generalised-α; STABILITY.md §6b, 2026-11-11)
+    integrators = [(:theta, (solver_type = :theta,)),
+                   (:dirk,  (solver_type = :sdirk, tableau = :SDIRK_2_2)),
+                   (:exrk,  (solver_type = :sdirk, tableau = :EXRK_RungeKutta_4_4)),
+                   (:galpha, (solver_type = :gen_alpha, rho_inf = 0.5))]
+    for m in MODELS[[3, 5, 6]], (itag, ikw) in integrators
+        n = "seq $tag model$(m.id) xperiodic box $itag"
         seq(n; domain = ((0.0, 4.0), (0.0, 1.0)), partition = (4, 1),
             common(M, p, m; name = n)..., A_wave = 0.0, x_periodic = true, x_wall_bc = false,
             sponge_wL = 0.0, sponge_wR = 0.0, eta0_func = eta_bump, ux0_func = zero_u(Nσ),
-            solver_type = :theta)
+            ikw...)
     end
     # closed-basin release (x walls)
     for m in MODELS[[1, 5]]

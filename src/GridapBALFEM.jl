@@ -96,6 +96,7 @@ export alg_dx, alg_dy, alg_mul, alg_dot, alg_dc3, alg_outer, alg_vec2
 # Horizontal stage
 export build_horizontal_model
 export build_fe_spaces, check_taylor_hood
+export build_time_integrator, check_time_integrator, DEFECTIVE_TABLEAUS, tableau_R
 export output_dir_name, unique_output_dir, model_token, domain_token, wave_token,
        regime_token, nlp_token, discr_token, check_v1_env, write_run_manifest
 

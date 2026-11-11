@@ -82,9 +82,10 @@ function setup_and_run_distributed(;
     # ---- Time integration ----------------------------------------------------
     T_final      :: Float64 = 12.8,        # final simulated time [s]
     dt           :: Float64 = 0.02,        # time step [s]
-    solver_type  :: Symbol  = :sdirk,      # integrator: :sdirk (default) | :theta
+    solver_type  :: Symbol  = :sdirk,      # integrator: :sdirk (any Gridap tableau) | :theta | :gen_alpha
     tableau      :: Symbol  = :SDIRK_2_2,  # Runge–Kutta tableau when solver_type == :sdirk
     theta        :: Float64 = 0.5,         # θ for :theta (0.5 = Crank–Nicolson)
+    rho_inf      :: Float64 = 0.5,         # ρ∞ for :gen_alpha (1 = no damping, 0 = strongest)
     # ---- Output --------------------------------------------------------------
     output_dir   :: String  = joinpath(@__DIR__, "..", "output", "dist_out"),  # VTK/pvd destination
     save_every   :: Int     = 0,           # write a VTK snapshot every N steps (0 = no VTK)
@@ -199,6 +200,7 @@ function setup_and_run_distributed(;
         #  Every rank checks, so a bad pairing fails identically everywhere instead of
         #  deadlocking one rank against the others. CLAUDE.md rule 2b.
         check_taylor_hood(p_u, p_eta; where = "setup_and_run_distributed")
+        check_time_integrator(; solver_type, theta, tableau, rho_inf, where = "setup_and_run_distributed")
 
         # ----- STAGE 1: VERTICAL PRE-COMPUTATION (IDENTICAL WORK ON EVERY RANK) -
         # Choose the σ-element boundaries: the paper's optimised set for this M
@@ -369,9 +371,10 @@ function setup_and_run_distributed(;
         monitor = SolverMonitor()
 
         # Distributed integrator: Newton + GMRES/Jacobi (the scalable linear solve).
-        solver  = build_ode_solver_distributed(dt; solver_type=solver_type,   # :sdirk | :theta
+        solver  = build_ode_solver_distributed(dt; solver_type=solver_type,   # :sdirk | :theta | :gen_alpha
                       theta=theta,              # θ for :theta (0.5 = Crank–Nicolson)
                       tableau=tableau,          # SDIRK tableau for :sdirk
+                      rho_inf=rho_inf,          # ρ∞ for :gen_alpha
                       nl_iter=nl_iter,          # max Newton iterations per stage
                       nl_tol=nl_tol,            # Newton residual tolerance (‖r‖₂)
                       ls_rtol=ls_rtol,          # GMRES relative tolerance
@@ -448,7 +451,7 @@ function setup_and_run_distributed(;
                          nl_iter, nl_tol),
                 @sprintf("GMRES(%d) restarted + %s preconditioner | max iters = %d | rtol = %.1e, atol = 1.0e-14",
                          krylov_m, string(precond), ls_maxiter, ls_rtol);
-                solver_type=solver_type, theta=theta, tableau=tableau, dt=dt, t0=t_start, T_final=T_final,
+                solver_type=solver_type, theta=theta, tableau=tableau, rho_inf=rho_inf, dt=dt, t0=t_start, T_final=T_final,
                 print_every=print_every, print_dt=print_dt,
                 check_every=check_every, check_tol=check_tol,
                 monitor=monitor, diag_every=max(diag_n, 0), eta_ref=eta_ref_v,

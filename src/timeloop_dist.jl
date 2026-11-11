@@ -131,7 +131,8 @@ Distributed ODE solver factory (template: GridapSWE.jl). Wraps
 NewtonSolver(GMRES + Jacobi preconditioner) — the scalable GridapSWE-pattern
 linear stack. Integrators: `:sdirk` (fully-implicit `RungeKutta(nls, ls, dt,
 tableau)`, default; `:SDIRK_2_2` = Gridap's `DIRK22(1,0,1)`, 2nd-order,
-A-stable but NOT L-stable, strongly dissipative (≈ 0.75(ωΔt)⁴ per step); more stable than Crank–Nicolson) and `:theta` (Crank–Nicolson). Pass a `SolverMonitor` as
+A-stable but NOT L-stable, strongly dissipative (≈ 0.75(ωΔt)⁴ per step); more stable than Crank–Nicolson), `:theta` (Crank–Nicolson)
+and `:gen_alpha` (`rho_inf`): the same choices as the sequential factory (`build_time_integrator`). Pass a `SolverMonitor` as
 `monitor` to collect per-step convergence statistics (RK: over the stages).
 
 # GMRES parameters — `krylov_m` and `ls_maxiter` are NOT the same thing
@@ -167,6 +168,7 @@ function build_ode_solver_distributed(dt::Float64;
                                           solver_type :: Symbol  = :sdirk,
                                           theta       :: Float64 = 0.5,
                                           tableau     :: Symbol  = :SDIRK_2_2,
+                                          rho_inf     :: Float64 = 0.5,
                                           nl_iter     :: Int     = 50,
                                           nl_tol      :: Float64 = 1e-5,
                                           ls_rtol     :: Float64 = 1e-5,
@@ -198,13 +200,7 @@ function build_ode_solver_distributed(dt::Float64;
         monitor.lin_cap = lt.maxiter          # L1: the cap the saturation flag tests against
         nls = monitor
     end
-    if solver_type == :sdirk
-        return RungeKutta(nls, ls, dt, tableau)
-    elseif solver_type == :theta
-        return ThetaMethod(nls, dt, theta)
-    else
-        error("Distributed algebraic solver supports :sdirk (RungeKutta) or :theta.")
-    end
+    return build_time_integrator(nls, ls, dt; solver_type, theta, tableau, rho_inf)
 end
 
 """

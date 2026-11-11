@@ -519,7 +519,7 @@ Solver-configuration banner printed by the drivers before the time loop.
 """
 function print_solver_banner(nl_desc::String, ls_desc::String;
                                  solver_type::Symbol, theta::Float64,
-                                 tableau::Symbol=:SDIRK_2_2,
+                                 tableau::Symbol=:SDIRK_2_2, rho_inf::Float64=0.5,
                                  dt::Float64, t0::Float64, T_final::Float64,
                                  print_every::Int=1, print_dt=nothing,
                                  check_every::Int=0, check_tol::Float64=NaN,
@@ -540,8 +540,9 @@ function print_solver_banner(nl_desc::String, ls_desc::String;
     #  ⚠ The tableau is PRINTED FROM THE ARGUMENT, never hard-coded: this line used to read
     #  "SDIRK_2_2, fully implicit" for EVERY :sdirk run, so explicit-RK4 runs logged
     #  themselves as SDIRK_2_2 (found 2026-09-23 on the c3r_* RK4 batch).
-    tdesc = solver_type == :sdirk     ? "RungeKutta ($(tableau), " *
-                                        (startswith(String(tableau), "EX") ? "EXPLICIT)" : "implicit)") :
+    tdesc = solver_type in (:sdirk, :rk) ? "RungeKutta ($(tableau), " *
+                                           (startswith(String(tableau), "EX") ? "EXPLICIT)" : "implicit)") :
+            solver_type == :gen_alpha    ? @sprintf("GeneralizedAlpha1 (ρ∞=%.2f)", rho_inf) :
             @sprintf("ThetaMethod (θ=%.2f)", theta)
     @printf(io, "  Time integrator  : %s | dt=%g s | t ∈ [%g, %g] → %d steps\n",
             tdesc, dt, t0, T_final, n_steps)
