@@ -21,6 +21,8 @@
 #
 #  MEMORY: --mem only (run/SNELLIUS_ROME_LAUNCH_CONFIGS.md §2): 28 GiB = 1/8 node for 8 cases
 #  (≈ 3.5 GiB each; a 𝓝 box case peaked at 2.8–3.0 GB locally). One thread per case.
+#  Per case from cases.tsv: physics, integrator, dt, the CIP penalty γ, and the output cadence
+#  (save/checkpoint every N steps, scaled with dt so every case keeps ≈ 8 samples per period).
 # ============================================================================
 #SBATCH --job-name=BALFEM_integ
 #SBATCH --partition=rome
@@ -58,7 +60,8 @@ run_segment() {
     local name="$1" row case_dir last seg prev restart
     row=$(awk -F'\t' -v n="$name" 'NR > 1 && $1 == n' "$here/cases.tsv")
     [ -n "$row" ] || { echo "case $name not in cases.tsv" >&2; return; }
-    IFS=$'\t' read -r _ tier model nlp flat slope T kA ncell dt periods solver tableau theta rho cost <<< "$row"
+    IFS=$'\t' read -r _ tier model nlp flat slope T kA ncell dt periods solver tableau theta rho gamma \
+                       save_every ckpt_every cost <<< "$row"
     case_dir="$BALFEM_STUDY_OUT/$name"; mkdir -p "$case_dir"
     [ -f "$case_dir/FINISHED" ] && { echo "  $name: finished"; return; }
     [ -f "$case_dir/FAILED" ]   && { echo "  $name: failed earlier (see FAILED)"; return; }
@@ -79,10 +82,12 @@ run_segment() {
         export BALFEM_TWAVE="$T" BALFEM_KA="$kA" BALFEM_DT="$dt" BALFEM_PERIODS="$periods"
         export BALFEM_SOLVER="$solver" BALFEM_TABLEAU="$tableau" BALFEM_THETA_T="$theta" BALFEM_RHO_INF="$rho"
         export BALFEM_NOISE=1e-8 BALFEM_USE_AD=0
-        export BALFEM_SAVE_EVERY=5 BALFEM_DIAG_EVERY=5 BALFEM_PRINT_EVERY=25
-        export BALFEM_CHECKPOINT_EVERY=250 BALFEM_CHECKPOINT_KEEP=2
+        #  output cadence per PERIOD (cases.py): 8–10 samples per period whatever dt is
+        export BALFEM_SAVE_EVERY="$save_every" BALFEM_DIAG_EVERY="$save_every" BALFEM_PRINT_EVERY=$(( 5 * save_every ))
+        export BALFEM_CHECKPOINT_EVERY="$ckpt_every" BALFEM_CHECKPOINT_KEEP=2
         export BALFEM_OUTDIR="$segdir"
-        unset BALFEM_CIP_GU BALFEM_CIP_GE                    # the driver default: 0.3 with 𝓝, none without
+        #  the C⁰-CIP penalty of the case (γ_u = γ_η); 0 = no CIP (m3/m4 default), > 0 with 𝓝
+        export BALFEM_CIP_GU="$gamma" BALFEM_CIP_GE="$gamma"
         [ -n "$restart" ] && export BALFEM_RESTART_FROM="$restart"
         export OPENBLAS_NUM_THREADS=1 JULIA_NUM_THREADS=1
         cd "$BALFEM_PROJ"

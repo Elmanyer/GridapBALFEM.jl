@@ -203,6 +203,16 @@ weak form, measure what numerical dissipation through the time integration buys,
   is the expected limit of the approach.
 * Explicit schemes amplify every mode faster than `y = √3` (RK3) or `2√2` (RK4): the fastest discrete
   frequency × Δt must stay below that.
+* **With the C⁰-CIP, explicit schemes are unaffordable (measured 2026-11-12).** The CIP is a damping
+  term: it adds modes with negative *real* eigenvalues, −3.9e3 / −4.7e3 / −9.5e3 s⁻¹ at n8 / n16 / n32
+  (`stability_eig.jl`, m3 + γ = 0.3, A = 0.1, T = 1.6; the limit shrinks more slowly than h² because the
+  dispersive mass B grows with k too). RK3/RK4 need `|λ|Δt < 2.51 / 2.79`, i.e. Δt ≲ 2.6e-4 s at n32,
+  150× below T/40: ≈ 1.6 million steps per 200-period case. Without the CIP (m3) the fastest mode is a
+  wave at ≈ 9 s⁻¹ and T/40 is safe. The integrator smoke test agrees: m5 at Δt = 0.04 explodes in one
+  explicit step (energy ×10⁶ under RK4), and m3 + CIP repeats m5's explicit-Euler growth digit for digit.
+  An implicit scheme damps these modes at any Δt (L-stable `SDIRK_4_3` removes them in one step,
+  `|R(−100)| = 0.025`; `SDIRK_2_2` halves them, `R(∞) = −½`). An IMEX split (CIP implicit) would lift
+  the limit; not implemented.
 
 **Candidates** (Gridap fork, read from the tableaus 2026-11-11; amplitude loss per step at Δt = 0.04,
 T = 1.6 s, and the carrier amplitude lost over 100 periods):
@@ -226,7 +236,14 @@ T = 1.6 s, and the carrier amplitude lost over 100 periods):
    candidate's damping at those frequencies against its carrier cost.
    **Launchers (2026-11-11): `run/integrator_study/`** (cases.py → cases.tsv/packs.tsv, run_pack.sh,
    submit.sh, README): the plan below as a cluster matrix focused on the full model at high kA,
-   with five integrators (author's choice): CN, SDIRK_2_2, SDIRK_4_3, RK4, RK3. 120 cases.
+   with five integrators (author's choice): CN, SDIRK_2_2, SDIRK_4_3, RK4, RK3. **2026-11-12: RK3/RK4
+   on m3 only** (the CIP limit above; author's choice of option 2); m5/m6 add `SDIRK_Crouzeix_3_4`
+   as RK4's implicit stand-in, m5/m6 under CN, SDIRK_2_2, SDIRK_4_3, Crouzeix 3/4. **2026-11-12: γ and Δt
+   become matrix axes** (170 cases): m3/m4 without CIP, the m3 Crouzeix/RK4 Δt ladder aimed at the
+   2ω₀ triad member (F), the m5 γ map (G) and γ × Δt (H). Hypotheses, reasons and expected results:
+   `CH8_CAMPAIGN_TODO.md` "Integrator study: hypotheses". Key prediction: with the triad's steady
+   member undamped, an integrator only slows the m3 triad (σ ≈ Γ²/δ); the CIP, acting by
+   wavenumber, can damp that member, so on m5/m6 (γ, integrator) can cross a true threshold.
 1. *m3 n32 box* (cheapest CN-unstable case; CN diverges at 246 s): every candidate at Δt = 0.04, plus
    a Δt ladder (0.02, 0.08) on the most promising. `SDIRK_2_2` is running (2026-11-10): the CN-unstable
    modes n = 15–16 stay at seed level to 254 s, at a carrier cost of 93 % of the energy.

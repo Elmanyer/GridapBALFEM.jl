@@ -3,7 +3,7 @@
 #  submit.sh — submit tiers of the time-integrator stability study on Snellius (rome)
 #
 #    bash run/integrator_study/submit.sh P            # the pilot pack (do this first)
-#    bash run/integrator_study/submit.sh A            # a tier: P A B C D E (see cases.py)
+#    bash run/integrator_study/submit.sh A            # a tier: P A B C D E F G H (see cases.py)
 #    bash run/integrator_study/submit.sh A C E        # several tiers
 #    bash run/integrator_study/submit.sh status       # per-case state from the output tree
 #
@@ -41,7 +41,7 @@ fi
 cd "$logs"
 for tier in "$@"; do
     ids=$(awk -F'\t' -v t="$tier" 'NR > 1 && $2 == t {print $1}' "$here/packs.tsv" | paste -sd, -)
-    [ -n "$ids" ] || { echo "tier $tier: no packs (tiers: P A B C D E)" >&2; continue; }
+    [ -n "$ids" ] || { echo "tier $tier: no packs (tiers: P A B C D E F G H)" >&2; continue; }
     echo -n "tier $tier, packs $ids: "
     sbatch --array="${ids}%${BALFEM_MAX_CONCURRENT}" --job-name="BALFEM_integ_$tier" \
            --export=ALL,BALFEM_STUDY_OUT="$BALFEM_STUDY_OUT" "$here/run_pack.sh"

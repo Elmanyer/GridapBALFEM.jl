@@ -29,9 +29,16 @@ Standing constraints:
 >    fastest discrete frequency (`stability_eig.jl`, explicit limits), and the damping/carrier-cost table
 >    per candidate tableau and Δt (STABILITY §6b).
 > 3. **ASK: launch the cluster study** `run/integrator_study/` (2026-11-11, replaces the local
->    m3 ladder): 120 box cases in tiers P (pilot) A–E, five integrators (CN, SDIRK_2_2, SDIRK_4_3,
->    RK4, RK3; TR-BDF2, Crouzeix and generalised-α dropped) × m5/m6/m3 × kA up to 0.32 × kd
->    5.5/3.0/1.7 × n16/32/64 × dt. Packs of 8 on rome 1/8 nodes, automatic checkpoint segments.
+>    m3 ladder): 170 box cases in tiers P (pilot) A–H, 23 packs (F, G, H and γ added 2026-11-12:
+>    see "Integrator study: hypotheses" below). m5/m6 run CN, SDIRK_2_2, SDIRK_4_3,
+>    SDIRK_Crouzeix_3_4 (re-added 2026-11-12 as RK4's stand-in); m3 (tier E) runs CN, SDIRK_2_2,
+>    SDIRK_4_3, RK4, RK3 (TR-BDF2 and generalised-α dropped 2026-11-11). × kA up to
+>    0.32 × kd 5.5/3.0/1.7 × n16/32/64 × dt. Packs of 8 on rome 1/8 nodes, automatic checkpoint segments.
+>    **2026-11-12: explicit RK is unaffordable with the CIP** (damping modes to −9.5e3 s⁻¹ at n32, so
+>    Δt ≲ 2.6e-4 s, 150× below T/40; STABILITY §6b): the explicit pair left m5/m6 (author).
+>    ⚠ m3 k₀A = 0.25 under SDIRK_2_2 diverged at 172 s (growth from ≈ 144 s while the carrier had
+>    decayed to E = 0.24): at kA ≥ 0.25 the less dissipative schemes are expected to fail sooner on
+>    m3; m5/m6 (CIP) are not predicted by it (2026-11-12).
 >    Order: sysimage build → pilot (P) → E → A → C → B → D. README in that folder.
 >    (The 2-step smoke of every tableau: `test/local/smoke_integrators.jl`.)
 > 4. **ASK:** the hard case m3 T = 1.4/1.5 s n64 (CN 8.7/12.9 s) under the best candidates.
@@ -42,6 +49,104 @@ Standing constraints:
 >
 > ⚠ Excluded tableaus: Gridap's `SDIRK_3_3` is first order and `SDIRK_LobattoIIIC_2_2` is explicit
 > Heun (library defects found 2026-11-11, not patched).
+
+### Integrator study: hypotheses, tests and expected results (2026-11-12)
+
+> **Design (author, 2026-11-12).** The cluster study (`run/integrator_study/`, 170 cases, tiers P–H)
+> now varies three things: the integrator, Δt and the C⁰-CIP penalty γ. Models 3–4 run **without CIP**
+> (their weak form has no non-conforming term to stabilise); models 5–6 keep the mandatory CIP and vary
+> γ. The aim is to find the **stability region** of the solver in (scheme, Δt, γ) at each steepness.
+> Before submitting, two local checks (`run/local/run_precluster_checks.sh`) test the premises.
+
+**What the design rests on (measured, or derived from the tableaus).**
+* *The m3 mechanism is a decay triad* (2026-11-08, below): the carrier's second harmonic (n = 2,
+  2ω′) pumps a **steady** vertical-shear member n_s (ω ≈ 0; n_s = 15–16 at n32, λ ≈ 2 cells) and a
+  **fast** member n_s − 2 at ≈ 2ω′ travelling −x. Under CN both grow at Γ ≈ 0.075 /s (|û|) at
+  k₀A = 0.158, n32.
+* *Integrator damping is frequency-selective.* The amplitude lost per step is ≈ c (ωΔt)^q: q = 4 for
+  SDIRK_2_2, SDIRK_4_3 and RK3 (3rd order or less), q ≈ 6 for Crouzeix 3/4 and RK4 (4th order).
+  At ω = 0 it is zero for every scheme, so **no integrator can damp the steady member.**
+* *Damping one member of a triad only slows it.* With the steady member undamped and the fast member
+  damped at δ, the pair grows at σ_eff = −δ/2 + √(δ²/4 + Γ²) ≈ Γ²/δ. That is positive for every δ:
+  the integrator buys time, it cannot stop the triad.
+  Check against the runs: SDIRK_2_2 at T/40 damps 2ω₀ at δ = 0.076 /s, so σ_eff = 0.046 /s at
+  k₀A = 0.158. The 16 e-folds from the 1e-8 seed to O(0.1) then take ≈ 350 s, and the run survived
+  320 s ✓. At k₀A = 0.25, Γ ≈ 0.19 /s if the pump scales with A² (an estimate), giving ≈ 100 s;
+  the run died at 172 s. The order is right; the carrier's own decay weakens the pump and delays it.
+* *Models 5–6 are different.* The CIP damps by **wavenumber**, so it can reach the steady member at
+  the grid scale. With both members damped (δ_s by the CIP; δ_f by the CIP and the integrator), a
+  pumped triad has a **true threshold**: it is stable when δ_s · δ_f ≥ Γ².
+  This is the reason to vary γ and the integrator together.
+
+**H1 (tier F, m3, no CIP): aim 4th-order damping at the 2ω₀ member.**
+A 4th-order scheme damps 2ω₀ about 50–60× more than the carrier; a 3rd-order one only ≈ 15×.
+Δt sets the level. From the tableaus (amplitude, T = 1.6 s; Γ = 0.075 measured, 0.19 and 0.31 for
+k₀A = 0.25 and 0.32 scaled ∝ A²):
+
+| scheme, Δt | carrier left after 200 T | δ at 2ω₀ (1/s) | 2ω₀ : carrier damping | σ_eff (1/s) at k₀A 0.158 / 0.25 / 0.32 | predicted blow-up (s) |
+|---|---|---|---|---|---|
+| CN | 100 % | 0 | — | 0.075 / 0.19 / 0.31 | 213 / 84 / 52 |
+| SDIRK_2_2, T/40 (E) | 18 % | 0.076 | 14 | 0.046 / 0.156 / 0.274 | 347 / 103 / 58 |
+| Crouzeix, T/40 | 95 % | 0.008 | 51 | ≈ CN | 225 / 86 / 52 |
+| Crouzeix, T/20 | 29 % | 0.114 | 29 | 0.037 / 0.141 / 0.258 | 430 / 113 / 62 |
+| Crouzeix, T/10 | 0 % | 0.546 | 10 | 0.010 / 0.060 / 0.140 | 1583 / 269 / 114 |
+| RK4, T/20 | 97 % | 0.005 | 62 | ≈ CN | 221 / 85 / 52 |
+| RK4, T/10 | 44 % | 0.140 | 55 | 0.033 / 0.132 / 0.248 | 492 / 121 / 65 |
+
+*Expected.*
+* (i) At k₀A = 0.158, Crouzeix T/20 and RK4 T/10 survive the 200 periods. They keep more carrier
+  than SDIRK_2_2 (29 % and 44 %, against 18 %), and **RK4 T/10 is the best trade-off.** Crouzeix
+  T/40 and RK4 T/20 behave like CN.
+* (ii) At k₀A ≥ 0.25 every scheme fails before 320 s unless it destroys the carrier. That would be
+  the measured limit of the integrator route on m3.
+* (iii) Selectivity falls as Δt grows (Crouzeix 51 → 10 from T/40 to T/10), so there is a best Δt;
+  larger is not always better.
+* *Falsified if* a scheme survives k₀A = 0.25 with > 30 % of the carrier. That would mean the triad
+  is not the limit there, or Γ is far below the A² estimate. Check 1 decides which.
+* Blow-up times are rough: the onset delay is ignored, and the pump weakens as the carrier decays.
+
+**H2 (tier G, m5, γ map): the CIP reaches what the integrators cannot.**
+Raising γ damps the grid-scale content at any frequency, the steady member included. Together with
+an integrator damping the fast member, a threshold δ_s(γ) · δ_f ≥ Γ² can be crossed.
+*Expected.*
+* Under CN, the growth slows as γ rises. Above some γ*, the k₀A = 0.158 n32 burst (245 s at γ = 0.3)
+  disappears.
+* If the growth **escapes** to the mid band instead (wavelengths of several cells, where the CIP is
+  weak), it comes later and slower. v1 saw +0.13 /s; the v2 frozen analysis predicted the same.
+  The selective integrators then decide.
+* In each k₀A plane, the stable region lies at large γ and strong damping, with a boundary roughly
+  γ × (damping at 2ω₀) ≈ const. It moves to larger γ as k₀A rises (Γ ∝ A²).
+* γ costs the carrier almost nothing. The logged CIP drain is ≈ 1e-8 /s at γ = 0.3 and scales with
+  γ. Any accuracy cost shows on the resolved short waves (n = 2, 3), not on the carrier: compare
+  them with tier A.
+* γ = 0.1 should be worse than 0.3 (earlier growth). It brackets the boundary from below.
+* A stiffer penalty may slow Newton; the pilot's CN γ = 3 case measures s/step and the Newton count.
+
+**H3 (tier H, m5 k₀A = 0.32, γ × Δt): once γ has done its part, Δt sets the integrator's share.**
+Damping per unit time scales as Δt^(q−1): 8× from T/80 to T/40 for a 3rd-order scheme.
+*Expected.*
+* At γ = 0.3 (tier D) every scheme fails at k₀A = 0.32.
+* At γ = 1 and 3, SDIRK_2_2 and Crouzeix survive longer at T/20 than at T/80. Crouzeix keeps more
+  carrier at the same survival.
+* If T/80 survives as long as T/20, the integrator is not the active ingredient: γ is.
+
+**Controls.**
+* CN is the diagnosis pair in every cell (rule 15).
+* Tier A (γ = 0.3, T/40) is the reference for G and H; tier E is the reference for F.
+* Every remedy run reports its carrier loss next to its survival time (`CONFIGURATION.txt`,
+  `energy_history`).
+
+**Pre-cluster checks** (`run/local/run_precluster_checks.sh`; logs `output/precluster/`):
+1. *What grew in the m3 k₀A = 0.25 SDIRK_2_2 blow-up* (`_logs/kA25_mode.jl`, temporal spectrum):
+   the fastest-growing harmonics, their frequencies, and the triad test. From the measured growth,
+   Γ = √(σ(σ + δ)).
+   - Expected: the triad (n_s = 15–16), with Γ ≈ 0.15–0.2 /s.
+   - If it is not the triad, H1's table does not apply and tier F is re-planned before submission.
+2. *Frozen-state γ sweep of m5 n32* (`examples/local_1d/frozen_gamma_sweep.jl`, k₀A {0.158, 0.25,
+   0.32} × γ {0.1 … 10}): σ_max(γ), where the growth moves (n, ω), and the verdict of each
+   (scheme, Δt). It sets `GAMMAS_G` to bracket the predicted γ*.
+   ⚠ A frozen state misses the time-dependent triad. It screens the grid-scale growth and the
+   damping budgets; it gives no verdict on the run.
 
 
 > **2026-11-08: the m3 mechanism and the period test.** The temporal-spectrum analysis of every m3 run
