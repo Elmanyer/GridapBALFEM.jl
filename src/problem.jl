@@ -76,8 +76,6 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
                                       #   F = ∫(q Sη + Wx⋅Sx + Wy⋅Sy), making u* the exact solution
                                       #   of the forced problem. Independent of u ⇒ NO Jacobian
                                       #   contribution. See markdown_files/VERIFIED_SCOPE.md (the analytic-MMS plan itself is gone).
-    depth_memo   :: IdDict{Any,Any}   # trian → the depth fields (d, ∇h, bed Hessian), built ONCE
-                                      #   (`depth_fields`; CH8_CAMPAIGN_TODO §1, 2026-11-11)
     skel         :: Base.RefValue{Any} # skeleton (interior-facet) context, or `nothing`. ALWAYS present
                                       #   when `nl_pressure`: the Class-III facet terms live on it AND the
                                       #   C⁰-CIP penalty on ⟦∂ₙ𝖴⟧ and ⟦∂ₙη⟧ is MANDATORY there (LaTeX §6.4,
@@ -236,7 +234,7 @@ function build_problem_raw(vert;
                          A3, K3, P3, linearised, advection, lin_pressure,
                          P_full, nl_pressure, flat_bed, WK3, WP3,
                          mu_sponge, wm_src,
-                         relax_bc, relax_mu, relax_tg, mms_src, IdDict{Any,Any}(), Ref{Any}(nothing))
+                         relax_bc, relax_mu, relax_tg, mms_src, Ref{Any}(nothing))
     #  𝓝 ⇒ the mandatory first-order C⁰-CIP on both fields, at the default γ (LaTeX §6.4).
     nl_pressure && attach_skeleton!(prob, model; cip_gamma_u = DEFAULT_CIP_GAMMA,
                                     cip_gamma_eta = DEFAULT_CIP_GAMMA, cip_order = 1,
@@ -257,50 +255,6 @@ depth_cf(prob::BALFEMProblem, trian::Triangulation) = CellField(prob.h_bathy, tr
 depth_cf(prob::BALFEMProblem, trian::GridapDistributed.DistributedTriangulation) =
     CellField(prob.h_bathy, Triangulation(with_ghost, get_background_model(trian)))
 
-"The depth CellField `d` with its slope and bed Hessian, as the residual has always written them
-(flat bed: `0.0*∂d`, so ∇h ≡ 0 keeps the same expression)."
-function _depth_derivs(prob::BALFEMProblem, d)
-    dhx  = prob.flat_bed ? 0.0*alg_dx(d) : alg_dx(d)
-    dhy  = prob.flat_bed ? 0.0*alg_dy(d) : alg_dy(d)
-    hess = prob.flat_bed ? (0.0*d, 0.0*d, 0.0*d) : alg_bed_hessian(d)
-    return (d = d, dhx = dhx, dhy = dhy, hess = hess)
-end
-
-"""
-    depth_fields(prob, trian) → (d, dhx, dhy, hess = (hxx, hxy, hyy))
-
-The still-water depth, its slope ∇h and its Hessian as CellFields, built ONCE per problem and
-triangulation and returned as the SAME objects at every call site (2026-11-11).
-
-Why: each call site used to build its own `alg_dx(d_cf)`, a new lazy node. Gridap's
-`_get_cache` (Arrays/LazyArrays.jl) finds a node's cache by `objectid`; on a miss it scans its
-whole cache dictionary with a structural comparison, O(nodes²) per assembled term. The depth
-nodes always missed, which cost ≈ 30 % of a model-5 step (CH8_CAMPAIGN_TODO §1). The expressions
-are unchanged, so the results are bit-identical.
-"""
-function depth_fields(prob::BALFEMProblem, trian)
-    DEPTH_MEMO[] || return _depth_derivs(prob, depth_cf(prob, trian))     # A/B switch (benchmark only)
-    return get!(() -> _depth_derivs(prob, depth_cf(prob, trian)), prob.depth_memo, trian)
-end
-
-"`false` rebuilds the depth fields at every call, as before 2026-11-11: only for the A/B check of
-`test/local/bench_depth_memo.jl` (bit-identical results, step time)."
-const DEPTH_MEMO = Ref(true)
-
-"""
-    depth_fields_of(prob, d_cf)
-
-The memoised depth fields whose depth CellField is `d_cf` (for the helpers that receive `d_cf`
-rather than the triangulation). A `d_cf` not built by `depth_fields` (a test's own field) gets
-freshly built derivatives, as before the memo.
-"""
-function depth_fields_of(prob::BALFEMProblem, d_cf)
-    for df in values(prob.depth_memo)
-        df.d === d_cf && return df
-    end
-    return _depth_derivs(prob, d_cf)
-end
-
 """
     global_residual(t, u, v, prob, trian, dΩh)
 
@@ -316,8 +270,7 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
 
     g   = prob.g
     lin = prob.linearised
-    dfs    = depth_fields(prob, trian)
-    d_cf   = dfs.d
+    d_cf   = depth_cf(prob, trian)
     src_cf = CellField(x -> prob.wm_src(x, t), trian)
     mu_cf  = CellField(prob.mu_sponge, trian)
     H = d_cf + η
@@ -327,8 +280,8 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
     # is the single point of control for `flat_bed`: it drops L¹=−u̇·∇h, the ∇h
     # prefactor of every bed-slope (𝓐) block, and the a=u·∇h field uniformly, while
     # ∇H = ∇h+∇η collapses to ∇η so the surface-slope (∇η) terms survive.
-    dhx = dfs.dhx
-    dhy = dfs.dhy
+    dhx = prob.flat_bed ? 0.0*alg_dx(d_cf) : alg_dx(d_cf)
+    dhy = prob.flat_bed ? 0.0*alg_dy(d_cf) : alg_dy(d_cf)
     dHx = dhx + alg_dx(η);     dHy = dhy + alg_dy(η)           # ∇H = ∇h + ∇η
     DW  = alg_dx(Wx) + alg_dy(Wy)                              # test-divergence vector
     DUt = alg_dx(Uxt) + alg_dy(Uyt)                            # layer div(u̇)
@@ -544,8 +497,7 @@ function jacobian_u_t(t::Real, u, dut, v, prob::BALFEMProblem, trian, dΩh)
     dηt, dUxt, dUyt = dut[1], dut[2], dut[3]
     q, Wx, Wy = v[1], v[2], v[3]
     lin  = prob.linearised
-    dfs  = depth_fields(prob, trian)
-    d_cf = dfs.d
+    d_cf = depth_cf(prob, trian)
     H = d_cf + η
 
     r = ∫( q*dηt ) * dΩh
@@ -559,8 +511,8 @@ function jacobian_u_t(t::Real, u, dut, v, prob::BALFEMProblem, trian, dΩh)
     if lin
         #  Exact derivative of the full linearised leading pressure AND the bed-slope
         #  package; both are linear in u̇, so both belong here (MMS_VARBED_PLAN §0.A).
-        dhxl = dfs.dhx
-        dhyl = dfs.dhy
+        dhxl = prob.flat_bed ? 0.0*alg_dx(d_cf) : alg_dx(d_cf)
+        dhyl = prob.flat_bed ? 0.0*alg_dy(d_cf) : alg_dy(d_cf)
         dLgT = dhxl*dUxt + dhyl*dUyt
         dLl1 = (-1.0)*dLgT
         dLl2 = dLgT
@@ -576,8 +528,8 @@ function jacobian_u_t(t::Real, u, dut, v, prob::BALFEMProblem, trian, dΩh)
                     ∫( (-1.0)*d_cf*dhyl*(dsAK ⋅ Wy) ) * dΩh
         end
     else
-        dhx = dfs.dhx   # ∇h ≡ 0 on a flat bed
-        dhy = dfs.dhy
+        dhx = prob.flat_bed ? 0.0*alg_dx(d_cf) : alg_dx(d_cf)   # ∇h ≡ 0 on a flat bed
+        dhy = prob.flat_bed ? 0.0*alg_dy(d_cf) : alg_dy(d_cf)
         dHx = dhx + alg_dx(η); dHy = dhy + alg_dy(η)
         dUgHt = dHx*dUxt + dHy*dUyt
         #  𝓛 differentiated w.r.t. u̇. Needed by BOTH the leading-pressure block and
@@ -615,8 +567,7 @@ function jacobian_u(t::Real, u, du, v, prob::BALFEMProblem, trian, dΩh)
     dη, dUx, dUy = du[1], du[2], du[3]
     q,  Wx,  Wy  = v[1], v[2], v[3]
     g = prob.g; lin = prob.linearised
-    dfs   = depth_fields(prob, trian)
-    d_cf  = dfs.d
+    d_cf  = depth_cf(prob, trian)
     mu_cf = CellField(prob.mu_sponge, trian)
     H = d_cf + η
 
@@ -634,8 +585,8 @@ function jacobian_u(t::Real, u, du, v, prob::BALFEMProblem, trian, dΩh)
     #  Exact derivative of the IBP gravity form. Both regimes carry the shared ∇h
     #  half (see the derivation at the gravity block in global_residual); only the
     #  ∇·v half differs, h η vs (H²−h²)/2, whose η-derivatives are h and H.
-    dhxg = dfs.dhx
-    dhyg = dfs.dhy
+    dhxg = prob.flat_bed ? 0.0*alg_dx(d_cf) : alg_dx(d_cf)
+    dhyg = prob.flat_bed ? 0.0*alg_dy(d_cf) : alg_dy(d_cf)
     r = lin ? r + ∫( (-g)*dη*d_cf*PhiDW ) * dΩh :
               r + ∫( (-g)*H*dη*PhiDW ) * dΩh
     #  ∂/∂η of  −∫ g η Φ·(v·∇h)  — the shared ∇h half. Present in BOTH regimes,
@@ -663,8 +614,8 @@ function jacobian_u(t::Real, u, du, v, prob::BALFEMProblem, trian, dΩh)
 
     # full advection derivative
     if prob.advection
-        dhx = dfs.dhx   # ∇h ≡ 0 on a flat bed
-        dhy = dfs.dhy
+        dhx = prob.flat_bed ? 0.0*alg_dx(d_cf) : alg_dx(d_cf)   # ∇h ≡ 0 on a flat bed
+        dhy = prob.flat_bed ? 0.0*alg_dy(d_cf) : alg_dy(d_cf)
         dHx = dhx + alg_dx(η); dHy = dhy + alg_dy(η)
         DU  = alg_dx(Ux) + alg_dy(Uy)
         UgH = dHx*Ux + dHy*Uy

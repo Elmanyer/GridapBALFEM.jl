@@ -129,9 +129,9 @@ bash $HOME/GridapBALFEM.jl/run/integrator_study/submit.sh B D H
 
 ## Cost (to be replaced by the pilot's numbers)
 
-The only measurements are local: m5 n32 under CN at ≈ 58 s/step on a loaded laptop, before the
-depth-field memo and Gridap performance mode (≈ −20 %; the memo's gain is not confirmed, the
-2026-11-11 benchmark showed none). m3 runs at ≈ 5 s/step. An SDIRK_2_2 step costs ≈ 2.5 CN steps.
+The only measurements are local: m5 n32 under CN at ≈ 58 s/step on a loaded laptop, in Gridap debug
+mode. The cluster sysimage runs in performance mode (≈ −20 %), the only speed-up kept: the
+depth-field memo was reverted on 2026-11-12, its benchmark showed no gain. m3 runs at ≈ 5 s/step. An SDIRK_2_2 step costs ≈ 2.5 CN steps.
 In "m3 CN case" units (8000 steps, ≈ 11 h), `cases.py` weights the tiers A 981, B 436, C 480, D 273,
 E 88, F 26, G 981, H 275, about 3540 units in all.
 

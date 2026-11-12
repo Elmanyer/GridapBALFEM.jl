@@ -43,7 +43,8 @@ Standing constraints:
 >    (The 2-step smoke of every tableau: `test/local/smoke_integrators.jl`.)
 > 4. **ASK:** the hard case m3 T = 1.4/1.5 s n64 (CN 8.7/12.9 s) under the best candidates.
 > 5. **ASK:** m5/m6 n32 with the best one or two (cost: m5 ≈ 1–2 weeks per run under SDIRK; the
->    assembly speed-up of item 2 below would cut it).
+>    Gridap performance mode, the speed-up kept, is expected to cut ≈ 20 %; the depth-field memo was
+   reverted 2026-11-12 after its benchmark showed no gain).
 > 6. Write the outcome in STABILITY §6b and LaTeX chapter 9. Weak-form stabilisers (STATUS §4, SUPG/VMS)
 >    only if no integrator passes §6 within the accuracy budget.
 >
@@ -213,6 +214,11 @@ sponge sweep (§7, §9.2) is **paused** at 26 of 84 cases: results and resume pr
 2. **ASK: the assembly speed-up (§1)** before any further 𝓝 run. Models 5 and 6 cost 52–69 s/step
    against 4–5 for model 3. The measured `_get_cache` fix gives −29 %, and Gridap performance mode
    should remove another ~20 %. A 320 s model-5 run takes ~3.5 days even at full clock.
+   **Outcome (2026-11-12, author):** option (b), the depth-field memo (`7c42a87`), was reverted: the
+   A/B benchmark (`output/verify_depth_memo/bench_debug.log`, debug mode, bit-identical states) gave
+   no gain, m5 0.99×, m6 0.77×, m3 0.97×. Building the depth fields once does not hit the cache-scan
+   cost the 2026-10-31 experiment removed. **The speed-up kept is Gridap performance mode** (option
+   (a), `compile/set_preferences.jl`, the cluster sysimage default). Option (c) is not pursued.
 3. **Chapter-8 discriminating runs** (questions in the campaign README, "Open questions"):
    * (a) the no-CIP controls, §9.1 (prepared, never launched). They give the missing CIP axis for
      model 6 and for m5 n8 past 160 s.
@@ -275,7 +281,7 @@ is fixed, not proportional to the problem size.
   * (a) Gridap performance mode, a preference with no code change;
   * (b) build the depth CellFields (d, ∇h, ∇∇h, and constant zeros on a flat bed) once per problem,
     in `problem.jl`/`broken.jl`/`nlpressure.jl`, then verify with the regression snapshot and
-    `test_jacobians_ad`;
+    `test_jacobians_ad` — **tried (`7c42a87`) and reverted 2026-11-12: no gain (item 2 above)**;
   * (c) make `_get_cache` objectid-only in the Gridap fork, a library change.
 
 ## 2. Checkpoint and resume (u_n only; the author chose this on 2026-10-31)

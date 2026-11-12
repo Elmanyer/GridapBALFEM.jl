@@ -215,7 +215,7 @@ The CELLWISE part of the Class-III objects, from the element-wise Hessians (audi
 `broken_class3_skeleton_contrib`.
 """
 function broken_class3_cell_fields(prob::BALFEMProblem, d_cf, η, H, dHx, dHy, Ux, Uy, DU, S)
-    hxx, hxy, hyy = depth_fields_of(prob, d_cf).hess
+    hxx, hxy, hyy = prob.flat_bed ? (0.0*d_cf, 0.0*d_cf, 0.0*d_cf) : alg_bed_hessian(d_cf)
     Hxx = hxx + alg_hess(η, 1, 1)
     Hxy = hxy + alg_hess(η, 1, 2)
     Hyy = hyy + alg_hess(η, 2, 2)
@@ -498,14 +498,13 @@ stab_contrib(prob::BALFEMProblem, sk, η, Ux, Uy, q, Wx, Wy) =
 "State fields shared by the broken Class-III residual and its Jacobian (cellwise)."
 function _broken_state(prob::BALFEMProblem, d_cf, η, Ux, Uy)
     H   = d_cf + η
-    dfs = depth_fields_of(prob, d_cf)
-    dhx = dfs.dhx
-    dhy = dfs.dhy
+    dhx = prob.flat_bed ? 0.0*alg_dx(d_cf) : alg_dx(d_cf)
+    dhy = prob.flat_bed ? 0.0*alg_dy(d_cf) : alg_dy(d_cf)
     dHx = dhx + alg_dx(η);  dHy = dhy + alg_dy(η)
     DU  = alg_dx(Ux) + alg_dy(Uy)
     bf  = dHx*Ux + dHy*Uy
     S   = H*DU + bf
-    hxx, hxy, hyy = dfs.hess
+    hxx, hxy, hyy = prob.flat_bed ? (0.0*d_cf, 0.0*d_cf, 0.0*d_cf) : alg_bed_hessian(d_cf)
     Hxx = hxx + alg_hess(η, 1, 1); Hxy = hxy + alg_hess(η, 1, 2); Hyy = hyy + alg_hess(η, 2, 2)
     dxUx = alg_dx(Ux); dyUx = alg_dy(Ux); dxUy = alg_dx(Uy); dyUy = alg_dy(Uy)
     dxD = alg_hess(Ux, 1, 1) + alg_hess(Uy, 1, 2)

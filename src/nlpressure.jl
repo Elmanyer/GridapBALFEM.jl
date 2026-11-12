@@ -56,7 +56,7 @@ function nlp_direct_contrib(prob::BALFEMProblem, d_cf, η, H, dhx, dhy, dHx, dHy
     M8 = (-1.0)*alg_outer(S, S)
     # N³ = −[U_a ⊗ ∂_a(𝖺)] with the hand-expanded ∂𝖺 (bed Hessian analytic).
     # On a flat bed both ∇h (dhx,dhy → 0, passed in) and the bed Hessian vanish, so N³ → 0.
-    hxx, hxy, hyy = depth_fields_of(prob, d_cf).hess
+    hxx, hxy, hyy = prob.flat_bed ? (0.0*d_cf, 0.0*d_cf, 0.0*d_cf) : alg_bed_hessian(d_cf)
     dxaf = hxx*Ux + dhx*alg_dx(Ux) + hxy*Uy + dhy*alg_dx(Uy)
     dyaf = hxy*Ux + dhx*alg_dy(Ux) + hyy*Uy + dhy*alg_dy(Uy)
     N3 = (-1.0)*(alg_outer(Ux, dxaf) + alg_outer(Uy, dyaf))
@@ -105,7 +105,7 @@ bed. Residual-only (no per-step state) → works serial AND distributed.
 """
 function nlp_gradh_contrib(prob::BALFEMProblem, d_cf, η, H, dhx, dhy,
                            Ux, Uy, Wx, Wy, af, bf, S, DU, dΩh)
-    hxx, hxy, hyy = depth_fields_of(prob, d_cf).hess    # variable bed only (not called on a flat one)
+    hxx, hxy, hyy = alg_bed_hessian(d_cf)
     ddx = dhx + alg_dx(η)                       # ∂_x H
     ddy = dhy + alg_dy(η)                       # ∂_y H
     SD  = alg_outer(S, DU)                      # first-order remainder of N²
