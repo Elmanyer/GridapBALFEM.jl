@@ -98,9 +98,12 @@ prints the per-tier relative cost). Names: `<model>_T<100T>_kA<1000kA>_n<ncell>_
   one thread each, Julia loaded from the **sysimage** (`-J`, strict freshness check). Cases of one
   tier and model are cost-sorted and grouped, so a pack's cases end at similar times.
 * **Segments.** `run_pack.sh` stops each case with `timeout` at `BALFEM_SEG_HOURS` (119 h). The next
-  segment `<case>/seg<NN+1>` resumes from the newest checkpoint (every ≈ 6.25 periods: 250 steps
-  at T/40, `ckpt_every` in `cases.tsv`). A pack with a
-  case cut this way **resubmits itself** (up to `BALFEM_MAX_SEG` = 6 segments). Markers in
+  segment `<case>/seg<NN+1>` resumes from the newest checkpoint (every period: `ckpt_every` = spp
+  steps in `cases.tsv`, so a cut loses at most one period, ≈ 1.5–3 h for the costliest cases). A
+  pack with a case cut this way **resubmits itself** (up to `BALFEM_MAX_SEG` = 10 segments).
+  Estimated segments per case (local timings, performance mode): 80 cases need 1, 31 need 2,
+  26 need 3, 29 need 4, 3 need 5, and m5 kA 0.32 SDIRK_4_3 at T/80 about 7. Every segment queues
+  again, so submit the long tiers (A, G, C, D, H) early. Markers in
   `<case>/`:
   * `FINISHED`: the driver printed `done:` (completed, or stopped by the divergence guard; both are
     results);

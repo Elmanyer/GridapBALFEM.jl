@@ -48,7 +48,8 @@ measures the real s/step.
 
 OUTPUT CADENCE follows the period, not the step: VTK and diagnostics every max(1, spp ÷ 8) steps
 (8–10 samples per period, as the campaign's temporal-spectrum analysis needs: at 2 samples per
-period, 2ω₀ would alias to 0) and a checkpoint every ≈ 6.25 periods.
+period, 2ω₀ would alias to 0) and a checkpoint every period (spp steps): a segment cut by the
+120 h wall loses at most one period of work (≈ 1.5–3 h for the costliest cases).
 
 Columns of cases.tsv:
   name tier model nlp flat slope T kA ncell dt periods solver tableau theta rho gamma save_every
@@ -109,7 +110,7 @@ def case(tier, model, T, kA, ncell, itag, spp=SPP, periods=PERIODS, suffix="", g
     return dict(name=name, tier=tier, model=model, nlp=nlp, flat=flat, slope=slope, T=T, kA=kA,
                 ncell=ncell, dt=round(T / spp, 6), periods=periods, solver=solver, tableau=tableau,
                 theta=theta, rho=rho, gamma=gamma, save_every=max(1, spp // 8),
-                ckpt_every=round(6.25 * spp), cost=round(cost, 3))
+                ckpt_every=spp, cost=round(cost, 3))
 
 
 def matrix():

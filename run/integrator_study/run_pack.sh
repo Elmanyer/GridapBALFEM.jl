@@ -9,8 +9,8 @@
 #
 #  SEGMENTS. A case may need more than the 120 h wall. Each case therefore runs in segments
 #  <case>/seg01, seg02, …: a segment is stopped by `timeout` before the wall, and the next one
-#  resumes from the newest checkpoint (BALFEM_RESTART_FROM; checkpoints every 250 steps, so a
-#  segment loses at most 250 steps). When a pack ends with a case cut by the timeout, the pack
+#  resumes from the newest checkpoint (BALFEM_RESTART_FROM; a checkpoint every period, ckpt_every
+#  in cases.tsv, so a segment loses at most one period of work). When a pack ends with a case cut by the timeout, the pack
 #  resubmits itself (at most BALFEM_MAX_SEG segments). Per segment the launcher records
 #  `exit_status`; a case is
 #    finished  when its log has the driver's `done:` line (completed OR stopped by the divergence
@@ -39,7 +39,8 @@ set +e                                   # balfem_env.sh sets -e; a failing case
 here="$BALFEM_PROJ/run/integrator_study"
 : "${BALFEM_STUDY_OUT:=$BALFEM_PROJ/output/integrator_study}"
 : "${BALFEM_SEG_HOURS:=119}"             # timeout of one segment (the wall is 119:59)
-: "${BALFEM_MAX_SEG:=6}"                 # resubmissions stop after this many segments
+: "${BALFEM_MAX_SEG:=10}"                # resubmissions stop after this many segments (the
+                                         #   costliest case needs ≈ 7; a safety stop, not a budget)
 pack="${SLURM_ARRAY_TASK_ID:?run through submit.sh (an array task id is needed)}"
 
 line=$(awk -F'\t' -v p="$pack" 'NR > 1 && $1 == p' "$here/packs.tsv")
