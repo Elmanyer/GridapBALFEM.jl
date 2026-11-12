@@ -142,6 +142,27 @@ Damping per unit time scales as Δt^(q−1): 8× from T/80 to T/40 for a 3rd-ord
    Γ = √(σ(σ + δ)).
    - Expected: the triad (n_s = 15–16), with Γ ≈ 0.15–0.2 /s.
    - If it is not the triad, H1's table does not apply and tier F is re-planned before submission.
+   **Result (2026-11-12, `output/precluster/check1_kA25_mode.log` + `check1_followup.log`).**
+   The run shows **two mechanisms, and the triad is not the one that killed it.**
+   * *13–140 s: decay triads, held by SDIRK_2_2.* Steady members at n = 12, 15, 20 and fast members
+     n − 2 at −2.00 ω₀ are phase-locked (spread ≤ 0.01). They grow at 0.06–0.08 /s early, falling to
+     0.01–0.02 /s as the damped carrier weakens the pump (|η̂₂| 2.5e-3 → 1.2e-3). By 150 s they are at
+     only ~1e-6. Measured Γ = √(σ(σ+δ)) ≈ 0.1 /s, not the 0.19 of the A² estimate in H1's table.
+   * *≈ 150–166 s: an explosive burst.* It grows at σ ≈ 0.7–1.0 /s at n = 13–18 (≈ 2 cells) in η, ū
+     and u₃ alike, from ~1e-6 to ~1e-2 in ≈ 10 s. Its frequencies are spread over 0.1–1.5 ω₀ and the
+     triad lock breaks. It is **oscillatory at or below the carrier frequency**, so no integrator can
+     damp it selectively: damping it costs the carrier as much.
+   * The trigger is not identified. The triad band was still at ~1e-6. One candidate is the
+     sub-element band (n = 60 and 92, images of n = 4 or 28), which grew at ≈ 0.03 /s to ~3e-5 just
+     before the burst.
+   * Consequences for H1: at k₀A = 0.158 the triad remains the mechanism, and tier F tests it as
+     designed. At k₀A ≥ 0.25 the expected failure is this burst, not the triad outrunning the damping;
+     tier F there measures how soon the burst comes when less carrier is drained. The burst sits at
+     the grid scale (n ≈ 16 of 32 cells), which is where the CIP acts. That supports the γ tiers on
+     m5/m6. **No m3 + CIP runs (author, 2026-11-12):** if m3/m4 need grid-scale stabilisation, it
+     will come from another method (SUPG, VMS), not the CIP, which stays tied to the 𝓝 models.
+   * The script's automatic triad pick (n = 49 → Γ = 0.60 /s) is wrong: n = 49 is a sub-element image
+     taken in the burst window, and its partner is at noise level. Ignore that line of the log.
 2. *Frozen-state γ sweep of m5 n32* (`examples/local_1d/frozen_gamma_sweep.jl`, k₀A {0.158, 0.25,
    0.32} × γ {0.1 … 10}): σ_max(γ), where the growth moves (n, ω), and the verdict of each
    (scheme, Δt). It sets `GAMMAS_G` to bracket the predicted γ*.
