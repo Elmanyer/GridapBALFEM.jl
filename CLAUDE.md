@@ -113,9 +113,10 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
     Gridap tableau, diagonally implicit or explicit `EXRK_*`; default `SDIRK_2_2`, **dissipative, rule
     15**), `:gen_alpha` (ρ∞). Refused before the build: IMEX tableaus, unknown names, θ ∉ (0,1],
     ρ∞ ∉ [0,1]; warned: defective tableaus and those that amplify neutral oscillations.
-    ⚠ **Explicit tableaus are unusable with 𝓝** (2026-11-12): the mandatory CIP's damping modes
-    (−9.5e3 s⁻¹ at 32 cells/λ) cap Δt near 2.6e-4 s (`STABILITY.md` §6b). Explicit RK only for
-    models without CIP.
+    ⚠ **Explicit tableaus are unusable with 𝓝** (2026-11-12): every one failed on m5 at T/40 in the
+    smoke test. Explicit RK only for models without CIP. (The −9.5e3 s⁻¹ / Δt ≈ 2.6e-4 s limits
+    once quoted are void: `stability_eig.jl`'s FD pattern missed CIP entries until 2026-11-13,
+    `STABILITY.md` §6b.)
   * Sequential LU+Newton; distributed GMRES+Jacobi+Newton, **all six models** (𝓝 distributed since
     2026-10-30; facet size and count built per rank).
 * **Physics.** Advection, the full leading pressure `R_P`, and `𝓝` with all eight components when

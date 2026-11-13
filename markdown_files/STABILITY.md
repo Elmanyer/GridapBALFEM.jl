@@ -203,14 +203,20 @@ weak form, measure what numerical dissipation through the time integration buys,
   is the expected limit of the approach.
 * Explicit schemes amplify every mode faster than `y = √3` (RK3) or `2√2` (RK4): the fastest discrete
   frequency × Δt must stay below that.
-* **With the C⁰-CIP, explicit schemes are unaffordable (measured 2026-11-12).** The CIP is a damping
-  term: it adds modes with negative *real* eigenvalues, −3.9e3 / −4.7e3 / −9.5e3 s⁻¹ at n8 / n16 / n32
-  (`stability_eig.jl`, m3 + γ = 0.3, A = 0.1, T = 1.6; the limit shrinks more slowly than h² because the
-  dispersive mass B grows with k too). RK3/RK4 need `|λ|Δt < 2.51 / 2.79`, i.e. Δt ≲ 2.6e-4 s at n32,
-  150× below T/40: ≈ 1.6 million steps per 200-period case. Without the CIP (m3) the fastest mode is a
-  wave at ≈ 9 s⁻¹ and T/40 is safe. The integrator smoke test agrees: m5 at Δt = 0.04 explodes in one
-  explicit step (energy ×10⁶ under RK4), and m3 + CIP repeats m5's explicit-Euler growth digit for digit.
-  An implicit scheme damps these modes at any Δt (L-stable `SDIRK_4_3` removes them in one step,
+* **With the C⁰-CIP, explicit schemes fail at T/40 (smoke test, 2026-11-12).** Every explicit
+  tableau failed on m5 at Δt = 0.04 (energy ×10⁶ in one RK4 step), RK4 failed on m6, and m3 + CIP
+  repeats m5's explicit-Euler growth digit for digit. Without the CIP (m3) the fastest mode is a wave
+  at ≈ 9 s⁻¹ and T/40 is safe. The likely cause is stiff CIP damping modes (large negative *real*
+  eigenvalues).
+  ⚠ **The Δt limits once quoted here are void** (−3.9e3 / −4.7e3 / −9.5e3 s⁻¹ at n8 / n16 / n32,
+  Δt ≲ 2.6e-4 s at n32). `stability_eig.jl` built its finite-difference Jacobian on a sparsity pattern
+  that coupled facet unknowns through their *values* only. The CIP penalises the jump of ∂ₙ, which
+  every unknown of both neighbouring cells contributes to, so 17 % of the CIP entries fell outside the
+  pattern; the column colouring then merged columns and the matrix was wrong (fake modes growing at
+  ~1e3 s⁻¹ ∝ γ). Fixed 2026-11-13 (`se_pattern`, with two gates in `frozen_gamma_sweep.jl`: FD = hand
+  Jacobian at k₀A = 1e-7, and the γ-part = the exact CIP matrix). Every spectrum of a model **with** a
+  CIP made with the old tool is void; the explicit limits are to be re-measured.
+  An implicit scheme damps stiff modes at any Δt (L-stable `SDIRK_4_3` removes them in one step,
   `|R(−100)| = 0.025`; `SDIRK_2_2` halves them, `R(∞) = −½`). An IMEX split (CIP implicit) would lift
   the limit; not implemented.
 

@@ -34,8 +34,10 @@ Standing constraints:
 >    SDIRK_Crouzeix_3_4 (re-added 2026-11-12 as RK4's stand-in); m3 (tier E) runs CN, SDIRK_2_2,
 >    SDIRK_4_3, RK4, RK3 (TR-BDF2 and generalised-α dropped 2026-11-11). × kA up to
 >    0.32 × kd 5.5/3.0/1.7 × n16/32/64 × dt. Packs of 8 on rome 1/8 nodes, automatic checkpoint segments.
->    **2026-11-12: explicit RK is unaffordable with the CIP** (damping modes to −9.5e3 s⁻¹ at n32, so
->    Δt ≲ 2.6e-4 s, 150× below T/40; STABILITY §6b): the explicit pair left m5/m6 (author).
+>    **2026-11-12: explicit RK fails with the CIP** (every explicit tableau failed on m5 at T/40 in
+>    the smoke test; STABILITY §6b): the explicit pair left m5/m6 (author). ⚠ The −9.5e3 s⁻¹ /
+>    Δt ≲ 2.6e-4 s limits once quoted here are void (FD-pattern bug in `stability_eig.jl`, fixed
+>    2026-11-13; see pre-cluster check 2).
 >    ⚠ m3 k₀A = 0.25 under SDIRK_2_2 diverged at 172 s (growth from ≈ 144 s while the carrier had
 >    decayed to E = 0.24): at kA ≥ 0.25 the less dissipative schemes are expected to fail sooner on
 >    m3; m5/m6 (CIP) are not predicted by it (2026-11-12).
@@ -121,13 +123,13 @@ an integrator damping the fast member, a threshold δ_s(γ) · δ_f ≥ Γ² can
   γ. Any accuracy cost shows on the resolved short waves (n = 2, 3), not on the carrier: compare
   them with tier A.
 * γ = 0.1 should be worse than 0.3 (earlier growth). It brackets the boundary from below.
-* A stiffer penalty may slow Newton; the pilot's CN γ = 3 case measures s/step and the Newton count.
+* A stiffer penalty may slow Newton; the pilot's CN γ = 1 case measures s/step and the Newton count.
 
 **H3 (tier H, m5 k₀A = 0.32, γ × Δt): once γ has done its part, Δt sets the integrator's share.**
 Damping per unit time scales as Δt^(q−1): 8× from T/80 to T/40 for a 3rd-order scheme.
 *Expected.*
 * At γ = 0.3 (tier D) every scheme fails at k₀A = 0.32.
-* At γ = 1 and 3, SDIRK_2_2 and Crouzeix survive longer at T/20 than at T/80. Crouzeix keeps more
+* At γ = 0.5 and 1, SDIRK_2_2 and Crouzeix survive longer at T/20 than at T/80. Crouzeix keeps more
   carrier at the same survival.
 * If T/80 survives as long as T/20, the integrator is not the active ingredient: γ is.
 
@@ -169,6 +171,38 @@ Damping per unit time scales as Δt^(q−1): 8× from T/80 to T/40 for a 3rd-ord
    (scheme, Δt). It sets `GAMMAS_G` to bracket the predicted γ*.
    ⚠ A frozen state misses the time-dependent triad. It screens the grid-scale growth and the
    damping budgets; it gives no verdict on the run.
+   **Harness bug (found 2026-11-12, fixed 2026-11-13).** The first run gave hundreds of steady modes
+   growing at ~1e3 /s ∝ γ. Cause: `se_pattern` in `stability_eig.jl` coupled facet unknowns only
+   through their values, but the CIP's ⟦∂ₙ·⟧ couples every unknown of both neighbouring cells; 17 %
+   of the CIP entries fell outside the FD sparsity pattern and the colouring merged columns. With hand
+   Jacobians the near-linear spectrum is neutral (σmax 2e-4 /s). The pattern now couples all unknowns
+   of the two cells of every facet, and the sweep has two gates: FD = hand Jacobian at k₀A = 1e-7
+   (1e-8 measured) and J(γ_b) − J(γ_a) = the exact CIP matrix (≈ 5e-12). The first run's output is in
+   `output/precluster/void_prefix/`. Every earlier spectrum of a CIP model made with this tool is
+   void (STABILITY §6b); spectra without a CIP are unaffected.
+   **Result (2026-11-13, `output/precluster/check2_frozen_gamma_n32_kA*.log`, P1LFE-2 Q3/Q2 n32).**
+   σ_max (1/s) of the frozen operator:
+
+   | γ | 0.1 | 0.2 | 0.3 | 0.5 | 1 | 2 | 3 | 5 | 10 |
+   |---|---|---|---|---|---|---|---|---|---|
+   | k₀A 0.158 | 0.23 | 0.23 | 0.24 | 0.25 | 0.26 | 0.27 | 0.27 | 0.27 | 0.27 |
+   | k₀A 0.25 | **0.45** | 0.36 | 0.37 | 0.38 | 0.39 | 0.41 | 0.41 | 0.42 | 0.42 |
+   | k₀A 0.32 | **0.69** | **0.58** | **0.48** | 0.47 | 0.49 | 0.50 | 0.51 | 0.51 | 0.52 |
+
+   * **Bold: a steady grid-scale mode** (harmonic n = 7–10, ≈ 3–4.5 cells, ω = 0, all 𝖴x). It leads
+     only when γ is too small for the steepness (γ < 0.2 at k₀A 0.25, γ < 0.5 at 0.32). The CIP
+     removes it: γ ≈ 0.3–0.5 suffices.
+   * **The rest: a long slow mode** (n = 0–1, |ω| 0.1–0.5 /s against ω₀ = 3.9, 𝖴y 1–7 %). It grows
+     ≈ 0.4 k₀A ω₀, i.e. at the strain rate of the frozen wave, and γ does not reduce it (up to 10 %
+     faster from γ 0.3 to 10). It is ~10× slower than the carrier, outside the frozen-state validity
+     (the region that strains it passes every period), so it is not a prediction of the runs: m5 at
+     γ = 0.3 lives for hundreds of seconds.
+   * **No integrator changes any σ_max** (CN, SDIRK_2_2, SDIRK_4_3, Crouzeix 3/4 at T/80 … T/10): the
+     leading modes barely oscillate, and integrator damping acts by frequency.
+   * Conclusions: the grid-scale content is controlled by γ ≈ 0.3–0.5, nothing is gained above
+     γ ≈ 1, and the late n32 burst is not explained by a frozen mode (the runs must decide).
+     **`GAMMAS_G` = (0.1, 0.5, 1)** (author, 2026-11-13: γ = 3 dropped for 0.5, also in tiers C, H; the
+     pilot's stiff-penalty case moves to γ = 1).
 
 
 > **2026-11-08: the m3 mechanism and the period test.** The temporal-spectrum analysis of every m3 run

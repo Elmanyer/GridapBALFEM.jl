@@ -13,11 +13,11 @@ TIERS (submit separately; the pilot first). γ is the C⁰-CIP penalty (γ_u = �
 0.3 for m5/m6 (mandatory with 𝓝) and 0 for m3/m4 (no CIP: the weak form of models 3–4 has no
 non-conforming term to stabilise; author, 2026-11-12).
   P  pilot: m5 n32 T=1.6 kA=0.25, the implicit integrators, 100 steps — s/step on the node
-     (+ CN at γ = 3: does a stiff penalty slow Newton?)
+     (+ CN at γ = 1, the stiffest penalty in the matrix: does it slow Newton?)
   A  core:  m5 (𝓝, flat) n32, T ∈ {1.6, 2.2, 3.0} (kd ≈ 5.5, 3.0, 1.7), kA ∈ {0.158, 0.25, 0.32}
   B  resolution: m5 T=1.6 kA ∈ {0.25, 0.32} at n16 and n64 (n32 is in A)
   C  variable bed: m6 (cosine bed, max slope 0.1) n32 T=1.6 kA ∈ {0.25, 0.32}; kA = 0.25 also at
-     γ ∈ {1, 3}
+     γ ∈ {0.5, 1}
   D  time step: m5 n32 T=1.6 kA=0.32, every implicit integrator at dt = T/20 and T/80
   E  null control: m3 (𝓝 off, no CIP) n32, T ∈ {1.6, 3.0}, every kA — cheap; the only tier
      with the explicit pair rk3/rk4 at T/40
@@ -26,18 +26,18 @@ non-conforming term to stabilise; author, 2026-11-12).
      T/20, T/10 and RK4 at T/20, T/10 (RK4 is affordable without CIP)
   G  γ map (hypothesis H2): m5 n32 T=1.6, every kA × γ ∈ GAMMAS_G × the four implicit integrators
      (γ = 0.3 is tier A)
-  H  γ × dt (hypothesis H3): m5 n32 T=1.6 kA=0.32 × γ ∈ {1, 3} × {SDIRK_2_2, Crouzeix 3/4} at T/20
+  H  γ × dt (hypothesis H3): m5 n32 T=1.6 kA=0.32 × γ ∈ {0.5, 1} × {SDIRK_2_2, Crouzeix 3/4} at T/20
      and T/80 (γ = 0.3 is tier D)
 The hypotheses, the reasons and the expected results: markdown_files/CH8_CAMPAIGN_TODO.md
 ("Integrator study: hypotheses"). Submission order: P → E F → A → G → C → B → D H.
 Every configuration runs under every integrator it can afford, Crank–Nicolson included: CN is the
 diagnosis pair of rule 15 (what grows without dissipation), the others are the remedies.
-EXPLICIT SCHEMES ONLY WITHOUT CIP (author, 2026-11-12). The mandatory C⁰-CIP of m5/m6 adds damping
-modes with real eigenvalues down to −3.9e3 (n8) … −9.5e3 s⁻¹ (n32) (stability_eig.jl, m3 + CIP).
-Explicit RK3/RK4 are stable only for |λ|Δt < 2.51 / 2.79, i.e. Δt ≲ 2.6e-4 s at n32, 150× below
-T/40: 1.6 million steps per 200-period case, years of wall time. The smoke test confirms it (m5
-explodes in one step at Δt = 0.04). So rk3/rk4 run in tier E only (m3, no CIP, fastest discrete
-mode ≈ 9 s⁻¹, imaginary: T/40 is well inside both limits). In their place m5/m6 run SDIRK_Crouzeix_3_4
+EXPLICIT SCHEMES ONLY WITHOUT CIP (author, 2026-11-12). In the smoke test every explicit tableau
+failed on m5 at Δt = T/40 (energy ×10⁶ in one RK4 step), and RK4 failed on m6. (The Δt limits once
+quoted here, from CIP damping modes down to −9.5e3 s⁻¹, are void: stability_eig.jl's FD Jacobian
+missed 17 % of the CIP entries until 2026-11-13; to be re-measured.) So rk3/rk4 run in tier E
+only (m3, no CIP, fastest discrete mode ≈ 9 s⁻¹, imaginary: T/40 is well inside both limits). In
+their place m5/m6 run SDIRK_Crouzeix_3_4
 (4th order like RK4, damping rising ≈ y⁶; author, 2026-11-12).
 
 PACKS: a rome 1/8 node (16 cores, 28 GiB) runs 8 cases at once (≈ 3 GiB each for 𝓝). Cases of
@@ -83,8 +83,9 @@ MODELS = {   # BALFEM_NL_PRESSURE, BALFEM_FLAT_BED, BALFEM_BED_SLOPE, relative c
 TIERS = "PABCDEFGH"
 PERIODS, SPP = 200, 40          # duration in periods, steps per period
 GAMMA_DEFAULT = {0: 0.0, 1: 0.3}  # by nlp: no CIP without 𝓝 (m3/m4), DEFAULT_CIP_GAMMA with it
-GAMMAS_G = (0.1, 1.0, 3.0)      # tier G (+ 0.3 in tier A). PROVISIONAL: reset after the frozen
-                                #   γ sweep (pre-cluster check 2) to bracket its predicted boundary
+GAMMAS_G = (0.1, 0.5, 1.0)      # tier G (+ 0.3 in tier A). Set from pre-cluster check 2 (2026-11-13):
+                                #   the steady grid-scale mode leads below γ ≈ 0.2 (kA 0.25) / 0.5 (kA 0.32)
+                                #   and nothing changes above γ ≈ 1, so γ = 3 was dropped (author)
 
 
 def integrators(model, extra=False):
@@ -117,7 +118,7 @@ def matrix():
     C = []
     for itag in integrators("m5", extra=True):                          # P: pilot
         C.append(case("P", "m5", 1.6, 0.25, 32, itag, periods=2.5, suffix="_pilot"))
-    C.append(case("P", "m5", 1.6, 0.25, 32, "cn", periods=2.5, suffix="_pilot", gamma=3.0))
+    C.append(case("P", "m5", 1.6, 0.25, 32, "cn", periods=2.5, suffix="_pilot", gamma=1.0))
     for T in (1.6, 2.2, 3.0):                                           # A: core
         for kA in (0.158, 0.25, 0.32):
             for itag in integrators("m5"):
@@ -129,7 +130,7 @@ def matrix():
     for kA in (0.25, 0.32):                                             # C: variable bed
         for itag in integrators("m6"):
             C.append(case("C", "m6", 1.6, kA, 32, itag))
-    for g in (1.0, 3.0):
+    for g in (0.5, 1.0):
         for itag in integrators("m6"):
             C.append(case("C", "m6", 1.6, 0.25, 32, itag, gamma=g))
     for spp in (20, 80):                                                # D: time step
@@ -146,7 +147,7 @@ def matrix():
         for g in GAMMAS_G:
             for itag in integrators("m5"):
                 C.append(case("G", "m5", 1.6, kA, 32, itag, gamma=g))
-    for g in (1.0, 3.0):                                                # H: γ × dt
+    for g in (0.5, 1.0):                                                # H: γ × dt
         for spp in (20, 80):
             for itag in ("sdirk22", "crz34"):
                 C.append(case("H", "m5", 1.6, 0.32, 32, itag, spp=spp, gamma=g))

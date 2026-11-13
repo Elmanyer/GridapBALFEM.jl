@@ -42,8 +42,10 @@ const FGS_SCHEMES = (:CN, :SDIRK_2_2, :SDIRK_4_3, :SDIRK_Crouzeix_3_4)
 const FGS_SPP     = (80, 40, 20, 10)                       # Δt = T/spp
 
 """Frozen-state matrices of the box at amplitude A and penalty γ: the body of `stability_case`
-up to J and M, returned with what the mode tagging needs. `want_M = false` skips M."""
-function fgs_ops(; pu = 3, pe = pu - 1, model = FGS_MODEL, A, ncell, gamma, vert = se_vert(), want_M = true)
+up to J and M, returned with what the mode tagging needs. `want_M = false` skips M; `hand = true`
+also assembles the hand `jacobian_u` (the FD gate at small A)."""
+function fgs_ops(; pu = 3, pe = pu - 1, model = FGS_MODEL, A, ncell, gamma, vert = se_vert(), want_M = true,
+                 hand = false)
     Nσ = vert.N_dof
     ω  = 2π / SE_T
     k  = model_wavenumber(vert, ω, SE_D, SE_G)
@@ -76,10 +78,17 @@ function fgs_ops(; pu = 3, pe = pu - 1, model = FGS_MODEL, A, ncell, gamma, vert
     col = se_colour(pat)
     J   = Matrix(se_fdjac(x -> rvec(x, xt0), x0, pat, col))
     M   = want_M ? Matrix(se_fdjac(w -> rvec(x0, w), xt0, pat, col)) : nothing
+    #  the CIP matrix alone at this γ (exact, assembled directly; LINEAR in γ): the gate of the
+    #  FD skeleton coupling in main()
+    C   = gamma > 0 ? Matrix(assemble_matrix((du, v) -> GridapBALFEM.stab_contrib(prob, prob.skel[],
+                          du[1], du[2], du[3], v[1], v[2], v[3]), U, V)) : nothing
+    #  optional: the HAND Jacobian (exact in the linear limit; quasi-Newton at finite A, rule 5)
+    Jh  = hand ? Matrix(assemble_matrix((du, v) -> jacobian_u(0.0, TransientCellField(uh, (uth,)), du, v,
+                          prob, trian, dΩh), U, V)) : nothing
     nf   = [num_free_dofs(U.spaces[i]) for i in 1:length(U.spaces)]
     offs = cumsum([0; nf])
-    return (J = J, M = M, U = U, trian = trian, pu = pu, ncell = ncell, L = L, k = k, ω = ω,
-            Nσ = Nσ, rng2 = (offs[2] + 1):offs[3])
+    return (J = J, M = M, C = C, Jh = Jh, U = U, trian = trian, pu = pu, ncell = ncell, L = L, k = k, ω = ω,
+            Nσ = Nσ, rng2 = (offs[2] + 1):offs[3], rng3 = (offs[3] + 1):offs[4])
 end
 
 "Eigenpairs of −M⁻¹J with the dominant box harmonic n of each mode's 𝖴x field."
@@ -92,7 +101,9 @@ function fgs_spectrum(o, J, M, Fmap)
         Pw .+= abs2.(Fk * (Bj[j] * Vux))
     end
     ndom = [argmax(view(Pw, :, m)) - 1 for m in 1:length(E.values)]     # harmonic index n = k/k0
-    return E.values, ndom
+    #  weight of each mode on 𝖴y (transverse: spurious in a 1-D strip; n is meaningless when ≈ 1)
+    uyw  = [sum(abs2, view(E.vectors, o.rng3, m)) / sum(abs2, view(E.vectors, :, m)) for m in 1:length(E.values)]
+    return E.values, ndom, uyw
 end
 
 Rcn(z) = (1 + z / 2) / (1 - z / 2)
@@ -105,7 +116,7 @@ function main()
     mkpath(FGS_OUT)
     csv = joinpath(FGS_OUT, "frozen_gamma_sweep_n$(FGS_NCELL)_$(FGS_MODEL).csv")
     Rs  = Dict(s => fgs_R(s) for s in FGS_SCHEMES)
-    hdr = ["kA", "A", "gamma", "sigma_max", "omega_at_max", "n_at_max", "n_growing",
+    hdr = ["kA", "A", "gamma", "sigma_max", "omega_at_max", "n_at_max", "uy_at_max", "n_growing",
            "cip_carrier_damping"]
     for s in FGS_SCHEMES, spp in FGS_SPP; push!(hdr, "rate_$(s)_T$(spp)"); end
     open(csv, "w") do io; println(io, join(hdr, ",")); end
@@ -113,6 +124,13 @@ function main()
             join(FGS_KA, " "), join(FGS_GAMMAS, " ")); flush(stdout)
     vert = se_vert()
     k0 = model_wavenumber(vert, 2π / SE_T, SE_D, SE_G)
+    #  GATE 0 (the 2026-11-12 sparsity bug): at A → 0 the FD Jacobian must equal the hand one
+    let o0 = fgs_ops(; A = 1e-7 / k0, ncell = FGS_NCELL, gamma = FGS_GA, vert = vert, want_M = false, hand = true)
+        g0 = norm(o0.J .- o0.Jh) / norm(o0.Jh)
+        @printf("GATE 0: k0A = 1e-7 (linear: the quasi-Newton gap of rule 5 vanishes), γ = %g: ‖J_FD − J_hand‖/‖J_hand‖ = %.2e (must be ≲ 1e-6)\n", FGS_GA, g0)
+        flush(stdout)
+        g0 < 1e-5 || error("GATE 0 failed: the FD Jacobian does not match the hand Jacobian")
+    end
     for (ika, kA) in enumerate(FGS_KA)
         A = kA / k0
         t0 = time()
@@ -121,31 +139,35 @@ function main()
         Fmap = se_fourier_map(oa.U.spaces[2], oa.trian, oa.pu, oa.ncell, oa.L, oa.Nσ)
         Jg(γ) = oa.J .+ ((γ - FGS_GA) / (FGS_GB - FGS_GA)) .* (ob.J .- oa.J)
         @printf("\n=== kA = %.3f (A = %.4f m): 2 FD Jacobians + M in %.0f s\n", kA, A, time() - t0)
+        #  GATE C: the FD skeleton coupling — J(γb) − J(γa) must be the exact CIP matrix × (γb − γa)/γa
+        gC = norm((ob.J .- oa.J) .- ((FGS_GB - FGS_GA) / FGS_GA) .* oa.C) / norm(((FGS_GB - FGS_GA) / FGS_GA) .* oa.C)
+        @printf("  gate C: ‖ΔJ_FD − Δγ·C‖/‖Δγ·C‖ = %.2e (must be ≲ 1e-6)\n", gC)
+        gC < 1e-5 || error("gate C failed: the FD Jacobian's CIP part is wrong")
         if ika == 1      # gate the linear-in-γ shortcut against a direct FD Jacobian
             oc = fgs_ops(; A = A, ncell = FGS_NCELL, gamma = FGS_GGATE, vert = vert, want_M = false)
             @printf("  gate: ‖J(γ=%g) direct − interpolated‖/‖J‖ = %.2e (FD noise ~1e-8)\n", FGS_GGATE,
                     norm(oc.J .- Jg(FGS_GGATE)) / norm(oc.J))
         end
-        @printf("  %-6s %-11s %-8s %-4s %-5s %-10s | %s\n", "γ", "σmax /s", "|ω|", "n", "#grow",
+        @printf("  %-6s %-11s %-8s %-4s %-5s %-5s %-10s | %s\n", "γ", "σmax /s", "|ω|", "n", "𝖴y", "#grow",
                 "CIP@carrier", "fastest growth let through, max ln|R|/Δt (1/s), Δt = T/" * join(FGS_SPP, ", T/"))
         for γ in FGS_GAMMAS
-            λ, nd = fgs_spectrum(oa, Jg(γ), oa.M, Fmap)
+            λ, nd, uyw = fgs_spectrum(oa, Jg(γ), oa.M, Fmap)
             σ = real.(λ); im_ = argmax(σ)
             ngrow = count(>(1e-6), σ)
             # the CIP's damping of the carrier: the n = 1 modes nearest ω0 (frozen, one phase)
             c1 = findall(i -> nd[i] == 1, eachindex(λ))
             cipc = isempty(c1) ? NaN : -real(λ[c1[argmin(abs.(abs.(imag.(λ[c1])) .- oa.ω))]])
             rates = [fgs_rate(Rs[s], λ, SE_T / spp) for s in FGS_SCHEMES for spp in FGS_SPP]
-            @printf("  %-6g %+.3e  %-8.3g %-4d %-5d %+.2e  |", γ, σ[im_], abs(imag(λ[im_])), nd[im_], ngrow, cipc)
+            @printf("  %-6g %+.3e  %-8.3g %-4d %-5.2f %-5d %+.2e  |", γ, σ[im_], abs(imag(λ[im_])), nd[im_], uyw[im_], ngrow, cipc)
             for (is, s) in enumerate(FGS_SCHEMES)
                 @printf(" %s: %s", s, join([@sprintf("%+.2e", r) for r in rates[(is - 1) * length(FGS_SPP) .+ (1:length(FGS_SPP))]], " "))
             end
             println()
             # the growing modes, fastest first (at most 5)
             gi = sort(findall(>(1e-6), σ); by = i -> -σ[i])[1:min(5, ngrow)]
-            isempty(gi) || println("         growing: ", join([@sprintf("σ %.3e |ω| %.3g n %d", σ[i], abs(imag(λ[i])), nd[i]) for i in gi], "; "))
+            isempty(gi) || println("         growing: ", join([@sprintf("σ %.3e |ω| %.3g n %d 𝖴y %.2f", σ[i], abs(imag(λ[i])), nd[i], uyw[i]) for i in gi], "; "))
             open(csv, "a") do io
-                println(io, join(string.([kA, A, γ, σ[im_], abs(imag(λ[im_])), nd[im_], ngrow, cipc, rates...]), ","))
+                println(io, join(string.([kA, A, γ, σ[im_], abs(imag(λ[im_])), nd[im_], uyw[im_], ngrow, cipc, rates...]), ","))
             end
             flush(stdout)
         end

@@ -151,18 +151,47 @@ end
 """
 Structural sparsity of the residual Jacobian: the FE cell connectivity across ALL field pairs,
 PLUS — when a skeleton record is attached (broken Class III and/or a stabiliser) — every pair of
-DOFs living on the two cells of an interior facet: the skeleton terms couple those even when they
-share no cell. Missing that coupling would let the colouring merge columns that interact through
-a facet, and the FD Jacobian would be silently wrong.
+DOFs of the two cells of an interior facet: the skeleton terms couple those even when they share
+no cell. Missing that coupling would let the colouring merge columns that interact through a
+facet, and the FD Jacobian would be silently wrong.
+
+⚠ The facet coupling is built from the CELL DOF LISTS, never from an assembled facet integral
+(fixed 2026-11-12). The old pattern assembled `∫(s(du)⁺ + s(du)⁻)(s(v)⁺ + s(v)⁻)dΛ`, a VALUE
+coupling: a DOF interior to a cell has no value on the facet but does have a normal derivative
+there, so the C⁰-CIP `⟦∂ₙ·⟧⟦∂ₙ·⟧` and the kind-S facet terms reach it. At Q3/Q2 n32, 17 % of the
+CIP matrix lay outside that pattern; the colouring merged those columns and the FD Jacobian grew
+spurious non-oscillating modes at ~10³ /s in proportion to γ (pre-cluster check 2; the hand
+Jacobians gave a neutral spectrum). Every frozen-state spectrum with a skeleton computed before
+the fix is void.
 """
 function se_pattern(U, V, dΩh, Nσ, sk)
     one_ = VectorValue(ntuple(_ -> 1.0, Nσ)...)
     s(u) = u[1] + (u[2] ⋅ one_) + (u[3] ⋅ one_)
     A = assemble_matrix((du, v) -> ∫(s(du) * s(v))dΩh, U, V)
-    if sk !== nothing
-        A = A + assemble_matrix((du, v) -> ∫((s(du).plus + s(du).minus) * (s(v).plus + s(v).minus))sk.dΛ, U, V)
+    sk === nothing && return spones(A)
+    # cell → its free DOFs over all fields (ConsecutiveMultiFieldStyle: field i is offset by offs[i])
+    nf    = [num_free_dofs(Ui) for Ui in U.spaces]
+    offs  = cumsum([0; nf])
+    ncell = num_cells(get_triangulation(U.spaces[1]))
+    cdofs = [Int[] for _ in 1:ncell]
+    for (i, Ui) in enumerate(U.spaces)
+        ids = get_cell_dof_ids(Ui)
+        for c in 1:ncell, d in ids[c]
+            d > 0 && push!(cdofs[c], offs[i] + d)
+        end
     end
-    return spones(A)
+    # every interior facet couples all DOFs of its two cells, both ways
+    cplus  = Gridap.Geometry.get_glue(sk.Λ.plus,  Val(2)).tface_to_mface
+    cminus = Gridap.Geometry.get_glue(sk.Λ.minus, Val(2)).tface_to_mface
+    I = Int[]; J = Int[]
+    for (cp, cm) in zip(cplus, cminus)
+        ds = vcat(cdofs[cp], cdofs[cm])
+        for a in ds, b in ds
+            push!(I, a); push!(J, b)
+        end
+    end
+    n = size(A, 1)
+    return spones(A + sparse(I, J, 1.0, n, n))
 end
 spones(A::SparseMatrixCSC) = SparseMatrixCSC(A.m, A.n, A.colptr, A.rowval, ones(length(A.nzval)))
 

@@ -46,22 +46,17 @@ between the two limits blows up RK3 and leaves RK4 standing. Each explicit stage
 system here, because the mass operator ∂R/∂u̇ carries the dispersion term B; the stages are not
 cheap. To run a scheme in the pilot only, put it in `PILOT_EXTRA` in `cases.py`.
 
-**Explicit schemes run on m3 only (author, 2026-11-12).** The mandatory C⁰-CIP of m5/m6 is a
-damping term: it adds modes with large negative *real* eigenvalues. Frozen-state spectra
-(`stability_eig.jl`, P1LFE-2 Q3/Q2, A = 0.1, T = 1.6; m3 with γ = 0.3, the CIP on its own):
+**Explicit schemes run on m3 only (author, 2026-11-12).** The evidence is the integrator smoke
+test (`test/local/smoke_integrators.jl`): at Δt = T/40 every explicit tableau failed on m5 (13 of 13,
+energy ×10⁶ in one RK4 step), and RK4 failed on m6. So RK3/RK4 are in tier E (m3) only; on the full
+model the comparison is between implicit schemes. An IMEX split (CIP implicit, the rest explicit)
+would be the way to run them there; it is not implemented (the drivers refuse IMEX tableaus).
 
-| cells/λ | fastest damping rate | stable Δt RK3 (\|z\| < 2.51) | stable Δt RK4 (\|z\| < 2.79) | vs T/40 = 0.04 s |
-|---|---|---|---|---|
-| 8 | 3.9e3 s⁻¹ | 6.5e-4 s | 7.2e-4 s | 60× smaller |
-| 16 | 4.7e3 s⁻¹ | 5.3e-4 s | 5.9e-4 s | 75× smaller |
-| 32 | 9.5e3 s⁻¹ | 2.6e-4 s | 2.9e-4 s | 150× smaller |
-
-Without the CIP (m3) the fastest discrete mode is a wave at ≈ 9 s⁻¹ (imaginary), so T/40 sits well
-inside both limits. With it, a 200-period n32 case needs ≈ 1.6 million explicit steps: years of wall
-time. The smoke test confirms the limit: at Δt = 0.04, m5 grows ×10⁶ in energy in one RK4 step. So
-RK3/RK4 are in tier E (m3) only; on the full model the comparison is between implicit schemes.
-An IMEX split (CIP implicit, the rest explicit) would lift the limit; it is not implemented
-(the drivers refuse IMEX tableaus).
+⚠ **The explicit Δt limits quoted here until 2026-11-13 are void** (CIP damping modes −3.9e3 /
+−4.7e3 / −9.5e3 s⁻¹ at n8 / n16 / n32, Δt ≲ 2.6e-4 s). They came from `stability_eig.jl`, whose
+finite-difference Jacobian had an incomplete sparsity pattern: it missed the CIP couplings between
+interior unknowns of neighbouring cells (17 % of the CIP entries), so the matrix was wrong. Fixed
+2026-11-13 (`se_pattern`); the limits are to be re-measured. Spectra without a CIP are unaffected.
 
 Not in the matrix:
 * θ > 0.5: first order, 2.4e-3 per step at θ = 0.6, so the carrier is gone within a few hundred steps;
@@ -72,20 +67,21 @@ Not in the matrix:
 
 | tier | what | cases |
 |---|---|---|
-| **P** pilot | m5 n32 T 1.6 kA 0.25, the 4 implicit integrators + CN at γ = 3, 100 steps: s/step per scheme on the node, and whether a stiff penalty slows Newton | 5 |
+| **P** pilot | m5 n32 T 1.6 kA 0.25, the 4 implicit integrators + CN at γ = 1 (the stiffest in the matrix), 100 steps: s/step per scheme on the node, and whether a stiff penalty slows Newton | 5 |
 | **A** core | m5 n32 × T {1.6, 2.2, 3.0} × kA {0.158, 0.25, 0.32} × 4 implicit integrators | 36 |
 | **B** resolution | m5 T 1.6 × kA {0.25, 0.32} × n {16, 64} × 4 (rule 38b: does refinement help or hurt?) | 16 |
-| **C** variable bed | m6 n32 T 1.6 × kA {0.25, 0.32} × 4; kA 0.25 also at γ {1, 3} × 4 | 16 |
+| **C** variable bed | m6 n32 T 1.6 × kA {0.25, 0.32} × 4; kA 0.25 also at γ {0.5, 1} × 4 | 16 |
 | **D** time step | m5 n32 T 1.6 kA 0.32 × 4 implicit integrators × dt {T/20, T/80} | 8 |
 | **E** null control | m3 (𝓝 off, no CIP) n32 × T {1.6, 3.0} × kA {0.158, 0.25, 0.32} × cn, sdirk22, sdirk43, rk4, rk3 (RK3/RK4 at T/40) | 30 |
 | **F** selective damping (H1) | m3 n32 T 1.6 × kA {0.158, 0.25, 0.32} × {Crouzeix at T/40, T/20, T/10; RK4 at T/20, T/10}: aim the 4th-order damping at the 2ω₀ triad member | 15 |
-| **G** γ map (H2) | m5 n32 T 1.6 × kA {0.158, 0.25, 0.32} × γ {0.1, 1, 3} (`GAMMAS_G`, provisional) × 4 implicit integrators | 36 |
-| **H** γ × dt (H3) | m5 n32 T 1.6 kA 0.32 × γ {1, 3} × {SDIRK_2_2, Crouzeix} × dt {T/20, T/80} | 8 |
+| **G** γ map (H2) | m5 n32 T 1.6 × kA {0.158, 0.25, 0.32} × γ {0.1, 0.5, 1} (`GAMMAS_G`, from pre-cluster check 2) × 4 implicit integrators | 36 |
+| **H** γ × dt (H3) | m5 n32 T 1.6 kA 0.32 × γ {0.5, 1} × {SDIRK_2_2, Crouzeix} × dt {T/20, T/80} | 8 |
 
 Tiers P–D, G, H (m5/m6) run `cn`, `sdirk22`, `sdirk43`, `crz34`; tier E (m3) runs `cn`, `sdirk22`,
 `sdirk43`, `rk4`, `rk3`. **The hypotheses H1–H3, why each tier tests them and what each should show:
-`markdown_files/CH8_CAMPAIGN_TODO.md`, "Integrator study: hypotheses".** `GAMMAS_G` is to be reset
-after pre-cluster check 2 (`run/local/run_precluster_checks.sh`) to bracket its predicted boundary.
+`markdown_files/CH8_CAMPAIGN_TODO.md`, "Integrator study: hypotheses".** `GAMMAS_G` was set from
+pre-cluster check 2 (2026-11-13; `CH8_CAMPAIGN_TODO.md`): below γ ≈ 0.2–0.5 a steady grid-scale mode
+leads the frozen spectrum, above γ ≈ 1 nothing changes, so γ = 3 was dropped for 0.5 (author).
 
 Regenerate after any change: `python3 run/integrator_study/cases.py` (it writes both tables and
 prints the per-tier relative cost). Names: `<model>_T<100T>_kA<1000kA>_n<ncell>_<integrator>[_dt<spp>][_g<100γ>]`
@@ -125,7 +121,6 @@ bash $HOME/GridapBALFEM.jl/run/integrator_study/submit.sh status    # per-case s
 # read the pilot's s/step per integrator (run.log), re-estimate the cost below, then:
 bash $HOME/GridapBALFEM.jl/run/integrator_study/submit.sh E F     # cheap: m3 null control + the H1 ladder
 bash $HOME/GridapBALFEM.jl/run/integrator_study/submit.sh A         # the core
-# reset GAMMAS_G in cases.py from pre-cluster check 2, regenerate, commit, pull, then:
 bash $HOME/GridapBALFEM.jl/run/integrator_study/submit.sh G C
 bash $HOME/GridapBALFEM.jl/run/integrator_study/submit.sh B D H
 ```
