@@ -125,6 +125,23 @@ bash $HOME/GridapBALFEM.jl/run/integrator_study/submit.sh G C
 bash $HOME/GridapBALFEM.jl/run/integrator_study/submit.sh B D H
 ```
 
+**On DelftBlue** (2026-11-13) the same commands run once `BALFEM_CLUSTER=blue` is exported
+(`~/.bashrc`). `cluster.sh` then adds `--partition=compute-p2 --account=innovation
+--cpus-per-task=8` to every submission and resubmission (`BALFEM_ACCOUNT` overrides the account),
+and writes the output to `/scratch/$USER/integrator_study` (the home directory is too small). The
+modules come from `compile/load_modules_blue.sh` (OpenMPI 5.0.10, Julia 1.10 from juliaup), the
+sysimage from `compile/compile_blue.sh`. One-time set-up:
+
+```bash
+curl -fsSL https://install.julialang.org | sh -s -- --yes --default-channel 1.10.10   # Julia 1.10
+echo 'export BALFEM_CLUSTER=blue' >> ~/.bashrc && source ~/.bashrc
+cd $HOME/GridapBALFEM.jl/compile && sbatch compile_blue.sh                          # several hours, as on Snellius
+```
+
+Keep the cases that are compared with each other (a tier, or the integrators of one
+configuration) on one cluster: the CPUs differ, so the round-off differs, and in a growth study a
+blow-up time can move with it.
+
 ## Cost (to be replaced by the pilot's numbers)
 
 The only measurements are local: m5 n32 under CN at ≈ 58 s/step on a loaded laptop, in Gridap debug

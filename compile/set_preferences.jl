@@ -9,25 +9,25 @@
 #
 #  RUN IT ONCE, with the SAME --project used to build the sysimage AND to launch
 #  runs (so the binding lands in the right LocalPreferences.toml):
-#      source compile/load_modules_snellius.sh
+#      source compile/load_modules_<cluster>.sh          # snellius | blue
 #      julia --project=$HOME/GridapBALFEM.jl compile/set_preferences.jl
 #
-#  The libmpi path below MUST match the OpenMPI module in load_modules_snellius.sh
-#  (Snellius: OpenMPI/5.0.3-GCC-13.3.0). If you change the module, change this.
+#  The libmpi directory is read from MPI_LIB_DIR, which load_modules_<cluster>.sh sets from the
+#  loaded OpenMPI module (`mpicc --showme:libdirs`), so the binding always matches the module
+#  (Snellius OpenMPI/5.0.3-GCC-13.3.0, DelftBlue openmpi/5.0.10; 2026-11-13: was hard-coded).
 # ==============================================================
 
 using MPIPreferences, Pkg
 
-### DelftBlue
-#mpi_lib_dir = "/apps/arch/2024r1/software/linux-rhel8-cascadelake/gcc-11.3.0/openmpi-4.1.6-w6w5qi5ljesbctyoojlfialbynqt25jb/lib/"
-
-# Snellius OpenMPI/5.0.3-GCC-13.3.0 (matches load_modules_snellius.sh)
-mpi_lib_dir = "/sw/arch/RHEL9/EB_production/2024/software/OpenMPI/5.0.3-GCC-13.3.0/lib/"
+mpi_lib_dir = get(ENV, "MPI_LIB_DIR", "")
+isempty(mpi_lib_dir) && error(
+    "MPI_LIB_DIR is not set — source compile/load_modules_<cluster>.sh first (it loads OpenMPI " *
+    "and sets MPI_LIB_DIR).")
 libmpi = joinpath(mpi_lib_dir, "libmpi.so")
 
 isfile(libmpi) || error(
     "libmpi.so not found in $mpi_lib_dir — load the OpenMPI module first " *
-    "(`source compile/load_modules_snellius.sh`) and verify the path.")
+    "(`source compile/load_modules_<cluster>.sh`) and verify the path.")
 
 # Use the OFFICIAL switch rather than a hand-rolled set_preferences! block. It
 # dlopens the system libmpi, auto-detects the vendor/ABI, and writes ALL required

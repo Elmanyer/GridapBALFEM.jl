@@ -123,6 +123,8 @@ for n in "${names[@]}"; do
 done
 if [ "$again" = 1 ]; then
     cd "$BALFEM_PROJ/output/slurm_logs/integrator_study" 2>/dev/null || true
-    sbatch --array="$pack" --export=ALL "$here/run_pack.sh"
+    source "$here/cluster.sh"                         # the same cluster flags as the first submission
+    sbatch --array="$pack" --job-name="${SLURM_JOB_NAME:-BALFEM_integ}" \
+           ${STUDY_SBATCH_FLAGS[@]+"${STUDY_SBATCH_FLAGS[@]}"} --export=ALL "$here/run_pack.sh"
     echo "pack $pack resubmitted for its next segment"
 fi

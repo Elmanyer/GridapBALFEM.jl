@@ -13,12 +13,15 @@
 #  SLURM logs: $BALFEM_PROJ/output/slurm_logs/integrator_study.
 #  Before the first submission: build the sysimage (compile/README.md; this study uses only
 #  P1LFE-2, Nσ = 3, the default BALFEM_WARMUP_VERT), and check the disk quota (≈ 160 MB per case).
+#  CLUSTER: BALFEM_CLUSTER = snellius (default) | blue (DelftBlue); its sbatch flags and default
+#  output directory are in cluster.sh.
 # ============================================================================
 set -euo pipefail
 : "${BALFEM_PROJ:=$HOME/GridapBALFEM.jl}"
+here="$BALFEM_PROJ/run/integrator_study"
+source "$here/cluster.sh"
 : "${BALFEM_STUDY_OUT:=$BALFEM_PROJ/output/integrator_study}"
 : "${BALFEM_MAX_CONCURRENT:=8}"
-here="$BALFEM_PROJ/run/integrator_study"
 logs="$BALFEM_PROJ/output/slurm_logs/integrator_study"
 mkdir -p "$logs" "$BALFEM_STUDY_OUT"
 
@@ -44,5 +47,7 @@ for tier in "$@"; do
     [ -n "$ids" ] || { echo "tier $tier: no packs (tiers: P A B C D E F G H)" >&2; continue; }
     echo -n "tier $tier, packs $ids: "
     sbatch --array="${ids}%${BALFEM_MAX_CONCURRENT}" --job-name="BALFEM_integ_$tier" \
-           --export=ALL,BALFEM_STUDY_OUT="$BALFEM_STUDY_OUT" "$here/run_pack.sh"
+           ${STUDY_SBATCH_FLAGS[@]+"${STUDY_SBATCH_FLAGS[@]}"} \
+           --export=ALL,BALFEM_STUDY_OUT="$BALFEM_STUDY_OUT",BALFEM_CLUSTER="${BALFEM_CLUSTER:-snellius}" \
+           "$here/run_pack.sh"
 done

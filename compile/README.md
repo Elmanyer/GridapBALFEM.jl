@@ -40,11 +40,13 @@ into one file, so every MPI rank **loads** the code instead of JIT-compiling it.
 
 | File | Role |
 |------|------|
-| `load_modules_snellius.sh` | `module load` OpenMPI/5.0.3 + Julia, and put the OpenMPI lib on `LD_LIBRARY_PATH`. Sourced by **both** build and run. |
-| `set_preferences.jl` | Pin `MPI.jl` to the **system** OpenMPI via `MPIPreferences.use_system_binary()`, and put **Gridap in performance mode** (its `@check`s compiled away, ≈ −20 % per 𝓝 step; `BALFEM_GRIDAP_MODE=debug` keeps them). Writes `LocalPreferences.toml`, forces recompile; both settings are baked into the image. |
+| `load_modules_snellius.sh` | `module load` OpenMPI/5.0.3 + Julia, put the OpenMPI lib on `LD_LIBRARY_PATH` and in `MPI_LIB_DIR`. Sourced by **both** build and run. |
+| `load_modules_blue.sh` | DelftBlue (2026 stack): `module load` openmpi/5.0.10, **Julia 1.10 from juliaup** (not the julia/1.11.6 module: `Manifest.toml` is resolved for 1.10.10), `MPI_LIB_DIR`. Refuses another Julia version and prints the juliaup install line. |
+| `set_preferences.jl` | Pin `MPI.jl` to the **system** OpenMPI (the `libmpi.so` in `MPI_LIB_DIR`, set by `load_modules_<cluster>.sh`) via `MPIPreferences.use_system_binary()`, and put **Gridap in performance mode** (its `@check`s compiled away, ≈ −20 % per 𝓝 step; `BALFEM_GRIDAP_MODE=debug` keeps them). Writes `LocalPreferences.toml`, forces recompile; both settings are baked into the image. |
 | `warmup.jl` | Tiny (4×4, 2-step) runs that trace-compile the **complete** solver: all six models, sequential and distributed, every integrator, interior and boundary generation (regular + WaveSpec sea, relaxation, hot start), walls / open / periodic boundaries, the x-periodic box, closed-basin release, the skeleton stabilisers, the GMRES preconditioners, and the per-step diagnostics, checks and VTK output. Knobs: `BALFEM_WARMUP_VERT` (vertical bases, default P1LFE-2; **the compiled solver is specific to Nσ = M·p + 1**, the length of the `VectorValue{Nσ}` velocity, so every Nσ a campaign uses must be listed, e.g. `"1:1,2:1"` for Nσ = 2 and 3; the 1-D integrator study runs P1LFE-2 only, so the default suffices), `BALFEM_WARMUP_EXTRA=mms,ad`, `BALFEM_WARMUP_ONLY`. **`BALFEM_WARMUP_DRYRUN=1` checks every case's keywords in seconds — run it before a build.** Each case is guarded; the build log ends with a summary of what was baked. A variable bed defined in a launcher closure still JITs its H-dependent kernels (closure type). |
 | `compile.jl` | `create_sysimage(...)` with an **MPI preflight** that refuses to build unless MPI binds system OpenMPI. |
 | `compile_snellius.sh` | SLURM job that runs the build steps end to end (partition `rome`), then stamps the image with a hash of `src/*.jl` for the launchers' staleness check. |
+| `compile_blue.sh` | The same on DelftBlue (partition `compute-p2`, account `innovation`; `Pkg.instantiate` first, installs `mpiexecjl` if missing). Run on `compute-p2` only: the image is compiled for the build node's CPU. |
 
 The image is **used** by every launcher in `../run/` and `../run/dist_small/`, through the shared
 helper **`../run/balfem_env.sh`** — see "How the launchers use the image" below.
@@ -194,7 +196,7 @@ and confirm with `sacct -j <id> --format=MaxRSS` first.
 ## When to rebuild
 
 Rebuild only after: a change to `src/*.jl`, a package upgrade, or a change of the OpenMPI
-module (then update the `libmpi` path in `set_preferences.jl` first). Editing a run script
+module (the `libmpi` path follows the module through `MPI_LIB_DIR`). Editing a run script
 or environment variables needs **no** rebuild.
 
 **Staleness is detected, not prevented.** Every launcher runs
