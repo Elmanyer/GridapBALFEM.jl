@@ -127,7 +127,7 @@ bash $HOME/GridapBALFEM.jl/run/integrator_study/submit.sh B D H
 
 **On DelftBlue** (2026-11-13) the same commands run once `BALFEM_CLUSTER=blue` is exported
 (`~/.bashrc`). `cluster.sh` then adds `--partition=compute-p2 --account=innovation
---cpus-per-task=8` to every submission and resubmission (`BALFEM_ACCOUNT` overrides the account),
+--cpus-per-task=8 --mem-per-cpu=3900M` (DelftBlue refuses a job without both) to every submission and resubmission (`BALFEM_ACCOUNT` overrides the account),
 and writes the output to `/scratch/$USER/integrator_study` (the home directory is too small). The
 modules come from `compile/load_modules_blue.sh` (OpenMPI 5.0.10, Julia 1.10 from juliaup), the
 sysimage from `compile/compile_blue.sh`. One-time set-up:

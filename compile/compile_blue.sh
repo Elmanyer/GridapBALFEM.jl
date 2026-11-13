@@ -5,8 +5,8 @@
 #SBATCH --time=16:00:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=56G
+#SBATCH --cpus-per-task=15
+#SBATCH --mem-per-cpu=3900M
 #SBATCH --output=compile_GridapBALFEM.%j.out
 #SBATCH --error=compile_GridapBALFEM.%j.err
 #
@@ -17,6 +17,8 @@
 # Build on the SAME partition you run on (compute-p2): the image is compiled for the build node's
 # CPU (compile.jl sets no cpu_target), so an image built here does not load on compute-p1/memory.
 # A different account: sbatch --account=<name> compile_blue.sh.
+# DelftBlue refuses a job without --cpus-per-task and --mem-per-cpu (--mem alone is not accepted);
+# 15 × 3900M (the per-core share) = 57 GB, the 56 GB of the Snellius build.
 # Needs Julia 1.10 from juliaup (compile/load_modules_blue.sh says how to install it).
 
 set -euo pipefail
