@@ -19,8 +19,10 @@
 #    cut       when the timeout stopped it (exit 124) — resumed by the next segment.
 #  The analysis stitches the segments (each has its own diagnostics.csv and VTK series).
 #
-#  MEMORY: --mem only (run/SNELLIUS_ROME_LAUNCH_CONFIGS.md §2): 28 GiB = 1/8 node for 8 cases
-#  (≈ 3.5 GiB each; a 𝓝 box case peaked at 2.8–3.0 GB locally). One thread per case.
+#  MEMORY: not in this header — cluster.sh sets it per cluster (sbatch refuses --mem together with
+#  --mem-per-cpu, and a command-line flag cannot remove a header one). Snellius: --mem=28G = 1/8
+#  node for 8 cases (run/SNELLIUS_ROME_LAUNCH_CONFIGS.md §2; ≈ 3.5 GiB each; a 𝓝 box case peaked
+#  at 2.8–3.0 GB locally). One thread per case.
 #  Per case from cases.tsv: physics, integrator, dt, the CIP penalty γ, and the output cadence
 #  (save/checkpoint every N steps, scaled with dt so every case keeps ≈ 8 samples per period).
 # ============================================================================
@@ -30,7 +32,6 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --mem=28G
 #SBATCH --output=%x.%A_%a.out
 #SBATCH --error=%x.%A_%a.err
 

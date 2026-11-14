@@ -90,7 +90,7 @@ prints the per-tier relative cost). Names: `<model>_T<100T>_kA<1000kA>_n<ncell>_
 ## How it runs
 
 * **Packs.** One array task runs one pack of up to 8 sequential cases side by side on a **rome 1/8
-  node** (each tier is cut into the fewest packs, as equal in size as possible: 23 packs of 5–8) (16 cores, `--mem=28G`, ≈ 3.5 GiB per case; a 𝓝 box case peaked at 2.8–3.0 GB locally),
+  node** (each tier is cut into the fewest packs, as equal in size as possible: 23 packs of 5–8) (16 cores, `--mem=28G` set by `cluster.sh`, ≈ 3.5 GiB per case; a 𝓝 box case peaked at 2.8–3.0 GB locally),
   one thread each, Julia loaded from the **sysimage** (`-J`, strict freshness check). Cases of one
   tier and model are cost-sorted and grouped, so a pack's cases end at similar times.
 * **Segments.** `run_pack.sh` stops each case with `timeout` at `BALFEM_SEG_HOURS` (119 h). The next
@@ -127,7 +127,9 @@ bash $HOME/GridapBALFEM.jl/run/integrator_study/submit.sh B D H
 
 **On DelftBlue** (2026-11-13) the same commands run once `BALFEM_CLUSTER=blue` is exported
 (`~/.bashrc`). `cluster.sh` then adds `--partition=compute-p2 --account=innovation
---cpus-per-task=8 --mem-per-cpu=3900M` (DelftBlue refuses a job without both) to every submission and resubmission (`BALFEM_ACCOUNT` overrides the account),
+--cpus-per-task=8 --mem-per-cpu=3900M` (DelftBlue refuses a job without both) to every submission and resubmission (`BALFEM_ACCOUNT` overrides the account;
+the memory flag lives in `cluster.sh` for every cluster, not in `run_pack.sh`'s header, because sbatch
+refuses `--mem` together with `--mem-per-cpu`),
 and writes the output to `/scratch/$USER/integrator_study` (the home directory is too small). The
 modules come from `compile/load_modules_blue.sh` (OpenMPI 5.0.10, Julia 1.10 from juliaup), the
 sysimage from `compile/compile_blue.sh`. One-time set-up:
