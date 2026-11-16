@@ -49,10 +49,10 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 | `src/` (19 files) | `problem.jl`: `BALFEMProblem`, `resolve_physics`, the loop-free residual and hand Jacobians · `nlpressure.jl`: `𝓝` {3,6,7,8} and the ∇h half · `broken.jl`: Class III cellwise Hessians + kind-S facet terms + exact Jacobian, the C⁰-CIP `:jumpgrad` (**mandatory with 𝓝**) and `:ghostvolume`; sequential **and distributed** (ghost sequential only) · `utilities.jl`: `setup_and_run`, `output_dir_name`, `check_v1_env`, `write_run_manifest` · `configuration.jl`: `write_run_configuration` (`CONFIGURATION.txt`) · `vopt.jl`, `mms.jl`, `vertical.jl`, … (`ARCHITECTURE.md` §2) |
 | `test/` | `runtests.jl` judges by gate output (never exit codes); `test/local/`, `test/cluster/`; `test_skeleton_ad.jl`; `test_nlp_distributed_parity.jl` (models 5–6, sequential ↔ distributed, debug or MPI backend); `test/v2_migration/regression_snapshot.jl` (v1→v2 gate, recording in `output/v2_baseline/`) |
 | `examples/` | `local_1d/` (`run_flume_1d.jl`, `run_periodic_1d.jl` the closed box, `stability_eig.jl`, `cip_eigen_analysis.jl`, `cip_eigen_order_rule.jl`), `local_2d/`, `local_mms/`, `distributed/`, `validation/` |
-| `run/` | `local/balfem_local.sh`, `balfem_env.sh` (cluster), SLURM launchers, `SNELLIUS_ROME_LAUNCH_CONFIGS.md`; `linear_production/` (v2 linear Snellius suite, single-node 1×42 directional); v2 box launchers `run/local/run_1dper_v2_unstab{,_extra,_q32}.sh` (⚠ their nlp1 rows are historical: 𝓝 now carries the mandatory CIP) |
-| `compile/` | cluster sysimage chain (`RUNNING.md` §5); `set_preferences.jl` adds the forks by URL |
+| `run/` | `local/balfem_local.sh`, `balfem_env.sh` (cluster), SLURM launchers, `SNELLIUS_ROME_LAUNCH_CONFIGS.md`; `linear_production/` (v2 linear Snellius suite, single-node 1×42 directional); v2 box launchers `run/local/run_1dper_v2_unstab{,_extra,_q32}.sh` (⚠ their nlp1 rows are historical: 𝓝 now carries the mandatory CIP); **`integrator_study/`** (the time-integrator box study: `cases.py` → `cases.tsv`/`packs.tsv`, `submit.sh`, `run_pack.sh` with checkpoint segments, `cluster.sh` = per-cluster sbatch flags incl. the memory request, `BALFEM_CLUSTER=snellius\|blue`) |
+| `compile/` | cluster sysimage chain (`RUNNING.md` §5): `compile_snellius.sh` and `compile_blue.sh` (DelftBlue compute-p2, `load_modules_blue.sh`: OpenMPI 5.0.10 + juliaup Julia 1.10); `set_preferences.jl` adds the forks by URL and binds MPI to the system library |
 | `output/` · `output_v1/` | gitignored. `output/` = v2 only; every run writes `run_manifest.toml` (machine record) and `CONFIGURATION.txt` (readable identity card: a one-line `ID`, model, physics with the derived kd/kA/λ/dispersion errors, discretisation, integrator with its carrier damping, output; same sections in every run; 2026-11-11) |
-| `postprocessing/` | `GridapBALFEMPost`, its own environment; `examples/periodic_growth.jl` gives the band growth rates |
+| `postprocessing/` | `GridapBALFEMPost`, its own environment; `examples/periodic_growth.jl` gives the band growth rates; `examples/reconstruct_3d_vtk.jl` writes 3-D `.vts` series (u, v, w, p, p_nh, p_dyn) from a run's stored modes for ParaView |
 | `WaveSpec.jl/` | vendored sea-state synthesis (GitHub version) |
 | `Gridap.jl/` | the Gridap **fork** (`Elmanyer/Gridap.jl` @ `fix-transient-multifield-ad`, v0.20.8) with two AD patches: transient multifield (`fa860899c`) and skeleton integrals on transient fields (`3928b98b9`, **not pushed**; loaded locally via `Pkg.develop`) |
 | `latex_docs/` | `BALFEM_models_v1/` (frozen), `BALFEM_models_v2/` (Overleaf), `CFC2027_abstract/`, `doc_figures/` |
@@ -156,6 +156,12 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
   * `resolve_cbdy` gives the published set at `p = 1` and a uniform split at `p ≥ 2`.
 * **Postprocessing** (`GridapBALFEMPost`): VTK/CSV analysis, from-modes reconstruction, sea-state
   statistics.
+  * **3-D reconstruction for ParaView** (`examples/reconstruct_3d_vtk.jl <run> [nσ] [every]`,
+    2026-11-14): w and p (p_nh, p_dyn) rebuilt from the stored velocity modes and η of a 2-D run, on
+    z = −d + σ(d+η). Default: the σ-nodes of the vertical mesh only (`<run>/recon3d/`); `nσ ≥ 2` adds
+    uniform interpolated levels (`<run>/recon3d_s<nσ>/`). ∂ₓ by 4th-order FD on the vertex grid, ∂ₜ by
+    central FD across snapshots (coarse output cadence loses high frequencies); p_nh is the flat-bed
+    formula.
 
 ## 4. Physics selection
 
@@ -184,74 +190,75 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 
 ## 5. Current Implementation Stage
 
-*2026-10-30. Full picture: [`markdown_files/STATUS.md`](markdown_files/STATUS.md) (⚠ its route section
-predates the 2026-10-30 decision below).*
+*Updated 2026-11-17. Full picture: [`markdown_files/STATUS.md`](markdown_files/STATUS.md) (its 2026-11-11
+update is the current route); actions: [`CH8_CAMPAIGN_TODO.md`](markdown_files/CH8_CAMPAIGN_TODO.md)
+"RESUME HERE".*
 
-**Working and verified.**
-* The v2 code base: Class III cellwise + kind-S facet terms; Boolean `nl_pressure`; v1 code deleted.
-* The implemented residual matches LaTeX chapters 6–7 term by term (re-read 2026-10-29, signs included).
-* v1→v2 equivalence entry by entry (12/12).
-* Linear models 1–2 at optimal order: 1-D and 2-D, sequential and distributed, five vertical bases.
-* Nonlinear models 3–4 MMS to `nx = 32`.
-* The Yang & Liu collapse.
-* Fast suite 9/9 (on the code before the 2026-10-30 changes; not re-run since).
-* The unstabilised v2 box ladder (`STABILITY.md` §3). Re-analysed per harmonic 2026-10-29: the growing
-  mode sits at `n ≈ N_cells` (λ ≈ one element) at every resolution, i.e. it is **grid-locked**, a
-  discretisation instability, not a property of the model PDE.
+### Working and verified
+* **The v2 code base:** Class III cellwise + kind-S facet terms; Boolean `nl_pressure`; v1 code deleted.
+  The implemented residual matches LaTeX chapters 6–7 term by term (re-read 2026-10-29, signs included);
+  v1→v2 equivalence entry by entry (12/12).
+* **Linear models 1–2** at optimal order: 1-D and 2-D, sequential and distributed, five vertical bases.
+  **Nonlinear models 3–4** MMS to `nx = 32`. The Yang & Liu collapse.
+* **Mandatory first-order C⁰-CIP with 𝓝** (2026-10-30, author): default γ_u = γ_η = 0.3; refused
+  without it or with `p_eta < 2`; every driver records the resolved γ in the manifest.
+* **The full nonlinear model distributed** (skeleton facet terms and `:jumpgrad` on
+  `DistributedDiscreteModel`; `:ghostvolume` stays sequential). The depth is built with the ghost layer
+  (`depth_cf`): **any CellField a skeleton term reads on both sides must include ghosts.**
+  * Gates: `test_nlp_distributed_parity` 14/14 (debug backend and `mpiexecjl -n 4`, ≤ 2e-12);
+    `test_broken_formulation` 40/40; `test_jacobians_ad` 14/14; regression snapshot 12/12;
+    `test_skeleton_ad` S0, S1, S2 `:jumpgrad` pass.
+* **Time integrators** (`build_time_integrator`, 2026-11-11): θ, any Gridap RK tableau, generalised-α;
+  the carrier damping of the chosen scheme is printed in `CONFIGURATION.txt`.
+* **Run records:** every run writes `run_manifest.toml` and `CONFIGURATION.txt` (2026-11-11).
 
-**Implemented and verified 2026-10-30 (committed 2026-10-30, not pushed).**
-* **Mandatory first-order C⁰-CIP with 𝓝** (author's decision): default γ_u = γ_η = 0.3; refused without
-  it or with `p_eta < 2`; all drivers resolve the default and record it in the manifest.
-* **The full nonlinear model distributed** (V2_SOLVER_PLAN step 10): skeleton facet terms and `:jumpgrad`
-  on `DistributedDiscreteModel`; refusals lifted in `setup_and_run_distributed`,
-  `run_mms_case_distributed` and `run_flume_1d.jl`; `:ghostvolume` stays sequential.
-* Distributed bug found by the parity gate and fixed: the depth was built on owned cells only, so
-  `H = d + η` read zero on a ghost side of a partition facet; `depth_cf` (`src/problem.jl`) builds it
-  with the ghost layer. **Any CellField that a skeleton term reads on both sides must include ghosts.**
-* Gates on the new contract: `test_nlp_distributed_parity` **14/14 on the debug backend and under
-  `mpiexecjl -n 4`** (all pairings ≤ 2e-12; ~3 h each, run by hand); `test_broken_formulation` 40/40;
-  `test_jacobians_ad` 14/14 (M5/M6 at Q3/Q2); regression snapshot 12/12 (subtracts the default CIP;
-  Q2/Q1 nlp1 is a refusal gate); `test_skeleton_ad` S0, S1, S2 `:jumpgrad` pass (S2 ghost and S3
-  fail as before, OPEN_ISSUES §2).
-* Not yet run: a distributed *transient* run of models 5–6.
-* LaTeX: chapter 7 updated (mandatory CIP, distributed); chapter 6 §6.5.2 gives the facet terms of
-  blocks C and L explicitly (`eq: Nkj facet term block C/L`).
+### Chapter 8 — stability of the CIP-mandatory solver (1-D closed box)
+**CN campaign done 2026-11-07** (`STABILITY.md` §3b; record `output/1D_stability_campaign/README.md`).
+* Models 5 and 6 run 200 periods clean at 16 and 64 cells/λ. At 32 cells/λ a late burst (245 s flat
+  bed, ~295 s cosine bed); at 8 cells/λ a slow long-wave growth drains the carrier. dx dependence is
+  not monotone. Model 3 diverged at n32 (246 s) and grew at n16 and n8.
+* **Every growing content is a vertical-structure velocity mode** (layer velocities grow, ū and η
+  barely move): a stabiliser must act on each u_j.
+* **No-CIP controls:** m6 without CIP failed (Newton NaN) at 8.4 / 25.8 / 74.8 s (n64 / n32 / n16),
+  as m5 did; at n8 the no-CIP m5 and m6 reached 320 s bounded (E/E₀ 1.04 / 1.01), while m5 n8 *with*
+  CIP shows the late growth (not yet identified per harmonic).
 
-**The route now (author, 2026-10-30).**
-1. ~~Finish and verify the CIP-mandatory solver~~ done 2026-10-30 (above).
-2. **Chapter 8**: study the stability of *that* solver (with first-order CIP) — box ladder under CN,
-   operator analysis, γ calibration; report results and conclusions.
-3. **Chapter 9**: the stabilisation strategy built on those results, judged by `STABILITY.md` §6.
-   **First step (author, 2026-11-11): numerical dissipation through the time integrator, before any
-   new term in the weak form.** CN has shown the discrete nonlinear operator is unstable; the next
-   study measures what dissipative integrators (Gridap tableaus, `dt`) buy against what they cost on
-   the carrier (`STABILITY.md` §6b, `CH8_CAMPAIGN_TODO.md` "RESUME HERE"). Only if that fails, or
-   costs too much accuracy, do new weak-form terms follow (filtering F1–F4, SUPG / VMS / residual-based).
+### Chapter 9 — stabilisation: integrator dissipation first (author, 2026-11-11)
+* **Local SDIRK_2_2 box runs, m5 n32, Δt = 0.04, 200 periods** (finished 2026-11-17;
+  `output/1D_stability_campaign/m5_q32_n32_sdirk{,_kA25}`, analysis
+  `_logs/harmonic_breakdown_m5_sdirk_2026-11-17.log`):
+  * no burst at kA 0.158 or 0.25, but the carrier kept only 2.8 % / 2.3 % of its energy (pure-sine
+    prediction 3.2 %): "stabilised at a cost of ≈ 97 % of the carrier energy" (rule 15);
+  * the CN burst's −2ω₀ component is gone; a **steady (ω ≈ 0) vertical-structure velocity growth**
+    continues underneath at +0.005–0.014 s⁻¹ (bands; single harmonics up to 0.04 s⁻¹), the same pace as
+    under CN before its burst. **The integrator cannot damp it** (ω = 0);
+  * open: "SDIRK broke the mechanism" vs "SDIRK starved it of carrier" are not separated by these runs
+    (rule 12c); the integrator study's Crouzeix 3/4 arm (damps 2ω₀, keeps the carrier) separates them.
+* m3 n32 kA 0.25 under SDIRK_2_2 diverged at 172 s (pre-cluster check 1).
+* **Cluster integrator study** (`run/integrator_study/`, 170 cases, tiers P–H, 2026-11-11/13):
+  * **Snellius pilot done** (2026-11-13, `output/snellius/integrator_study/`, 5 cases × 100 steps):
+    m5 n32 CN 32.5 s/step; cost vs CN: SDIRK_2_2 ×1.91, Crouzeix 3/4 ×2.85, SDIRK_4_3 ×3.20; γ = 1
+    vs 0.3 leaves the Newton count unchanged (+5 % time). Carrier amplitude loss at kA 0.25: SDIRK_2_2
+    0.0078 s⁻¹, SDIRK_4_3 and Crouzeix ≈ 0.0005 s⁻¹. Full study ≈ 2.1 × 10⁴ case-hours at Snellius speed.
+  * **To run on DelftBlue** (author, 2026-11-14; never mix clusters within a comparison). Launchers
+    adapted (`BALFEM_CLUSTER=blue`: compute-p2, `--cpus-per-task=8 --mem-per-cpu=3900M`; the memory flag
+    lives in `cluster.sh`, sbatch refuses `--mem` with `--mem-per-cpu`).
+  * ⚠ **Postponed until more resources:** the only account, `innovation`, allows 24 h per job, 4 running
+    / 10 submitted jobs, 64 CPUs / 250 GB per job; the launchers assume 120 h segments and 23 packs.
+    With a research/project account they run as they are (`BALFEM_ACCOUNT`); on `innovation` they need
+    24 h segments and ≤ 4 large worker-pool jobs.
+* Weak-form stabilisers (filtering F1–F4, SUPG / VMS) only if no integrator passes `STABILITY.md` §6
+  within the accuracy budget — the steady vertical-structure growth above may force that question.
 
-**Chapter-8 1-D campaign: DONE 2026-11-07** (`STABILITY.md` §3b; full record in
-`output/1D_stability_campaign/README.md`; **next actions: `CH8_CAMPAIGN_TODO.md` "RESUME HERE"**).
-* Models 5 and 6 with the mandatory CIP run 200 periods clean at 16 and 64 cells/λ.
-* At 32 cells/λ there is a late burst (245 s flat bed, ~295 s cosine bed); at 8 cells/λ a slow
-  long-wave growth drains the carrier. The dx dependence is non-monotone.
-* Model 3 diverged at n32 (246 s) and grew at n16 and n8.
-* Every growing content is a **vertical-structure velocity mode** (layer velocities grow, depth average
-  and η barely move), so a stabiliser must act on each u_j.
-* Open: the no-CIP and m3+CIP controls, and the n32 anomaly.
+### Other open items (`OPEN_ISSUES.md`)
+* Models 5–6 outside the verified MMS scope (`p_u` 3.94 → 1.97 on fine meshes, cause unknown);
+  nonlinear `p_η` order reduction at Q3/Q2.
+* Not yet run: a distributed *transient* run of models 5–6. Fast suite 9/9 not re-run since 2026-10-30.
+* `test_skeleton_ad` ghost arm (`_shift`) and S3; `test_selfconsistency` step 12; the variable-bed
+  lee-shoulder mode.
+* LaTeX chapters 8–9 and appendices still cite removed broken-audit labels.
 * Sponge sweep paused at 26 of 84 (`SPONGE_SWEEP_RESULTS.md`).
-* **Local parallel runs are capped by memory only** (rule 47; the 3-run cap is withdrawn, 2026-11-10).
-
-**Known facts the study started from (before the campaign).** Without CIP the box diverges with and without 𝓝 (Q3/Q2 64
-cells: 9 s with, 44.6 s without). First-order CIP was only ever tested on v1 (it delayed failure; late
-mid-band growth +0.13 s⁻¹); the v2 eigen-analysis predicts the same escape. No v2 nonlinear box run
-with CIP exists yet.
-
-**Other open items** (`OPEN_ISSUES.md`):
-* models 5–6 outside the verified MMS scope (`p_u` 3.94 → 1.97 on fine meshes, cause unknown);
-* nonlinear `p_η` order reduction at Q3/Q2;
-* `test_skeleton_ad` ghost arm (`_shift`); `test_selfconsistency` step 12;
-* the variable-bed lee-shoulder mode;
-* LaTeX chapters 8–9 and appendices still cite removed broken-audit labels;
-* Gridap fork commit unpushed; stale sysimage (rebuild after these `src/` edits, rule 25).
+* Gridap fork skeleton-AD commit unpushed; rebuild the sysimage after any `src/` edit (rule 25).
 
 ## 6. The design decision everything rests on
 

@@ -21,10 +21,17 @@ Standing constraints:
 > predictions in [`STABILITY.md`](STABILITY.md) §6b). CN has shown the discrete operator unstable;
 > before any new weak-form term, measure what dissipative integration buys and costs. Rule 15 is
 > rewritten accordingly (remedy runs report the carrier cost). Actions, in order:
-> 1. **In flight** (launched 2026-11-10/11): `SDIRK_2_2` box at Δt = 0.04 for m3 and m5 n32
+> 1. ~~**In flight** (launched 2026-11-10/11): `SDIRK_2_2` box at Δt = 0.04 for m3 and m5 n32
 >    (`run_1d_sdirk_box.sh`) and at k₀A = 0.25 (`run_1d_sdirk_box_kA25.sh`); the M = 1 triad controls
 >    (`run_1d_m3_M1_controls.sh`: M = 2 at T = 3.0 s, M = 1 at n64). Analyse with `energy_history`
->    (groups + modes 14–18, 32) against the CN twins.
+>    (groups + modes 14–18, 32) against the CN twins.~~
+>    **Done 2026-11-17 (m5; m3 kA 0.25 diverged at 172 s, check 1).** m5 n32 at kA 0.158 and 0.25 ran
+>    200 periods without a burst at a carrier cost of ≈ 97 % of its energy. Per-harmonic breakdown
+>    (`output/1D_stability_campaign/_logs/harmonic_breakdown_m5_sdirk.jl`, log `…_2026-11-17.log`): the
+>    CN burst's −2ω₀ member is gone; a steady (ω ≈ 0) vertical-structure velocity growth continues at
+>    +0.005–0.014 s⁻¹ (bands), as under CN before its burst, and no integrator can damp it. Burst
+>    "removed" vs "starved of carrier" is not separated (rule 12c): the study's Crouzeix arm decides.
+>    Full record: campaign README "SDIRK_2_2 on m5 n32" and STATUS.md update 2026-11-17.
 > 2. **No runs:** frequencies of the growing modes of every CN-unstable run (temporal spectrum), the
 >    fastest discrete frequency (`stability_eig.jl`, explicit limits), and the damping/carrier-cost table
 >    per candidate tableau and Δt (STABILITY §6b).
@@ -42,6 +49,15 @@ Standing constraints:
 >    decayed to E = 0.24): at kA ≥ 0.25 the less dissipative schemes are expected to fail sooner on
 >    m3; m5/m6 (CIP) are not predicted by it (2026-11-12).
 >    Order: sysimage build → pilot (P) → E → A → C → B → D. README in that folder.
+>    **2026-11-13: Snellius pilot done** (`output/snellius/integrator_study/`): m5 n32 CN 32.5 s/step;
+>    SDIRK_2_2 ×1.91, Crouzeix 3/4 ×2.85, SDIRK_4_3 ×3.20 (guesses were 2.2 / 3.3 / 4.4); γ = 1 vs 0.3
+>    same Newton count; carrier amplitude loss at kA 0.25: SDIRK_2_2 0.0078 s⁻¹, the 3–4-stage schemes
+>    ≈ 0.0005 s⁻¹; full study ≈ 2.1 × 10⁴ case-hours at Snellius speed.
+>    **2026-11-14: the study runs on DelftBlue** (author; launchers adapted, `BALFEM_CLUSTER=blue`) —
+>    ⚠ **POSTPONED until more resources:** the `innovation` account allows 24 h per job, 4 running /
+>    10 submitted jobs, 64 CPUs / 250 GB per job. With a research/project account: `BALFEM_ACCOUNT=…`,
+>    then the pilot (`submit.sh P`) for DelftBlue speeds. Otherwise rework `run_pack.sh` for 24 h
+>    segments and ≤ 4 worker-pool jobs of 64 cases (claim files, rule 44).
 >    (The 2-step smoke of every tableau: `test/local/smoke_integrators.jl`.)
 > 4. **ASK:** the hard case m3 T = 1.4/1.5 s n64 (CN 8.7/12.9 s) under the best candidates.
 > 5. **ASK:** m5/m6 n32 with the best one or two (cost: m5 ≈ 1–2 weeks per run under SDIRK; the

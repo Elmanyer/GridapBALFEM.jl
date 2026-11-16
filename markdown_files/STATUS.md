@@ -1,5 +1,30 @@
 # STATUS.md — where the project stands (2026-10-09)
 
+> **Update 2026-11-17: first integrator results; the cluster study waits for resources.**
+> * **Local SDIRK_2_2 box runs, m5 n32, Δt = 0.04, 200 periods, finished** (kA 0.158 and 0.25;
+>   `output/1D_stability_campaign/m5_q32_n32_sdirk{,_kA25}`). No burst (CN burst at 245 s), but the
+>   carrier kept only 2.8 % / 2.3 % of its energy: **stabilised at a cost of ≈ 97 % of the carrier
+>   energy** (rule 15).
+> * **Per-harmonic breakdown** (`_logs/harmonic_breakdown_m5_sdirk_2026-11-17.log`): the CN burst's
+>   −2ω₀ component is gone, but a **steady (ω ≈ 0) vertical-structure velocity growth** continues at
+>   +0.005–0.014 s⁻¹ (bands; single harmonics up to 0.04 s⁻¹), the pace CN showed before its burst. It
+>   lives in u₁–u₃ with almost no ū, so η does not see it, and **no integrator can damp it** (ω = 0).
+>   These runs cannot tell "SDIRK broke the burst mechanism" from "SDIRK starved it of carrier"
+>   (rule 12c); the integrator study's Crouzeix 3/4 arm (damps 2ω₀, keeps the carrier) can.
+> * The rising u_max/η_max of the SDIRK runs (3.5 → 4.0) is not growth: the carrier keeps its linear
+>   u/η ratio; the crest loses its bound harmonics as the wave flattens, and the u low-band content
+>   (vertical structure, not bound) decays more slowly than the carrier.
+> * **No-CIP controls:** m6 without CIP failed (Newton NaN) at 8.4 / 25.8 / 74.8 s (n64 / n32 / n16);
+>   m5 and m6 n8 without CIP reached 320 s bounded.
+> * **Integrator study (`run/integrator_study/`):** Snellius pilot done 2026-11-13 (m5 n32 CN 32.5
+>   s/step; SDIRK_2_2 ×1.91, Crouzeix 3/4 ×2.85, SDIRK_4_3 ×3.20; γ = 1 does not slow Newton; full study
+>   ≈ 2.1 × 10⁴ case-hours). The campaign moves to **DelftBlue** (author, 2026-11-14; launchers adapted)
+>   but is **postponed**: the only account, `innovation`, caps jobs at 24 h, 4 running / 10 submitted,
+>   64 CPUs / 250 GB. A research/project account runs the launchers as they are; otherwise they need
+>   24 h segments and a few large worker-pool jobs.
+> * Consequence for the route: if the steady vertical-structure growth persists under every integrator,
+>   the weak-form stabilisers (§4: a term acting on each u_j) become necessary regardless of the study.
+
 > **Update 2026-11-11: the next step is dissipation through the time integrator (author's decision;
 > supersedes §4 as the immediate next step).**
 > * CN has shown the discrete nonlinear operator is unstable in every box run. Before any new term in
