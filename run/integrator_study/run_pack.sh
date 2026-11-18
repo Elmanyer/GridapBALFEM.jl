@@ -4,7 +4,9 @@
 #
 #  One SLURM array task = one pack = up to 8 sequential box cases run side by side
 #  (examples/local_1d/run_periodic_1d.jl, one Julia process each, the sysimage loaded with -J).
-#  The case matrix and the packs: run/integrator_study/{cases,packs}.tsv (cases.py).
+#  The case matrix and the packs: run/integrator_study/{cases,packs}.tsv (cases.py); with
+#  BALFEM_STUDY_SET=extra (submit_extra.sh) {cases,packs}_extra.tsv. The resubmission below keeps the
+#  set (--export=ALL carries BALFEM_STUDY_SET).
 #  Submit with submit.sh, never by hand (it maps tiers to array indices).
 #
 #  SEGMENTS. A case may need more than the 120 h wall. Each case therefore runs in segments
@@ -43,11 +45,14 @@ here="$BALFEM_PROJ/run/integrator_study"
 : "${BALFEM_MAX_SEG:=10}"                # resubmissions stop after this many segments (the
                                          #   costliest case needs ≈ 7; a safety stop, not a budget)
 pack="${SLURM_ARRAY_TASK_ID:?run through submit.sh (an array task id is needed)}"
+#  the case set (submit.sh): unset/empty = main (cases.tsv, packs.tsv), "extra" = *_extra.tsv
+sfx="${BALFEM_STUDY_SET:+_$BALFEM_STUDY_SET}"
+cases_tsv="$here/cases$sfx.tsv"; packs_tsv="$here/packs$sfx.tsv"
 
-line=$(awk -F'\t' -v p="$pack" 'NR > 1 && $1 == p' "$here/packs.tsv")
-[ -n "$line" ] || { echo "no pack $pack in packs.tsv" >&2; exit 1; }
+line=$(awk -F'\t' -v p="$pack" 'NR > 1 && $1 == p' "$packs_tsv")
+[ -n "$line" ] || { echo "no pack $pack in $(basename "$packs_tsv")" >&2; exit 1; }
 IFS=',' read -r -a names <<< "$(cut -f3 <<< "$line")"
-echo "$(date '+%F %T') pack $pack (tier $(cut -f2 <<< "$line")): ${#names[@]} cases on $(hostname)"
+echo "$(date '+%F %T') pack $pack (${BALFEM_STUDY_SET:-main} set, tier $(cut -f2 <<< "$line")): ${#names[@]} cases on $(hostname)"
 
 #  the sysimage: present and fresh, or BALFEM_NO_SYSIMAGE=1 (then every case compiles)
 jflag=()
@@ -60,8 +65,8 @@ fi
 #  one segment of one case (runs in the background)
 run_segment() {
     local name="$1" row case_dir last seg prev restart
-    row=$(awk -F'\t' -v n="$name" 'NR > 1 && $1 == n' "$here/cases.tsv")
-    [ -n "$row" ] || { echo "case $name not in cases.tsv" >&2; return; }
+    row=$(awk -F'\t' -v n="$name" 'NR > 1 && $1 == n' "$cases_tsv")
+    [ -n "$row" ] || { echo "case $name not in $(basename "$cases_tsv")" >&2; return; }
     IFS=$'\t' read -r _ tier model nlp flat slope T kA ncell dt periods solver tableau theta rho gamma \
                        save_every ckpt_every cost <<< "$row"
     case_dir="$BALFEM_STUDY_OUT/$name"; mkdir -p "$case_dir"

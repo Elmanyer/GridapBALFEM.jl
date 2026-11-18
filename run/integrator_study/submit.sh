@@ -15,6 +15,9 @@
 #  P1LFE-2, Nσ = 3, the default BALFEM_WARMUP_VERT), and check the disk quota (≈ 160 MB per case).
 #  CLUSTER: BALFEM_CLUSTER = snellius (default) | blue (DelftBlue); its sbatch flags and default
 #  output directory are in cluster.sh.
+#  CASE SET: BALFEM_STUDY_SET unset = the main matrix (cases.tsv, packs.tsv); "extra" = TR-BDF2 and
+#  generalised-α (cases_extra.tsv, packs_extra.tsv; tiers P A B C D E G). submit_extra.sh sets it.
+#  The set travels to run_pack.sh (and its resubmissions) through the exported environment.
 # ============================================================================
 set -euo pipefail
 : "${BALFEM_PROJ:=$HOME/GridapBALFEM.jl}"
@@ -24,12 +27,16 @@ source "$here/cluster.sh"
 : "${BALFEM_MAX_CONCURRENT:=8}"
 logs="$BALFEM_PROJ/output/slurm_logs/integrator_study"
 mkdir -p "$logs" "$BALFEM_STUDY_OUT"
+sfx="${BALFEM_STUDY_SET:+_$BALFEM_STUDY_SET}"           # "" (main) or "_extra"
+cases_tsv="$here/cases$sfx.tsv"; packs_tsv="$here/packs$sfx.tsv"
+[ -f "$cases_tsv" ] && [ -f "$packs_tsv" ] ||
+    { echo "no case set '${BALFEM_STUDY_SET:-main}': $cases_tsv / $packs_tsv missing" >&2; exit 1; }
 
 [ $# -ge 1 ] || { sed -n '4,9p' "$0"; exit 1; }
 
 if [ "$1" = "status" ]; then
     printf "%-40s %-5s %s\n" case segs state
-    tail -n +2 "$here/cases.tsv" | cut -f1,2 | while IFS=$'\t' read -r name tier; do
+    tail -n +2 "$cases_tsv" | cut -f1,2 | while IFS=$'\t' read -r name tier; do
         d="$BALFEM_STUDY_OUT/$name"
         nseg=$( (ls -d "$d"/seg[0-9][0-9] 2>/dev/null || true) | wc -l)
         state="not started"
@@ -43,11 +50,11 @@ fi
 
 cd "$logs"
 for tier in "$@"; do
-    ids=$(awk -F'\t' -v t="$tier" 'NR > 1 && $2 == t {print $1}' "$here/packs.tsv" | paste -sd, -)
-    [ -n "$ids" ] || { echo "tier $tier: no packs (tiers: P A B C D E F G H)" >&2; continue; }
-    echo -n "tier $tier, packs $ids: "
-    sbatch --array="${ids}%${BALFEM_MAX_CONCURRENT}" --job-name="BALFEM_integ_$tier" \
+    ids=$(awk -F'\t' -v t="$tier" 'NR > 1 && $2 == t {print $1}' "$packs_tsv" | paste -sd, -)
+    [ -n "$ids" ] || { echo "tier $tier: no packs in $(basename "$packs_tsv")" >&2; continue; }
+    echo -n "tier $tier (${BALFEM_STUDY_SET:-main} set), packs $ids: "
+    sbatch --array="${ids}%${BALFEM_MAX_CONCURRENT}" --job-name="BALFEM_integ${sfx}_$tier" \
            ${STUDY_SBATCH_FLAGS[@]+"${STUDY_SBATCH_FLAGS[@]}"} \
-           --export=ALL,BALFEM_STUDY_OUT="$BALFEM_STUDY_OUT",BALFEM_CLUSTER="${BALFEM_CLUSTER:-snellius}" \
+           --export=ALL,BALFEM_STUDY_OUT="$BALFEM_STUDY_OUT",BALFEM_CLUSTER="${BALFEM_CLUSTER:-snellius}",BALFEM_STUDY_SET="${BALFEM_STUDY_SET:-}" \
            "$here/run_pack.sh"
 done
