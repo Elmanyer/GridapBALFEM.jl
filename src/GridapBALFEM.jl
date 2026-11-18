@@ -68,6 +68,7 @@ const rho = 1025.0    # water density [kg/m³]
 
 include("vertical.jl")       # Stage 1: σ-mesh + full vertical tensor set (incl. P, Pcal)
 include("tensors.jl")        # constant-tensor constructors + pointwise Operation helpers
+include("jets.jl")           # value-and-tangent pairs: residual and exact Jacobian from one formula
 include("horizontal.jl")     # Stage 2: 2D mesh + stacked [η,𝖴x,𝖴y] FE spaces + wall BCs
 include("problem.jl")        # BALFEMProblem struct + loop-free residual + hand Jacobians
 include("nlpressure.jl")     # nonlinear pressure 𝓝: {3,6,7,8} direct, ∇h half by exact IBP
@@ -111,6 +112,9 @@ export alg_hess, build_skeleton_ctx, skeleton_nt, attach_skeleton!, has_cip
 export DEFAULT_CIP_GAMMA, has_mandatory_cip, require_mandatory_cip, check_nlp_surface_order
 export broken_class3_cell_fields, broken_class3_skeleton_contrib, broken_class3_residual
 export cip_contrib, ghost_contrib, stab_contrib, build_ghost_ctx, broken_class3_jacobian
+
+# Value-and-tangent pairs (src/jets.jl)
+export Jet, JZero, JZ, jval, jtan
 
 # Nonlinear pressure (full physics)
 export nlp_direct_contrib, nlp_gradh_contrib, nlp_gradH_reduced_contrib, nlp_P_reduced_contrib
