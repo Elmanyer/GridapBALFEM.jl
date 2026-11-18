@@ -61,6 +61,32 @@ regime_sym()         = Symbol(genv("BALFEM_REGIME", "nonlinear"))
 #  v2: BALFEM_NL_PRESSURE is 0/1 (all eight 𝓝 components off/on). check_v1_env() (run on load,
 #  below) refuses the v1 tier names and every removed v1 knob instead of ignoring them.
 nl_pressure_flag()   = genv_b("BALFEM_NL_PRESSURE", 0)
+#  Branch mixed-vms-solver (markdown_files/MIXED_VMS_PLAN.md):
+#    BALFEM_FORMULATION  primal | mixed          primal   (mixed needs NL_PRESSURE=1; no CIP)
+#    BALFEM_P_AUX        order of 𝖦, 𝖥           FE_ORDER
+#    BALFEM_VMS          residual-based stabilisation (0/1)   0
+#    BALFEM_VMS_CADV / _CWAVE / _CETA   the three τ coefficients   1 / 1 / 1
+#    BALFEM_VMS_DT       add (2/Δt)² to τ_a (0/1)             0
+#    BALFEM_VMS_OSS      orthogonal subgrid scales (0/1)      0   (needs VMS=1; +3 projection fields)
+formulation_sym()    = Symbol(lowercase(genv("BALFEM_FORMULATION", "primal")))
+vms_flag()           = genv_b("BALFEM_VMS", 0)
+vms_kw() = (vms = vms_flag(),
+            vms_c_adv   = genv_f("BALFEM_VMS_CADV", 1.0),
+            vms_c_wave  = genv_f("BALFEM_VMS_CWAVE", 1.0),
+            vms_c_eta   = genv_f("BALFEM_VMS_CETA", 1.0),
+            vms_dt_term = genv_b("BALFEM_VMS_DT", 0),
+            vms_oss     = genv_b("BALFEM_VMS_OSS", 0))
+"Name tokens of the formulation and the stabiliser (empty for the plain v2 primal solver)."
+function formulation_tags()
+    t = String[]
+    formulation_sym() === :mixed && push!(t, haskey(ENV, "BALFEM_P_AUX") ? "mixed-paux" * ENV["BALFEM_P_AUX"] : "mixed")
+    if vms_flag()
+        k = vms_kw()
+        push!(t, @sprintf("vms%s-a%g-w%g-e%g%s", k.vms_oss ? "-oss" : "", k.vms_c_adv, k.vms_c_wave,
+                          k.vms_c_eta, k.vms_dt_term ? "-dt" : ""))
+    end
+    return t
+end
 # Sea-bed geometry: false = variable bathymetry (∇h≠0), true = flat bed (∇h≡0).
 # Default per script (BALFEM_FLAT_BED): flat-bed cases pass 1, the bathymetry case passes 0.
 flat_bed_flag(default::Int=1) = genv_b("BALFEM_FLAT_BED", default)

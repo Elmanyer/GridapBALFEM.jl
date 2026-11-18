@@ -30,6 +30,12 @@
 #  v2: BALFEM_NL_PRESSURE=0/1 — all eight 𝓝 components off/on (Class III by the broken
 #  formulation; there is no other treatment and no component mask).
 #
+#  MIXED FORMULATION + RESIDUAL-BASED STABILISATION (branch mixed-vms-solver; MIXED_VMS_PLAN.md):
+#     BALFEM_FORMULATION  primal | mixed   (mixed: 7 fields, needs NL_PRESSURE=1, no CIP at all)
+#     BALFEM_P_AUX        order of the auxiliary fields 𝖦, 𝖥 (default FE_ORDER)
+#     BALFEM_VMS          0/1   BALFEM_VMS_CADV / _CWAVE / _CETA (default 1)   BALFEM_VMS_DT 0/1
+#     BALFEM_VMS_OSS      0/1   orthogonal subgrid scales (P⊥ of the static residual; +3 fields)
+#
 #  SKELETON STABILISATION (src/broken.jl):
 #     BALFEM_STAB      jumpgrad | ghostvolume        BALFEM_CIP_ORDER  jumpgrad orders (≤ 2)
 #     BALFEM_CIP_GU    γ_u (velocity)   BALFEM_CIP_GE  γ_η (surface)   BALFEM_CIP_HEXP  s (2)
@@ -123,10 +129,12 @@ end
 _extra = String["xper", "nlam$(nlam)", "n$(ncell)"]
 noise > 0 && push!(_extra, @sprintf("seed%.0e", noise))
 integrator_tag() === nothing || push!(_extra, integrator_tag())
+append!(_extra, formulation_tags())
+_mixed = formulation_sym() === :mixed
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
 is_resume() && push!(_extra, "resume")
 #  γ: unset ⇒ the driver default (DEFAULT_CIP_GAMMA with 𝓝, where the C⁰-CIP is mandatory; 0 otherwise)
-_cgdef = nl_pressure_flag() ? DEFAULT_CIP_GAMMA : 0.0
+_cgdef = (nl_pressure_flag() && !_mixed) ? DEFAULT_CIP_GAMMA : 0.0
 _cgu = genv_f("BALFEM_CIP_GU", _cgdef); _cge = genv_f("BALFEM_CIP_GE", _cgdef)
 _cgu > 0 && push!(_extra, @sprintf("cipu%g", _cgu))
 _cge > 0 && push!(_extra, @sprintf("cipe%g", _cge))
@@ -149,6 +157,8 @@ outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
         nlam, Lx, k0, k0 * d, k0 * Awave, ncell, dx)
 @printf("#   NO inflow, NO relaxation, NO sponge, NO source | seed %.1e on %d harmonics\n",
         noise, nmax)
+@printf("#   formulation = %s | VMS = %s\n", formulation_sym(),
+        vms_flag() ? string(vms_kw()) : "off")
 flatbed || @printf("#   BED d(x) = %.3f + %.4f·cos(%.4f x): %d undulation(s)/box, max slope %.3f, d ∈ [%.3f, %.3f] m\n",
                    d, δbed, kbed, bnw, bslope, d - δbed, d + δbed)
 @printf("#   dt=%g s | %g periods → T_final=%.1f s | out=%s\n", dt, periods, Tfinal, outdir)
@@ -166,6 +176,9 @@ diags, vert, prob = setup_and_run(;
     T_final = Tfinal, dt = dt,
     regime = regime_sym(), nl_pressure = nl_pressure_flag(), flat_bed = flatbed, h_bathy = hfun,
     use_ad = genv_b("BALFEM_USE_AD", 0),
+    formulation = formulation_sym(),
+    p_aux = haskey(ENV, "BALFEM_P_AUX") ? genv_i("BALFEM_P_AUX", feord) : nothing,
+    vms_kw()...,
     cip_gamma_u = _cgu, cip_gamma_eta = _cge,
     cip_hexp = genv_f("BALFEM_CIP_HEXP", 2.0),
     cip_order = genv_i("BALFEM_CIP_ORDER", 1),
