@@ -277,6 +277,7 @@ solver_sym() === :theta && push!(_extra, "theta")
 (solver_sym() === :sdirk && tableau_sym() !== :SDIRK_2_2) &&
     push!(_extra, lowercase(replace(String(tableau_sym()), "_" => "")))
 genv_b("BALFEM_USE_AD", 0) && push!(_extra, "ad")
+is_resume() && push!(_extra, "resume")
 genv_f("BALFEM_CIP_GU", 0.0) > 0 && push!(_extra, @sprintf("cipu%g", genv_f("BALFEM_CIP_GU", 0.0)))
 genv_f("BALFEM_CIP_GE", 0.0) > 0 && push!(_extra, @sprintf("cipe%g", genv_f("BALFEM_CIP_GE", 0.0)))
 genv_i("BALFEM_CIP_ORDER", 1) > 1 && push!(_extra, "cipord" * ENV["BALFEM_CIP_ORDER"])
@@ -336,7 +337,8 @@ common = (M=M, p_vertical=p_vert, c_bdy=cbdy_override(), p_u=feord, p_eta=p_eta,
           print_every=genv_i("BALFEM_PRINT_EVERY", 10),
           check_every=genv_i("BALFEM_CHECK_EVERY", 0),
           diag_every=genv_i("BALFEM_DIAG_EVERY", 0),
-          div_factor=genv_f("BALFEM_DIV_FACTOR", 20.0))
+          div_factor=genv_f("BALFEM_DIV_FACTOR", 20.0),
+          checkpoint_kw()...)
 
 if use_mpi
     (nl_pressure_flag() || genv_f("BALFEM_CIP_GU", 0.0) > 0 || genv_f("BALFEM_CIP_GE", 0.0) > 0) &&
