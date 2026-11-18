@@ -128,6 +128,14 @@ function attach_skeleton!(prob::BALFEMProblem, model;
         error("attach_skeleton!: cip_order must be in 1:$CIP_MAX_ORDER (got $cip_order). Gridap " *
               "evaluates derivatives of the FE bases only up to order 2 " *
               "(BROKEN_FORMULATION_PLAN.md §5.3)")
+    if prob.formulation === :mixed
+        cip_gamma_u == 0 && cip_gamma_eta == 0 ||
+            error("attach_skeleton!: formulation=:mixed carries no skeleton penalty (got γ_u=$cip_gamma_u, " *
+                  "γ_η=$cip_gamma_eta). The mixed solver is stabilised by the residual-based terms only " *
+                  "(attach_vms!; markdown_files/MIXED_VMS_PLAN.md §1).")
+        prob.skel[] = nothing
+        return prob
+    end
     if prob.nl_pressure
         cip_gamma_u > 0 && cip_gamma_eta > 0 ||
             error("attach_skeleton!: nl_pressure=true requires the C⁰-CIP penalty on BOTH fields " *
@@ -182,7 +190,9 @@ has_mandatory_cip(prob::BALFEMProblem) =
 
 "Refuse to assemble a nonlinear-pressure residual or Jacobian without the mandatory C⁰-CIP."
 function require_mandatory_cip(prob::BALFEMProblem; where::AbstractString = "global_residual")
-    prob.nl_pressure && !has_mandatory_cip(prob) &&
+    #  The requirement belongs to the PRIMAL weak form (cellwise Class III on C⁰ fields). The mixed
+    #  formulation has no second derivative of an unknown and carries no skeleton term.
+    prob.nl_pressure && prob.formulation === :primal && !has_mandatory_cip(prob) &&
         error("$where: nl_pressure=true without the C⁰-CIP penalty on both fields. The penalty " *
               "is part of the weak form of the nonlinear model (LaTeX §6.4): build the problem with " *
               "build_problem (it attaches γ = DEFAULT_CIP_GAMMA) and never detach it.")

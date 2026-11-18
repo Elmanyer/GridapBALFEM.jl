@@ -131,7 +131,10 @@ Other arguments:
 function build_fe_spaces(model, p_u::Int, Nσ::Int;
                              y_wall_bc::Symbol = :wall, x_wall_bc::Bool = false,
                              inflow = nothing,
-                             p_eta::Int = p_u - 1)
+                             p_eta::Int = p_u - 1,
+                             n_aux::Int = 0,
+                             p_aux::Int = p_u,
+                             n_oss::Int = 0)
     #  THE gate. Every FE space in this solver is built here, so validating the pairing
     #  at this one point makes a non-Taylor-Hood run impossible rather than merely
     #  discouraged. Default p_eta = p_u − 1 is Taylor-Hood by construction.
@@ -217,6 +220,33 @@ function build_fe_spaces(model, p_u::Int, Nσ::Int;
         Uspaces = inflow === nothing ?
                   Gridap.FESpaces.SingleFieldFESpace[U_eta, U_Ux, U_Uy] :
                   [U_eta, U_Ux, U_Uy]
+    end
+    # ---- MIXED FORMULATION: n_aux extra UNCONSTRAINED VectorValue{Nσ} fields (src/mixed.jl) ----
+    #  Appended AFTER [η,𝖴x,𝖴y], so u[1], u[2], u[3] keep their meaning and the 3-field path is
+    #  unchanged when n_aux = 0. No Dirichlet data: 𝖦 ≈ ∇𝖲 and 𝖥 ≈ ∇𝖻 are derived quantities
+    #  (𝖲 = ∇·(H𝗎) is generally non-zero on a wall where 𝗎·n = 0). No time derivative either: the
+    #  auxiliary rows are algebraic constraints (index-1 DAE).
+    #  `p_aux` defaults to the velocity order (v1's choice); p_u − 1 is the probe of
+    #  markdown_files/MIXED_VMS_PLAN.md D2.
+    if n_aux > 0
+        p_aux ≥ 1 || error("build_fe_spaces: p_aux = $p_aux must be ≥ 1 (continuous auxiliary space)")
+        reffe_aux = p_aux == p_u ? reffe_U : ReferenceFE(lagrangian, VectorValue{Nσ,Float64}, p_aux)
+        for _ in 1:n_aux
+            Vaux = FESpace(model, reffe_aux; conformity=:H1)
+            push!(Vspaces, Vaux)
+            push!(Uspaces, TrialFESpace(Vaux))
+        end
+    end
+    # ---- OSS STABILISATION: the projections Πx, Πy (VectorValue{Nσ}, velocity order) and δ (scalar,
+    #  surface order) of the static residuals (src/vms.jl), appended LAST. Unconstrained (no
+    #  Dirichlet data: a residual is not zero on a wall), no time derivative (index-1 DAE).
+    if n_oss > 0
+        n_oss == 3 || error("build_fe_spaces: n_oss must be 0 or 3 (Πx, Πy, δ), got $n_oss")
+        for reffe in (reffe_U, reffe_U, reffe_eta)
+            Vp = FESpace(model, reffe; conformity=:H1)
+            push!(Vspaces, Vp)
+            push!(Uspaces, TrialFESpace(Vp))
+        end
     end
     U = MultiFieldFESpace(Uspaces)
     V = MultiFieldFESpace(Vspaces)

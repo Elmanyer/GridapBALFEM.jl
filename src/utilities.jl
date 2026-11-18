@@ -651,6 +651,21 @@ function setup_and_run(;
     cip_order    :: Int     = 1,          # hp-CIP: penalise ⟦∂ₙʲ·⟧ for j = 1..cip_order (capped at
                                           #   each field's FE order; ≤ 2 — Gridap's derivative limit),
                                           #   weight h_F^(s+2(j−1)). BROKEN_FORMULATION_PLAN.md §5.2.
+    # ---- Mixed formulation and residual-based stabilisation (src/mixed.jl, src/vms.jl) ----
+    formulation  :: Symbol  = :primal,    # :primal — 3 fields (the v2 solver: with 𝓝, Class III cellwise +
+                                          #   facet terms + mandatory C⁰-CIP)
+                                          # :mixed  — 7 fields [η,𝖴x,𝖴y,𝖦x,𝖦y,𝖥x,𝖥y]; needs nl_pressure=true;
+                                          #   no skeleton term and no penalty (cip_gamma_* must stay 0)
+    p_aux                   = nothing,    # order of the auxiliary space 𝖦, 𝖥 (nothing → p_u)
+    vms          :: Bool    = false,      # residual-based (VMS) stabilisation. Models 3–4 on :primal,
+                                          #   models 5–6 on :mixed. Refused on linear models and on primal 𝓝.
+    vms_c_adv    :: Float64 = 1.0,        # C_a: vertical-structure (advective) subscale, τ_a ~ h_e/(2|u|)
+    vms_c_wave   :: Float64 = 1.0,        # C_w: depth-integrated momentum subscale, τ_w = C_w h_e/(2√(gd))
+    vms_c_eta    :: Float64 = 1.0,        # C_η: surface subscale, τ_η = C_η h_e/(2√(gd))
+    vms_dt_term  :: Bool    = false,      # add (2/Δt)² to τ_a (off: the operator stays Δt-independent)
+    vms_oss      :: Bool    = false,      # orthogonal subgrid scales: the subscale is P⊥ of the STATIC
+                                          #   residual (no u̇ ⇒ the mass stays Galerkin); adds the projection
+                                          #   unknowns Πx, Πy, δ (3 fields). Needs vms=true. src/vms.jl.
     use_ad       :: Bool    = false,      # build Jacobians by AD instead of the hand Jacobians
     show_trace   :: Bool    = false,      # print the Newton iteration trace
     nl_iter      :: Int     = 50,         # max Newton iterations per stage
@@ -712,10 +727,39 @@ function setup_and_run(;
     resolve_physics(; regime = regime, nl_pressure = nl_pressure, flat_bed = flat_bed)
     #  𝓝 ⇒ p_eta ≥ 2 and the mandatory C⁰-CIP on both fields (LaTeX §6.4). Resolved here, before
     #  the manifest, so the manifest records the γ the run actually uses.
-    nl_pressure && check_nlp_surface_order(p_eta; where = "setup_and_run")
-    cip_gamma_u   = cip_gamma_u   === nothing ? (nl_pressure ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_u)
-    cip_gamma_eta = cip_gamma_eta === nothing ? (nl_pressure ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_eta)
-    nl_pressure && !(cip_gamma_u > 0 && cip_gamma_eta > 0) &&
+    #  Formulation and stabilisation gates (markdown_files/MIXED_VMS_PLAN.md §1): refused here,
+    #  before the manifest and the JIT, never silently ignored.
+    formulation in (:primal, :mixed) ||
+        error("setup_and_run: formulation must be :primal or :mixed (got :$formulation)")
+    mixed = formulation === :mixed
+    mixed && !nl_pressure &&
+        error("setup_and_run: formulation=:mixed requires nl_pressure=true (without 𝓝 the weak form is " *
+              "already conforming; use :primal)")
+    mixed && wave_bc !== nothing &&
+        error("setup_and_run: formulation=:mixed with Dirichlet wave generation is not implemented " *
+              "(the auxiliary fields have no consistent inflow data yet)")
+    vms && regime === :linear &&
+        error("setup_and_run: vms=true is defined for the nonlinear regime only (models 3–6)")
+    vms && nl_pressure && !mixed &&
+        error("setup_and_run: vms=true with nl_pressure=true needs formulation=:mixed (the strong " *
+              "residual of the primal 𝓝 form carries third derivatives)")
+    vms_oss && !vms &&
+        error("setup_and_run: vms_oss=true needs vms=true (OSS is a form of the residual-based stabilisation)")
+    vms_oss && vms_c_adv == 0 && vms_c_wave == 0 && vms_c_eta == 0 &&
+        error("setup_and_run: vms_oss=true with all VMS coefficients 0 leaves the projection fields without rows")
+    vms_oss && wave_bc !== nothing &&
+        error("setup_and_run: vms_oss=true with Dirichlet wave generation is not implemented (the initial " *
+              "projection is built only on the source / hot-start / rest paths)")
+    p_aux = p_aux === nothing ? p_u : Int(p_aux)
+    _run_config[:p_aux] = p_aux
+    nl_pressure && !mixed && check_nlp_surface_order(p_eta; where = "setup_and_run")
+    _cip_def = (nl_pressure && !mixed) ? DEFAULT_CIP_GAMMA : 0.0
+    cip_gamma_u   = cip_gamma_u   === nothing ? _cip_def : Float64(cip_gamma_u)
+    cip_gamma_eta = cip_gamma_eta === nothing ? _cip_def : Float64(cip_gamma_eta)
+    mixed && (cip_gamma_u > 0 || cip_gamma_eta > 0) &&
+        error("setup_and_run: formulation=:mixed carries no skeleton penalty (cip_gamma_u=$cip_gamma_u, " *
+              "cip_gamma_eta=$cip_gamma_eta). Its only stabiliser is vms=true.")
+    nl_pressure && !mixed && !(cip_gamma_u > 0 && cip_gamma_eta > 0) &&
         error("setup_and_run: nl_pressure=true requires cip_gamma_u > 0 and cip_gamma_eta > 0 — the " *
               "C⁰-CIP penalty is part of the nonlinear model's weak form (LaTeX §6.4). Leave them " *
               "unset for the default $(DEFAULT_CIP_GAMMA).")
@@ -875,11 +919,16 @@ function setup_and_run(;
                                 y_wall_bc=y_wall_bc,    # lateral BC type
                                 x_wall_bc=x_wall_bc,    # solid wall BC on x-edges
                                 inflow=inflow,          # inflow BC data (η, 𝖴x, 𝖴y) if provided
-                                p_eta=pe)               # surface FE order (see the kwarg note)
+                                p_eta=pe,               # surface FE order (see the kwarg note)
+                                n_aux=mixed ? 4 : 0,    # mixed: 𝖦x, 𝖦y, 𝖥x, 𝖥y
+                                p_aux=p_aux,            # order of the auxiliary space
+                                n_oss=vms_oss ? 3 : 0)  # OSS: projections Πx, Πy, δ (last)
 
     #  ⚠ THE BANNER MUST NAME THE OPERATOR AND THE JACOBIAN ACTUALLY BUILT (rule 12b: a log that
     #  misreports its own settings is how a wrong configuration survives review).
-    nl_pressure && println("  Nonlinear pressure 𝓝: ALL EIGHT components — {3,6,7,8} direct, ∇h half by " *
+    mixed && println("  MIXED formulation: 𝖦 ≈ ∇𝖲, 𝖥 ≈ ∇𝖻 are unknowns (Q$(p_aux), 4 auxiliary fields); Class III " *
+                     "on the unknowns; NO skeleton term, NO penalty; exact Jacobian of the mixed rows")
+    nl_pressure && !mixed && println("  Nonlinear pressure 𝓝: ALL EIGHT components — {3,6,7,8} direct, ∇h half by " *
                            "exact IBP, Class III cellwise Hessians + facet terms, mandatory C⁰-CIP; " *
                            (use_ad ? "exact AD Jacobian" :
                                      "hand Jacobian, Class III exact (broken_class3_jacobian)"))
@@ -889,8 +938,9 @@ function setup_and_run(;
     (cip_gamma_u > 0 || cip_gamma_eta > 0) && stabilization === :ghostvolume &&
         @printf("  GHOST-VOLUME penalty: γ_u=%.3g  γ_η=%.3g  — γ τ h^(%.3g−3) ∫_{T⁺∪T⁻} |E·⁺ − E·⁻|², every order 0…p (𝖴: %d, η: %d), τ_u=d√(gd), τ_η=√(gd)\n",
                 cip_gamma_u, cip_gamma_eta, cip_hexp, p_u, p_eta)
-    @printf("  Fields: 3 (η + 2 stacked VectorValue{%d})   free DOFs: %d\n",
-            vert.N_dof, num_free_dofs(U(0.0)))
+    @printf("  Fields: %d (η + %d stacked VectorValue{%d}%s)   free DOFs: %d\n",
+            3 + (mixed ? 4 : 0) + (vms_oss ? 3 : 0), (mixed ? 6 : 2) + (vms_oss ? 2 : 0), vert.N_dof,
+            vms_oss ? " + scalar δ" : "", num_free_dofs(U(0.0)))
     @printf("  Wave: λ=%.2f m, kd=%.2f\n", 2pi/k_wave, k_wave*h_val)
 
     # --- Forcing: sponge profile + internal wavemaker source ------------------
@@ -934,7 +984,8 @@ function setup_and_run(;
                         flat_bed=flat_bed,          # whether to drop ∇h terms (flat bed)
                         model=model,                # the mesh — the broken Class-III layer lives
                         quad_degree=2*max(p_u, p_eta) + 2 + quad_extra,  # on its skeleton
-                        p_eta=p_eta,                # surface order (𝓝 needs ≥ 2)
+                        p_eta=p_eta,                # surface order (primal 𝓝 needs ≥ 2)
+                        formulation=formulation,    # :primal | :mixed
                         mu_sponge=sponge,           # sponge damping profile μ(x,y)
                         wm_src=wm,                  # internal wavemaker source S(x,t)
                         relax_bc=use_relax,         # whether to use a relaxation zone at the inflow
@@ -947,6 +998,19 @@ function setup_and_run(;
                      degree=2*max(p_u, p_eta) + 2 + quad_extra)
     prob.skel[] !== nothing &&
         @printf("  Skeleton: %d interior facets\n", prob.skel[].nfacets)
+    #  Residual-based stabilisation (src/vms.jl). All three coefficients 0 ⇒ nothing is attached.
+    if vms
+        attach_vms!(prob, trian; p_u=p_u, c_adv=vms_c_adv, c_wave=vms_c_wave, c_eta=vms_c_eta,
+                    dt=vms_dt_term ? dt : nothing, oss=vms_oss)
+        if has_vms(prob)
+            @printf("  VMS stabilisation (%s): C_a=%.3g (vertical structure, τ_a ~ h_e/2|u|%s)  C_w=%.3g  C_η=%.3g (τ = C h_e/2√(gd)), h_e = h/%d; exact Jacobians\n",
+                    vms_oss ? "OSS: P⊥ of the static residual, projections Πx, Πy, δ are unknowns; mass = Galerkin" :
+                              "ASGS: full residual incl. u̇",
+                    vms_c_adv, vms_dt_term ? ", Δt term on" : "", vms_c_wave, vms_c_eta, p_u)
+        else
+            println("  VMS stabilisation: requested with all coefficients 0 — NOT attached")
+        end
+    end
 
     # Build problem TransientFEOperator ->  Wrap the residual (+ Jacobians) into a Gridap operator
     # `use_ad` swaps the hand Jacobians for AD-generated ones (cross-checking only).
@@ -994,8 +1058,21 @@ function setup_and_run(;
             uy0_func  = x -> inc.uy(x, 0.0))
     elseif wi !== nothing
         make_initial_conditions(U(0.0), vert.N_dof; eta0_func=eta0_func)
-    elseif isnothing(eta0_func) && isnothing(ux0_func)
+    elseif (isnothing(eta0_func) && isnothing(ux0_func)) && !vms_oss
         make_initial_conditions(U)
+    elseif mixed || vms_oss
+        #  the algebraic fields (mixed 𝖦, 𝖥; OSS Π, δ) must satisfy their own rows at t₀ (index-1 DAE).
+        #  Order matters: the OSS static residual reads 𝖦, 𝖥.
+        _u0c = make_initial_conditions_ext(U, prob; eta0_func=eta0_func, ux0_func=ux0_func)
+        if mixed && !(isnothing(eta0_func) && isnothing(ux0_func))
+            _u0c, _rel = mixed_consistent_ic(_u0c, prob, U, trian, dΩh)
+            @printf("  Mixed initial state: auxiliary fields solved from their rows (relative residual %.1e)\n", _rel)
+        end
+        if vms_oss
+            _u0c, _relp = oss_consistent_ic(_u0c, prob, U, trian, dΩh; t=t_start)
+            @printf("  OSS initial state: projections of the static residuals solved (relative residual %.1e)\n", _relp)
+        end
+        _u0c
     else
         make_initial_conditions(U, vert.N_dof; eta0_func=eta0_func, ux0_func=ux0_func)
     end
@@ -1183,12 +1260,15 @@ name the launcher gave it, with a configuration the launcher did not ask for (ru
 driver calls this on load (examples/distributed/_dist_common.jl).
 """
 function check_v1_env()
-    gone = [k for k in ("BALFEM_MIXED", "BALFEM_P_AUX", "BALFEM_C3_MASK", "BALFEM_NLP_INLOOP",
+    #  Branch mixed-vms-solver: the mixed formulation is back as `BALFEM_FORMULATION=mixed` with
+    #  `BALFEM_P_AUX` (markdown_files/MIXED_VMS_PLAN.md). The v1 switch `BALFEM_MIXED` stays refused:
+    #  it selected a 5-field layout with a component mask that no longer exists.
+    gone = [k for k in ("BALFEM_MIXED", "BALFEM_C3_MASK", "BALFEM_NLP_INLOOP",
                         "BALFEM_BROKEN") if haskey(ENV, k)]
     isempty(gone) ||
-        error("check_v1_env: $(join(gone, ", ")) set — v1 knob(s) removed in v2 (the broken " *
-              "formulation is the only Class-III treatment; all eight 𝓝 components or none). " *
-              "Unset them; see markdown_files/V2_SOLVER_PLAN.md.")
+        error("check_v1_env: $(join(gone, ", ")) set — v1 knob(s) removed in v2 (all eight 𝓝 " *
+              "components or none; Class III by the broken formulation, or BALFEM_FORMULATION=mixed " *
+              "on branch mixed-vms-solver). Unset them; see markdown_files/V2_SOLVER_PLAN.md.")
     v = lowercase(get(ENV, "BALFEM_NL_PRESSURE", "0"))
     v in ("0", "1", "true", "false") ||
         error("check_v1_env: BALFEM_NL_PRESSURE=$(ENV["BALFEM_NL_PRESSURE"]) — v2 takes 0/1 " *

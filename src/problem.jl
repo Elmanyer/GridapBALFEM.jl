@@ -83,6 +83,13 @@ struct BALFEMProblem{PV,MV,BV,PT,AT,KT,M3T,G3T,A3T,K3T,P3T}
                                       #   refused by `global_residual` without it). Otherwise present only if
                                       #   a stabilisation is attached (`attach_skeleton!`, γ > 0). `nothing`
                                       #   ⇒ the residual has no skeleton term at all. src/broken.jl.
+    formulation  :: Symbol            # :primal — 3 fields [η,𝖴x,𝖴y]; with 𝓝, Class III cellwise + facet
+                                      #   terms and the mandatory C⁰-CIP (the v2 solver).
+                                      # :mixed  — 7 fields [η,𝖴x,𝖴y,𝖦x,𝖦y,𝖥x,𝖥y], 𝖦 ≈ ∇𝖲, 𝖥 ≈ ∇𝖻 as
+                                      #   unknowns; needs 𝓝; no skeleton term, no penalty. src/mixed.jl.
+    mixed        :: Base.RefValue{Any} # boundary context of the auxiliary rows (`attach_mixed!`), or `nothing`
+    vms          :: Base.RefValue{Any} # residual-based stabilisation record (`attach_vms!`), or `nothing`
+                                      #   ⇒ no stabilisation term. src/vms.jl.
 end
 
 """
@@ -151,6 +158,7 @@ function build_problem(vert;
         model                    = nothing,
         quad_degree              = nothing,
         p_eta                    = nothing,
+        formulation  :: Symbol   = :primal,
         mu_sponge    :: Function = (x -> 0.0),
         wm_src       :: Function = ((x, t) -> 0.0),
         relax_bc     :: Bool     = false,
@@ -163,7 +171,7 @@ function build_problem(vert;
         linearised=phys.linearised, advection=phys.advection,
         lin_pressure=phys.lin_pressure, P_full=phys.P_full,
         nl_pressure=phys.nl_pressure, flat_bed=phys.flat_bed,
-        model=model, quad_degree=quad_degree, p_eta=p_eta,
+        model=model, quad_degree=quad_degree, p_eta=p_eta, formulation=formulation,
         mu_sponge=mu_sponge, wm_src=wm_src,
         relax_bc=relax_bc, relax_mu=relax_mu, relax_tg=relax_tg,
         mms_src=mms_src)
@@ -196,6 +204,7 @@ function build_problem_raw(vert;
         model                    = nothing,
         quad_degree              = nothing,
         p_eta                    = nothing,
+        formulation  :: Symbol   = :primal,
         mu_sponge    :: Function = (x -> 0.0),
         wm_src       :: Function = ((x, t) -> 0.0),
         relax_bc     :: Bool     = false,
@@ -225,21 +234,32 @@ function build_problem_raw(vert;
         error("build_problem: relax_bc=true requires relax_tg (incident_fields NamedTuple)")
     nl_pressure && linearised &&
         error("build_problem_raw: nl_pressure=true with linearised=true — a linear model carries no 𝓝")
+    formulation in (:primal, :mixed) ||
+        error("build_problem: formulation must be :primal or :mixed (got :$formulation)")
+    mixed = formulation === :mixed
+    mixed && !nl_pressure &&
+        error("build_problem: formulation=:mixed requires nl_pressure=true. Without 𝓝 the weak form " *
+              "has no second derivative of the unknowns, so there is nothing for 𝖦, 𝖥 to replace: " *
+              "use formulation=:primal (markdown_files/MIXED_VMS_PLAN.md §1)")
     nl_pressure && (model === nothing || quad_degree === nothing) &&
         error("build_problem: nl_pressure=true needs `model` and `quad_degree` — the Class-III " *
-              "facet terms and the mandatory C⁰-CIP penalty live on the mesh's interior facets " *
-              "(src/broken.jl)")
-    nl_pressure && check_nlp_surface_order(p_eta; where = "build_problem")
+              "facet terms and the mandatory C⁰-CIP penalty (primal), or the boundary term of the " *
+              "auxiliary rows (mixed), live on the mesh (src/broken.jl, src/mixed.jl)")
+    #  p_η ≥ 2 comes from the cellwise Class-III terms and the η penalty: primal only.
+    nl_pressure && !mixed && check_nlp_surface_order(p_eta; where = "build_problem")
     prob = BALFEMProblem(g, h_bathy, vert.N_dof, Φ, Mv, Bv, P, Av, Kv, M3, G3,
                          A3, K3, P3, linearised, advection, lin_pressure,
                          P_full, nl_pressure, flat_bed, WK3, WP3,
                          mu_sponge, wm_src,
-                         relax_bc, relax_mu, relax_tg, mms_src, Ref{Any}(nothing))
-    #  𝓝 ⇒ the mandatory first-order C⁰-CIP on both fields, at the default γ (LaTeX §6.4).
-    nl_pressure && attach_skeleton!(prob, model; cip_gamma_u = DEFAULT_CIP_GAMMA,
+                         relax_bc, relax_mu, relax_tg, mms_src, Ref{Any}(nothing),
+                         formulation, Ref{Any}(nothing), Ref{Any}(nothing))
+    #  primal 𝓝 ⇒ the mandatory first-order C⁰-CIP on both fields, at the default γ (LaTeX §6.4).
+    nl_pressure && !mixed && attach_skeleton!(prob, model; cip_gamma_u = DEFAULT_CIP_GAMMA,
                                     cip_gamma_eta = DEFAULT_CIP_GAMMA, cip_order = 1,
                                     stabilization = :jumpgrad, p_u = p_eta + 1, p_eta = p_eta,
                                     degree = quad_degree)
+    #  mixed 𝓝 ⇒ no skeleton term at all; the auxiliary rows need the boundary measure.
+    mixed && attach_mixed!(prob, model; degree = quad_degree)
     return prob
 end
 
@@ -427,9 +447,18 @@ function global_residual(t::Real, u, v, prob::BALFEMProblem, trian, dΩh)
                                    Ux, Uy, Wx, Wy, DW, Ugh, UgH, S, DU, dΩh)
         prob.flat_bed || (r = r + nlp_gradh_contrib(prob, d_cf, η, H, dhx, dhy,
                                   Ux, Uy, Wx, Wy, Ugh, UgH, S, DU, dΩh))
-        r = r + broken_class3_residual(prob, prob.skel[], d_cf, η, H, dHx, dHy,
-                                       Ux, Uy, DU, S, UgH, Wx, Wy, DW, dΩh)
+        #  :mixed — the 𝓚/𝓟 Class-III blocks are fed with the unknowns 𝖦, 𝖥 instead
+        #  (`mixed_contrib`, below): no cellwise Hessian, no skeleton layer.
+        prob.formulation === :primal &&
+            (r = r + broken_class3_residual(prob, prob.skel[], d_cf, η, H, dHx, dHy,
+                                            Ux, Uy, DU, S, UgH, Wx, Wy, DW, dΩh))
     end
+
+    # ---- mixed formulation: auxiliary rows + Class-III blocks on 𝖦, 𝖥 (src/mixed.jl) --------
+    prob.formulation === :mixed && (r = cadd(r, mixed_contrib(prob, u, v, trian, dΩh)))
+
+    # ---- residual-based (VMS) stabilisation (src/vms.jl); absent unless attached ------------
+    prob.vms[] === nothing || (r = cadd(r, vms_contrib(prob, t, u, v, trian, dΩh)))
 
     # ---- skeleton stabilisation (src/broken.jl): :jumpgrad or :ghostvolume, any model ------
     #  Sign-definite damping of the inter-element mismatch; consistent (weakly). MANDATORY with
@@ -557,6 +586,8 @@ function jacobian_u_t(t::Real, u, dut, v, prob::BALFEMProblem, trian, dΩh)
                                 + dhy*(Wy ⋅ dLA) + dHy*(Wy ⋅ dLK) ) ) * dΩh
         end
     end
+    #  VMS: exact ∂/∂u̇ of the stabilisation (the strong residuals carry u̇). The mixed rows carry none.
+    prob.vms[] === nothing || (r = cadd(r, vms_contrib(prob, t, u, v, trian, dΩh; dut = dut)))
     return r
 end
 
@@ -644,9 +675,13 @@ function jacobian_u(t::Real, u, du, v, prob::BALFEMProblem, trian, dΩh)
     # the iterate through cellwise Hessians and facet jumps that scale like 1/h; leaving them out
     # stalled Newton at 32 cells/λ (GHOST_PENALTY_PLAN.md §5.5). The other 𝓝 blocks ({3,6,7,8} and
     # the ∇h IBP half) stay quasi-Newton — O(A²) and benign (rule 5). src/broken.jl.
-    if prob.nl_pressure
+    if prob.nl_pressure && prob.formulation === :primal
         r = r + broken_class3_jacobian(prob, prob.skel[], d_cf, η, Ux, Uy, dη, dUx, dUy, Wx, Wy, dΩh)
     end
+
+    # Mixed rows and VMS: EXACT, from the same formulas as the residual (src/jets.jl).
+    prob.formulation === :mixed && (r = cadd(r, mixed_contrib(prob, u, v, trian, dΩh; du = du)))
+    prob.vms[] === nothing || (r = cadd(r, vms_contrib(prob, t, u, v, trian, dΩh; du = du)))
 
     return r
 end

@@ -368,10 +368,12 @@ function build_run_diagnostics(prob, U0, trian, dΩ;
     Nσ   = prob.Nσ
     zvv  = VectorValue(ntuple(_ -> 0.0, Nσ)...)
     zf   = x -> zvv
-    xh   = interpolate_everywhere([x -> x[1], zf, zf], U0)
+    #  mixed layout: the auxiliary fields are padded with zeros (field 1 keeps η's DOF ordering)
+    pad  = extra_field_zeros(prob)              # mixed 𝖦, 𝖥 and OSS Π, δ (none on the 3-field layout)
+    xh   = interpolate_everywhere(Any[x -> x[1], zf, zf, pad...], U0)
     # total damping seen by the state: sponge + (optional) relaxation zone
     mufn = prob.relax_bc ? (x -> prob.mu_sponge(x) + prob.relax_mu(x)) : prob.mu_sponge
-    muh  = interpolate_everywhere([mufn, zf, zf], U0)
+    muh  = interpolate_everywhere(Any[mufn, zf, zf, pad...], U0)
 
     d_cf = CellField(prob.h_bathy, trian)
     div_limit = eta_ref > 0.0 ? div_factor * eta_ref : 1.0e4

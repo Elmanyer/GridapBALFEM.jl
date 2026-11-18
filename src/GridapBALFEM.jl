@@ -73,6 +73,8 @@ include("horizontal.jl")     # Stage 2: 2D mesh + stacked [η,𝖴x,𝖴y] FE sp
 include("problem.jl")        # BALFEMProblem struct + loop-free residual + hand Jacobians
 include("nlpressure.jl")     # nonlinear pressure 𝓝: {3,6,7,8} direct, ∇h half by exact IBP
 include("broken.jl")         # Class III by the BROKEN formulation + skeleton stabilisation
+include("mixed.jl")          # MIXED formulation: 𝖦 ≈ ∇𝖲, 𝖥 ≈ ∇𝖻 as unknowns (no skeleton term)
+include("vms.jl")            # residual-based (VMS) stabilisation: strong residuals, τ, SUPG/PSPG/LSIC
 include("reconstruct.jl")    # w / total-pressure σ-level VTK fields (serial + distributed)
 include("monitor.jl")        # solver monitor + governing-eq residual checker + reports
 include("checkpoint.jl")     # u_n checkpoints + resume (fingerprint-checked; sequential + distributed)
@@ -113,8 +115,12 @@ export DEFAULT_CIP_GAMMA, has_mandatory_cip, require_mandatory_cip, check_nlp_su
 export broken_class3_cell_fields, broken_class3_skeleton_contrib, broken_class3_residual
 export cip_contrib, ghost_contrib, stab_contrib, build_ghost_ctx, broken_class3_jacobian
 
-# Value-and-tangent pairs (src/jets.jl)
+# Mixed formulation and residual-based stabilisation — src/mixed.jl, src/vms.jl, src/jets.jl
 export Jet, JZero, JZ, jval, jtan
+export attach_mixed!, mixed_contrib, mixed_n_aux, make_initial_conditions_mixed, mixed_consistent_ic
+export make_initial_conditions_ext
+export attach_vms!, vms_contrib, vms_strong_contrib, has_vms
+export has_oss, oss_n_fields, extra_field_zeros, oss_consistent_ic
 
 # Nonlinear pressure (full physics)
 export nlp_direct_contrib, nlp_gradh_contrib, nlp_gradH_reduced_contrib, nlp_P_reduced_contrib
