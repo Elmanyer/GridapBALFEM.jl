@@ -28,6 +28,7 @@
 const CHECKPOINT_HARD_KEYS = (:M, :p_vertical, :c_bdy, :domain, :partition, :cpu_grid, :p_u, :p_eta,
     :quad_extra, :h_val, :g, :regime, :nl_pressure, :flat_bed, :x_periodic, :y_wall_bc, :x_wall_bc,
     :cip_gamma_u, :cip_gamma_eta, :cip_hexp, :cip_order, :stabilization, :use_ad,
+    :formulation, :p_aux, :vms, :vms_c_adv, :vms_c_wave, :vms_c_eta, :vms_dt_term, :vms_oss,
     :T_wave, :A_wave, :x_wm, :y_wm, :sponge_wL, :sponge_wR, :sponge_wB, :sponge_wT, :mu_max,
     :wave_gen, :wave_dir, :bc_side, :bc_profile, :relax_bc, :relax_width, :T_ramp)
 #  Keys that change the time discretisation, not the problem: refused unless
@@ -63,6 +64,8 @@ function checkpoint_fingerprint(config::AbstractDict; n_free::Integer, bathy::Ab
         #  ρ∞ (added 2026-11-11) belongs to the fingerprint of a generalised-α run only, so a
         #  checkpoint written before the key existed still resumes under the other integrators.
         k === :rho_inf && get(config, :solver_type, nothing) !== :gen_alpha && continue
+        #  vms_oss (added 2026-11-17) likewise only when on: older checkpoints still resume.
+        k === :vms_oss && get(config, :vms_oss, false) !== true && continue
         haskey(config, k) && push!(fp, string(k) => repr(config[k]))
     end
     push!(fp, "n_free" => string(n_free))

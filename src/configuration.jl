@@ -157,8 +157,11 @@ function write_run_configuration(output_dir::AbstractString, cfg::AbstractDict; 
     itag = st === :theta ? @sprintf("theta(%.3g)", θ) : st === :gen_alpha ? @sprintf("gen_alpha(%.3g)", ρ) : string(tab)
 
     # ---- the one-line ID: what tells two runs apart at a glance ---------------------------------
-    id = @sprintf("m%d | P%dLFE-%d | Q%d/Q%d | %d×%d cells | A=%.4g m T=%.4g s d=%.4g m | %s dt=%.4g s | t=%.4g–%.4g s | %s",
-                  mid, p, M, p_u, p_eta, nx, ny, A, T, d, itag, dt, t_start, T_final,
+    #  formulation and stabiliser are part of the identity (a mixed run is a different solver)
+    ftag = (c(:formulation, :primal) === :mixed ? "mixed" : "primal") *
+           (c(:vms, false) ? (c(:vms_oss, false) ? "+VMS-OSS" : "+VMS") : "")
+    id = @sprintf("m%d %s | P%dLFE-%d | Q%d/Q%d | %d×%d cells | A=%.4g m T=%.4g s d=%.4g m | %s dt=%.4g s | t=%.4g–%.4g s | %s",
+                  mid, ftag, p, M, p_u, p_eta, nx, ny, A, T, d, itag, dt, t_start, T_final,
                   nranks > 1 ? "$(nranks) ranks" : "sequential")
 
     #  one quantity per line; every run gets the same keys in the same order ("—" = not applicable)
@@ -188,7 +191,21 @@ function write_run_configuration(output_dir::AbstractString, cfg::AbstractDict; 
     kv("σ-element boundaries", "[" * join((@sprintf("%.4g", v) for v in c_bdy), ", ") * "]")
     kv("applicable kd, phase speed (2 %)", @sprintf("≤ %.4g", ar_C))
     kv("applicable kd, group speed (2 %)", @sprintf("≤ %.4g", ar_Cg))
-    kv("Class III treatment", nlp ? "cellwise Hessians + kind-S facet terms" : "—")
+    mixed = c(:formulation, :primal) === :mixed
+    vms_on = c(:vms, false) && (c(:vms_c_adv, 1.0) > 0 || c(:vms_c_wave, 1.0) > 0 || c(:vms_c_eta, 1.0) > 0)
+    oss_on = vms_on && c(:vms_oss, false)
+    kv("formulation", (mixed ? "mixed (7 fields: G ≈ grad S, F ≈ grad b are unknowns)" : "primal (3 fields)") *
+                      (oss_on ? " + 3 OSS projection fields (Πx, Πy, δ)" : ""))
+    kv("auxiliary space order", mixed ? c(:p_aux, p_u) : "—")
+    kv("Class III treatment", !nlp ? "—" : mixed ? "on the auxiliary unknowns G, F (no skeleton term)" :
+                                                    "cellwise Hessians + kind-S facet terms")
+    kv("residual-based stabilisation", !vms_on ? "none" :
+       oss_on ? "VMS, orthogonal subgrid scales: SUPG (momentum, continuity) + PSPG + LSIC on P⊥(static residual); mass = Galerkin" :
+                "VMS, ASGS: SUPG (momentum, continuity) + PSPG + LSIC on the full residual (incl. u̇)")
+    kv("VMS C_a (vertical structure)", vms_on ? f(Float64(c(:vms_c_adv, 1.0))) : "—")
+    kv("VMS C_w (depth-integrated)", vms_on ? f(Float64(c(:vms_c_wave, 1.0))) : "—")
+    kv("VMS C_η (surface)", vms_on ? f(Float64(c(:vms_c_eta, 1.0))) : "—")
+    kv("VMS Δt term in τ_a", vms_on ? (c(:vms_dt_term, false) ? "on" : "off") : "—")
     kv("skeleton stabilisation", (γu > 0 || γη > 0) ? string(c(:stabilization, :jumpgrad)) : "none")
     kv("CIP γ_u (velocity)", f(γu))
     kv("CIP γ_η (surface)", f(γη))
