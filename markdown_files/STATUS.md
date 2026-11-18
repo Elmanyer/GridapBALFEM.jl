@@ -1,5 +1,21 @@
 # STATUS.md — where the project stands (2026-10-09)
 
+> **Update 2026-11-18.**
+> * **Integrator study launched in full on Snellius** (author): the extra SBU request was granted, so
+>   the main set (170 cases) and the extra set (105 cases: TR-BDF2, generalised-α ρ∞ = 0 / 0.5) run
+>   there, on the same cluster as the pilot. Results pending. The DelftBlue plan of 2026-11-14 is void.
+> * **Branch `mixed-vms-solver`:** OSS (`vms_oss=true`) replaces the ASGS form (G6 9/9; models 3–4
+>   primal + OSS 200/200 steps); `jacobian_u`'s η-derivatives of the pressure terms are complete
+>   (models 3–4 hand ≡ AD). On models 5–6 mixed + OSS the **stabiliser itself destabilises**: it acts on
+>   the 𝓝 part of the residual, which has no partner in its test operator, so a sign-indefinite cross
+>   term appears (∝ velocity, grid-scale). Frozen max Re λ at run amplitude: none 0.30 s⁻¹, C_w = 1
+>   9.0 s⁻¹ (time run fails at step 35), C_w = 0.1 2.7 s⁻¹ (time run E/E₀ = 1.044 at step 100 and
+>   rising); **with 𝓝 left out of the stabilised residual: C_w 0.099, all three 0.069 s⁻¹**, 2–5× below
+>   no stabilisation at every amplitude. With the Δt cap, C_a + C_η was inert (ΔE/E₀ ≤ 2e-7). What is
+>   left is a non-oscillating vertical-structure mode, the same kind as v2's steady growth.
+>   Next (author's decision): take 𝓝 out of the stabilised residual, or term-by-term OSS, then the
+>   closed-box test against the unstabilised controls. Record `MIXED_VMS_PLAN.md` §9.5–9.6.
+
 > **Update 2026-11-17 (branch `mixed-vms-solver`): a second solver for the same model, as a research
 > instrument** (author's decision, 2026-11-16; record [`MIXED_VMS_PLAN.md`](MIXED_VMS_PLAN.md)).
 > * **Mixed formulation** (`formulation = :mixed`, models 5–6): `𝖦 ≈ ∇𝖲`, `𝖥 ≈ ∇𝖻` are unknowns, so the
@@ -49,7 +65,7 @@
 > * **Integrator study (`run/integrator_study/`):** Snellius pilot done 2026-11-13 (m5 n32 CN 32.5
 >   s/step; SDIRK_2_2 ×1.91, Crouzeix 3/4 ×2.85, SDIRK_4_3 ×3.20; γ = 1 does not slow Newton; full study
 >   ≈ 2.1 × 10⁴ case-hours). The campaign moves to **DelftBlue** (author, 2026-11-14; launchers adapted)
->   but is **postponed**: the only account, `innovation`, caps jobs at 24 h, 4 running / 10 submitted,
+>   but is **postponed** *(superseded 2026-11-18: launched in full on Snellius)*: the only account, `innovation`, caps jobs at 24 h, 4 running / 10 submitted,
 >   64 CPUs / 250 GB. A research/project account runs the launchers as they are; otherwise they need
 >   24 h segments and a few large worker-pool jobs.
 > * Consequence for the route: if the steady vertical-structure growth persists under every integrator,

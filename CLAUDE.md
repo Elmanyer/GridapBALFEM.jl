@@ -24,24 +24,15 @@
 
 > **Branch `mixed-vms-solver` (2026-11-16, cut from `v2-solver` @ `1be9c39`)** adds a second solver
 > for the same model: the **mixed formulation** (`formulation=:mixed`, models 5–6, 7 fields, no CIP)
-> and **residual-based VMS stabilisation** (`vms=true`, models 3–4 primal and 5–6 mixed). New files
-> `src/jets.jl`, `src/mixed.jl`, `src/vms.jl`, `test/test_mixed_vms.jl`,
-> `examples/local_1d/compare_mixed_vms.jl`, `vms_newton_probe.jl`, `vms_jacobian_gap.jl`,
-> `run/local/run_mixed_vms_compare.sh`, `run_mixed_box_controls.sh`;
-> knobs `BALFEM_FORMULATION`, `BALFEM_P_AUX`, `BALFEM_VMS`, `BALFEM_VMS_CADV/_CWAVE/_CETA`,
-> `BALFEM_VMS_DT`; outputs `output/mixed_vms/`. The v2 primal path is unchanged (regression snapshot
-> 12/12). Plan, maths, gates and results: [`MIXED_VMS_PLAN.md`](markdown_files/MIXED_VMS_PLAN.md)
-> (§9 = how to use it and where it stands); maths summary `MODEL.md` §10.
-> **State (2026-11-17):** the mixed solver ("**v3-mixed**") runs; unstabilised it diverges in the
-> closed box (46.7 s / 19.9 s at 16 / 32 cells/λ, earlier than v2 primal without CIP). **The VMS
-> design fails**: its SUPG term weights the dispersive `𝗎̇` and makes `∂R/∂u̇` indefinite (exact
-> Newton dies at steps 16–24), and `C_w` stalls the quasi-Newton core Jacobian. Fix options await the
-> author (plan §9.4); do not change `vms.jl` or the core Jacobian before that.
-> **Update 2026-11-18 (author decisions):** OSS implemented (`vms_oss=true`, G6 9/9; m3/m4 run 200/200
-> steps at ≈ 3 Newton iterations); `jacobian_u`'s η-derivatives of the pressure terms completed
-> (models 3–4 hand ≡ AD to round-off, ρ = 0; rule 5 now applies to the 𝓝 blocks only). Open: m5/m6
-> mixed + OSS blow up within a few steps, triggered by C_a (unbounded τ_a; the Δt term bounds it) with
-> a second growth when C_w is added. Not yet written into the plan, `MODEL.md` or `STATUS.md`.
+> and **residual-based VMS stabilisation** (`vms=true`, models 3–4 primal and 5–6 mixed; ASGS, or
+> OSS with `vms_oss=true`). New files `src/jets.jl`, `src/mixed.jl`, `src/vms.jl`,
+> `test/test_mixed_vms.jl` (G0–G6), `examples/local_1d/compare_mixed_vms.jl`, `vms_newton_probe.jl`,
+> `vms_jacobian_gap.jl`, `oss_newton_trace.jl`, `oss_cw_spectrum.jl`, `run/local/run_mixed_vms_compare.sh`,
+> `run_mixed_box_controls.sh`; knobs in §4; outputs `output/mixed_vms/`. The v2 primal path is
+> unchanged (regression snapshot 12/12). Plan, maths, gates and results:
+> [`MIXED_VMS_PLAN.md`](markdown_files/MIXED_VMS_PLAN.md) (§9 = how to use it and where it stands;
+> its record stops at 2026-11-17); maths summary `MODEL.md` §10. **Current state: §5 "Branch
+> `mixed-vms-solver`" below.** Do not change `vms.jl` defaults or the core Jacobian without the author.
 
 ---
 
@@ -67,8 +58,8 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 | path | what it is |
 |---|---|
 | `Project.toml` / `Manifest.toml` | the package `GridapBALFEM`, loaded with **`using GridapBALFEM`, never `include()`**; also the working environment |
-| `src/` (19 files) | `problem.jl`: `BALFEMProblem`, `resolve_physics`, the loop-free residual and hand Jacobians · `nlpressure.jl`: `𝓝` {3,6,7,8} and the ∇h half · `broken.jl`: Class III cellwise Hessians + kind-S facet terms + exact Jacobian, the C⁰-CIP `:jumpgrad` (**mandatory with 𝓝**) and `:ghostvolume`; sequential **and distributed** (ghost sequential only) · `utilities.jl`: `setup_and_run`, `output_dir_name`, `check_v1_env`, `write_run_manifest` · `configuration.jl`: `write_run_configuration` (`CONFIGURATION.txt`) · `vopt.jl`, `mms.jl`, `vertical.jl`, … (`ARCHITECTURE.md` §2) |
-| `test/` | *(mixed-vms branch: `test_mixed_vms.jl`, gates G0–G5)* `runtests.jl` judges by gate output (never exit codes); `test/local/`, `test/cluster/`; `test_skeleton_ad.jl`; `test_nlp_distributed_parity.jl` (models 5–6, sequential ↔ distributed, debug or MPI backend); `test/v2_migration/regression_snapshot.jl` (v1→v2 gate, recording in `output/v2_baseline/`) |
+| `src/` (23 files) | *(mixed-vms branch: `mixed.jl` the 7-field mixed formulation, `vms.jl` ASGS/OSS, `jets.jl` second-derivative jets; `checkpoint.jl` resume)* `problem.jl`: `BALFEMProblem`, `resolve_physics`, the loop-free residual and hand Jacobians · `nlpressure.jl`: `𝓝` {3,6,7,8} and the ∇h half · `broken.jl`: Class III cellwise Hessians + kind-S facet terms + exact Jacobian, the C⁰-CIP `:jumpgrad` (**mandatory with 𝓝**) and `:ghostvolume`; sequential **and distributed** (ghost sequential only) · `utilities.jl`: `setup_and_run`, `output_dir_name`, `check_v1_env`, `write_run_manifest` · `configuration.jl`: `write_run_configuration` (`CONFIGURATION.txt`) · `vopt.jl`, `mms.jl`, `vertical.jl`, … (`ARCHITECTURE.md` §2) |
+| `test/` | *(mixed-vms branch: `test_mixed_vms.jl`, gates G0–G6)* `runtests.jl` judges by gate output (never exit codes); `test/local/`, `test/cluster/`; `test_skeleton_ad.jl`; `test_nlp_distributed_parity.jl` (models 5–6, sequential ↔ distributed, debug or MPI backend); `test/v2_migration/regression_snapshot.jl` (v1→v2 gate, recording in `output/v2_baseline/`) |
 | `examples/` | `local_1d/` (`run_flume_1d.jl`, `run_periodic_1d.jl` the closed box, `stability_eig.jl`, `cip_eigen_analysis.jl`, `cip_eigen_order_rule.jl`), `local_2d/`, `local_mms/`, `distributed/`, `validation/` |
 | `run/` | `local/balfem_local.sh`, `balfem_env.sh` (cluster), SLURM launchers, `SNELLIUS_ROME_LAUNCH_CONFIGS.md`; `linear_production/` (v2 linear Snellius suite, single-node 1×42 directional); v2 box launchers `run/local/run_1dper_v2_unstab{,_extra,_q32}.sh` (⚠ their nlp1 rows are historical: 𝓝 now carries the mandatory CIP); **`integrator_study/`** (the time-integrator box study: `cases.py` → `cases.tsv`/`packs.tsv`, `submit.sh`, `run_pack.sh` with checkpoint segments, `cluster.sh` = per-cluster sbatch flags incl. the memory request, `BALFEM_CLUSTER=snellius\|blue`) |
 | `compile/` | cluster sysimage chain (`RUNNING.md` §5): `compile_snellius.sh` and `compile_blue.sh` (DelftBlue compute-p2, `load_modules_blue.sh`: OpenMPI 5.0.10 + juliaup Julia 1.10); `set_preferences.jl` adds the forks by URL and binds MPI to the system library |
@@ -207,12 +198,16 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
   (`theta|sdirk|rk|gen_alpha`), `BALFEM_TABLEAU`, `BALFEM_THETA_T`, `BALFEM_RHO_INF`, `BALFEM_DT`,
   `BALFEM_OUTDIR`. The output name carries the integrator (`theta`, `theta0.60`, `galpha0.50`, a
   tableau name); `test/local/smoke_integrators.jl` runs every choice through the box driver.
+* *Branch `mixed-vms-solver` only:* `formulation` (`:primal` | `:mixed`, models 5–6), `p_aux`, `vms`,
+  `vms_oss`, `vms_c_adv/_wave/_eta` (C_a, C_w, C_η), `vms_dt_term` (adds `(2/Δt)²` to τ_a; off by
+  default). Env: `BALFEM_FORMULATION`, `BALFEM_P_AUX`, `BALFEM_VMS`, `BALFEM_VMS_OSS`,
+  `BALFEM_VMS_CADV/_CWAVE/_CETA`, `BALFEM_VMS_DT`.
 * `check_v1_env()` refuses the v1 knobs.
 * Output names carry `nlp0`/`nlp1` (`output_dir_name`, rule 2c).
 
 ## 5. Current Implementation Stage
 
-*Updated 2026-11-17. Full picture: [`markdown_files/STATUS.md`](markdown_files/STATUS.md) (its 2026-11-11
+*Updated 2026-11-18 (branch `mixed-vms-solver`: see the last subsection). Full picture: [`markdown_files/STATUS.md`](markdown_files/STATUS.md) (its 2026-11-11
 update is the current route); actions: [`CH8_CAMPAIGN_TODO.md`](markdown_files/CH8_CAMPAIGN_TODO.md)
 "RESUME HERE".*
 
@@ -262,13 +257,14 @@ update is the current route); actions: [`CH8_CAMPAIGN_TODO.md`](markdown_files/C
     m5 n32 CN 32.5 s/step; cost vs CN: SDIRK_2_2 ×1.91, Crouzeix 3/4 ×2.85, SDIRK_4_3 ×3.20; γ = 1
     vs 0.3 leaves the Newton count unchanged (+5 % time). Carrier amplitude loss at kA 0.25: SDIRK_2_2
     0.0078 s⁻¹, SDIRK_4_3 and Crouzeix ≈ 0.0005 s⁻¹. Full study ≈ 2.1 × 10⁴ case-hours at Snellius speed.
-  * **To run on DelftBlue** (author, 2026-11-14; never mix clusters within a comparison). Launchers
-    adapted (`BALFEM_CLUSTER=blue`: compute-p2, `--cpus-per-task=8 --mem-per-cpu=3900M`; the memory flag
-    lives in `cluster.sh`, sbatch refuses `--mem` with `--mem-per-cpu`).
-  * ⚠ **Postponed until more resources:** the only account, `innovation`, allows 24 h per job, 4 running
-    / 10 submitted jobs, 64 CPUs / 250 GB per job; the launchers assume 120 h segments and 23 packs.
-    With a research/project account they run as they are (`BALFEM_ACCOUNT`); on `innovation` they need
-    24 h segments and ≤ 4 large worker-pool jobs.
+  * **Launched in full on Snellius (2026-11-18, author)** after the extra SBU request was granted: the
+    main set and the extra set run there, consistent with the pilot (never mix clusters within a
+    comparison). **Results pending.** The DelftBlue plan of 2026-11-14 is void; the `BALFEM_CLUSTER=blue`
+    launcher support (compute-p2, `--cpus-per-task=8 --mem-per-cpu=3900M` in `cluster.sh`) stays.
+  * **Extra case set** (branch `v2-solver` @ `85fff90`, 2026-11-18): TR-BDF2 (`DIRK_TRBDF_3_2`,
+    L-stable) and generalised-α ρ∞ = 0 / 0.5; 105 cases, 17 packs, tiers P A B C D E G
+    (`cases_extra.tsv`/`packs_extra.tsv`, launched by `submit_extra.sh` = `BALFEM_STUDY_SET=extra`).
+    Carrier energy kept over 100 periods: 99.1 % / 56 % / 97.8 %.
 * Weak-form stabilisers (filtering F1–F4, SUPG / VMS) only if no integrator passes `STABILITY.md` §6
   within the accuracy budget — the steady vertical-structure growth above may force that question.
 
@@ -281,6 +277,46 @@ update is the current route); actions: [`CH8_CAMPAIGN_TODO.md`](markdown_files/C
 * LaTeX chapters 8–9 and appendices still cite removed broken-audit labels.
 * Sponge sweep paused at 26 of 84 (`SPONGE_SWEEP_RESULTS.md`).
 * Gridap fork skeleton-AD commit unpushed; rebuild the sysimage after any `src/` edit (rule 25).
+
+### Branch `mixed-vms-solver` ("v3-mixed") — state 2026-11-18
+Record: `MIXED_VMS_PLAN.md` §9 (§9.5–9.6 = 2026-11-18). Outputs and logs: `output/mixed_vms/`
+(`comparison/`, `jacobian_gap/`, `newton_probe/`, `oss_spectrum/`, `_logs/`).
+
+**Working**
+* The mixed formulation (7 fields, no CIP) runs. Unstabilised it diverges in the closed box at 46.7 s
+  (16 cells/λ) and 19.9 s (32 cells/λ), earlier than v2 primal without CIP.
+* `jets.jl`: every mixed/VMS term written once; residual and Jacobian come from the same formula.
+* **OSS** (`vms_oss=true`; projections are algebraic unknowns, `∂R/∂u̇` stays the Galerkin mass): G6
+  9/9; models 3–4 primal + OSS run 200/200 steps at ≈ 3 Newton iterations.
+* **`jacobian_u` η-derivatives of the pressure terms completed** (author-authorised): models 3–4 hand ≡
+  AD to round-off (contraction ρ = 0), `test_jacobians_ad` 14/14. Only the 𝓝 blocks remain quasi-Newton.
+
+**Failed and set aside**
+* ASGS (`vms_oss=false`). Its SUPG term weights the dispersive `𝗎̇` and makes `∂R/∂u̇` indefinite, so
+  exact Newton dies at steps 16–24. C_w also stalls the quasi-Newton core Jacobian.
+
+**Models 5–6 mixed + OSS: cause found (2026-11-18), fix awaiting the author** (m5, 1 λ box, 16 cells/λ,
+CN Δt = 0.04; `oss_newton_trace.jl` time probes, `oss_cw_spectrum.jl` frozen spectra; plan §9.5).
+1. **C_a.** τ_a has no upper bound (≈ 7 s ≫ Δt at velocity nodes): blow-up at step 2. The Δt term
+   (`vms_dt_term=true`, `BALFEM_VMS_DT=1`) bounds τ_a ≤ Δt/2. ⚠ With it, C_a + C_η is **inert** at run
+   amplitude: its 40 steps match the unstabilised run to ΔE/E₀ ≤ 2e-7.
+2. **C_w** grows a mode riding the crest: C_w = 1 fails at step 35 (≈ 8 s⁻¹ in amplitude), C_w = 0.1
+   is ≈ 2.8× later (E/E₀ = 1.044 at step 100 and rising). Lowering C_w only delays it.
+3. **Cause: the stabilisation acts on 𝓝.** The OSS term is `∫ L*(v)·τ P⊥(Rˢ)`; its test operator L*
+   holds only the transport parts (advection, Φ∂q, ∇·W), but Rˢ also holds 𝓝 (∂ₐ(H² NP), third
+   derivatives of 𝗎), so a sign-indefinite cross term ~ τ ∇q·P⊥(𝓝) appears, ∝ velocity. Frozen
+   max Re λ at run amplitude (s⁻¹): none 0.30 · C_w = 1 **9.0** · C_w = 0.1 2.7 · C_a + C_η 0.37 (1.65 vs
+   0.77 at 2×) · **C_w = 1 with 𝓝 left out of the stabilised residual 0.099** · **all three, 𝓝 out 0.069**
+   (2–5× below none at every amplitude). Report `output/mixed_vms/oss_spectrum/report.txt`.
+4. Left over with 𝓝 out: a non-oscillating (Im λ = 0), η-free vertical-structure mode, 0.07–0.15 s⁻¹ —
+   the same kind as the v2 steady growth.
+
+**Awaiting the author:** (a) a stabiliser option that leaves 𝓝 out of the stabilised residual (consistent
+to the same weak order: P⊥ of a smooth term is O(hᵖ)), or the general **term-by-term ("split") OSS**
+`Σ_k τ_k ∫ P⊥(L_k v)·P⊥(L_k u)` (dissipative by construction); (b) then the closed-box runs at 16/32
+cells/λ against the unstabilised controls (46.7 s / 19.9 s); (c) whether the Δt term becomes the
+default. Do not change `vms.jl` defaults before that decision. The `_noN` variant exists only inside
+`oss_cw_spectrum.jl` (a problem copy with `nl_pressure=false` used in the stabilisation alone).
 
 ## 6. The design decision everything rests on
 
@@ -357,6 +393,8 @@ unchanged, because code and documents cite them. Rules earned on v1 still apply:
    ≈ 1.1 in amplitude).
     * An omission is benign only if it is higher order in amplitude.
     * Measure with `test_jacobians_ad`; never assume.
+    * *Branch `mixed-vms-solver` (2026-11-18):* the η-derivatives of the pressure terms are complete
+      (models 3–4 hand ≡ AD). The quasi-Newton choice now covers only the 𝓝 blocks.
 
 6. **Never apply `∇` to an `Operation`-composed expression containing a test basis.** Expand by hand.
 
@@ -426,8 +464,9 @@ unchanged, because code and documents cite them. Rules earned on v1 still apply:
 17. **`krylov_m` (memory) and `ls_maxiter` (time) are different bounds.** `restart=true` is
     load-bearing. The symptom of getting it wrong: the same `gmres=` count every step.
 
-17b. **The incomplete `jacobian_u` does not affect stability (proven).** Hand and AD Jacobians crash
-     at the same time; only the Newton count differs. Never diagnose an instability by completing
+17b. **The incomplete `jacobian_u` does not affect stability (proven; confirmed again 2026-11-18, when
+     m5 mixed + OSS failed at the same step with the old and the completed Jacobian).** Hand and AD
+     Jacobians crash at the same time; only the Newton count differs. Never diagnose an instability by completing
      the Jacobian, and never read a Newton stall as the cause.
 
 18. `norm(PVector, Inf)` is broken; reduce over `own_values`.

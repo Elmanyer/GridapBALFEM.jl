@@ -86,6 +86,13 @@ HIGH-band σ_E +0.26 → +0.95 s⁻¹. Earlier than the v2 primal without CIP (8
 conforming mixed form does not remove the instability, and refinement brings the onset earlier
 (`MIXED_VMS_PLAN.md` §9.3).
 
+**v3-mixed + OSS stabilisation, m5, 16 cells/λ, kA 0.08, CN (2026-11-18, plan §9.5).** The OSS
+stabiliser as built destabilises models 5–6: it multiplies the 𝓝 part of the static residual by a
+test operator that has no partner for it, a sign-indefinite cross term ∝ velocity. C_w = 1 fails at
+step 35 (≈ 8 s⁻¹), C_w = 0.1 grows ≈ 2.8× later. Frozen max Re λ at run amplitude: none 0.30, C_w = 1
+9.0, **𝓝 left out of the stabilised residual: 0.099 (C_w), 0.069 (all three)** s⁻¹. The mode left over
+is non-oscillating, η-free and in the velocity's vertical structure: the v2 steady-growth kind again.
+
 ## 3b. The chapter-7 solver (𝓝 + mandatory first-order CIP γ = 0.3): the 1-D campaign (2026-10-31 → 11-07)
 
 Closed box, Q3/Q2, CN, A = 0.10, dt = 0.04, **200 periods (320 s)**. Model 6 has a periodic cosine

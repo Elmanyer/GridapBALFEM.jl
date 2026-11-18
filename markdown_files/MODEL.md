@@ -391,3 +391,16 @@ time-derivative part `H M 𝗎̇ₐ − d² B̃ ∂ₐ∇·𝗎̇` (dispersion),
 At nonzero velocity it makes the mass indefinite (8 negative eigenvalues at run amplitude, model 3
 box), and exact-Newton CN runs fail at steps 16–24. A fix (drop the dispersive `𝗎̇` term from the
 weighted residual, OSS, or quasi-static subscales) is the author's decision.
+
+**OSS (`vms_oss = true`, 2026-11-18; plan §3.5).** The subscales use `P⊥(Rˢ)`, the static residual
+(every `𝗎̇` term removed) minus its L² projection; the projections `Πx, Πy, δ` are algebraic unknowns.
+`∂R/∂u̇` is the Galerkin mass exactly.
+
+⚠ **Measured defect on models 5–6 (2026-11-18, plan §9.5).** The terms are `∫ L*(v)·τ P⊥(Rˢ)`. In the
+energy pairing (test `(gη, 𝗎)`) they are `≥ 0` only where `L*(𝗎)` equals the part of `Rˢ` it
+multiplies: true for the transport and gravity–continuity parts, false for `𝓝`, which sits in `Rˢ`
+(`∂ₐ(H² NP)`, third derivatives of `𝗎`) with no partner in `L*`. The cross term has no sign, scales
+with the velocity, and dominates at the grid scale: C_w = 1 gives a frozen growth of 9.0 s⁻¹ against
+0.30 s⁻¹ unstabilised, and 0.099 s⁻¹ once `𝓝` is left out of `Rˢ`. Leaving `𝓝` out keeps the OSS
+consistency order (`P⊥` of a smooth term is `O(hᵖ)`); term-by-term OSS,
+`Σ_k τ_k ∫ P⊥(L_k v)·P⊥(L_k u)`, is the general form. The choice is the author's.

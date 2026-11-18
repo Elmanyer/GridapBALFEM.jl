@@ -4,10 +4,13 @@
 that date. This file is the plan and, as steps finish, the record. Status marks: ☐ open, ◐ partly
 done, ☑ done (with the gate that says so).*
 
-> **Where it stands (2026-11-17).** The mixed solver (called **v3-mixed**) works: gates 29/29, m5/m6
+> **Where it stands (2026-11-18).** The mixed solver (called **v3-mixed**) works: gates 29/29, m5/m6
 > 200/200 steps in the short comparison. Without stabilisation it diverges in the closed box (46.7 s
-> at 16 cells/λ, 19.9 s at 32). The VMS stabiliser as designed in §3 fails: its SUPG term makes the
-> effective mass indefinite. Two decisions are open, listed in §9.4.
+> at 16 cells/λ, 19.9 s at 32). The ASGS form of §3.3 fails (indefinite effective mass) and is set
+> aside; OSS (§3.5) fixes the mass and runs models 3–4. On models 5–6 the OSS stabiliser itself
+> **destabilises**, because it acts on the 𝓝 part of the residual, which has no partner in its test
+> operator (§9.5). Leaving 𝓝 out of the stabilised residual turns it into a working stabiliser in the
+> frozen spectrum. The design change is the author's decision (§9.6).
 
 ---
 
@@ -246,8 +249,8 @@ The v2 hand Jacobians of the three physics rows are unchanged (quasi-Newton in t
 4. ☑ `src/mixed.jl` and its wiring into the three entry points. G1, G2, G4 (mixed part).
 5. ☑ `src/vms.jl`: strong residuals. G3.
 6. ☑ `src/vms.jl`: τ, the four terms, wiring. G4 (VMS part), G5.
-7. ◐ Driver, diagnostics, configuration card, box example. G6: the driver runs every arm, but Newton
-   stalls with VMS at the default coefficients (m3, step 2; §9.3). Open.
+7. ◐ Driver, diagnostics, configuration card, box example. G6 9/9 with OSS (2026-11-18): models 3–4
+   primal + OSS run 200/200 steps at ≈ 3 Newton iterations. Models 5–6 mixed + OSS: §9.5–9.6. Open.
 8. ☑ Record: `STATUS.md`, `CLAUDE.md`, `INDEX.md`, `ARCHITECTURE.md`, `MODEL.md` §10, this file (§9).
 9. ☐ **Deferred, needs a decision:** distributed mixed runs (the residual is partition-agnostic by
    construction; `mixed_consistent_ic` needs a distributed solve; the Jacobi preconditioner on the
@@ -289,6 +292,8 @@ The v2 hand Jacobians of the three physics rows are unchanged (quasi-Newton in t
 | `run/local/run_mixed_vms_compare.sh` | the comparison arms in parallel, one process per arm, memory-gated |
 | `examples/local_1d/vms_jacobian_gap.jl` | hand vs AD `A = ∂R/∂u`, `B = ∂R/∂u̇` per VMS variant and amplitude; quasi-Newton contraction ρ; dominant gap block (§9.3) |
 | `run/local/run_mixed_box_controls.sh` | the unstabilised v3-mixed closed-box controls, n16 and n32 (§9.3) |
+| `examples/local_1d/oss_newton_trace.jl` | Newton trace and energy of the first steps of a VMS variant (`BALFEM_PROBE_MODEL`, `_STEPS`, `_VARIANT` = all1, adv_eta, wave1, wave0.1, wave0.3, adv1, eta1, all0.1; `BALFEM_VMS_DT`) (§9.5) |
+| `examples/local_1d/oss_cw_spectrum.jl` | frozen spectrum of m5 mixed + OSS per variant and amplitude, with the `_noN` discriminator (𝓝 left out of the stabilised residual) and the character of the fastest mode (§9.5) |
 
 ### 9.2 How to use it
 
@@ -429,3 +434,82 @@ The VMS failure has two separate causes; neither is a wiring bug (§9.3).
    (ρ ≈ 0.2 at `C_w` = 0.1). AD is not an option for production: 15–25× per step (§9.3).
 
 No change to `vms.jl` or the core Jacobian has been made; both wait for the author.
+
+**Decided 2026-11-18 (author):** (1) → option (b), OSS, implemented as §3.5 (`vms_oss=true`); the ASGS
+form stays available but is set aside. (2) → the η-derivatives of the pressure terms in `jacobian_u`
+are completed: models 3–4 hand ≡ AD to round-off (ρ = 0), `test_jacobians_ad` 14/14; rule 5 now
+covers only the 𝓝 blocks. The m5 mixed + OSS failure is the same with the old and the completed
+Jacobian (rule 17b).
+
+### 9.5 Models 5–6 mixed + OSS: what fails and why (2026-11-18)
+
+Box of the comparison (m5 flat bed, 1 λ, 16 cells/λ, Q3/Q2, P1LFE-2, kA = 0.08, CN Δt = 0.04).
+Time probes `oss_newton_trace.jl` (≈ 60 s per step, ≈ 12 min compilation); logs
+`output/mixed_vms/_logs/oss_trace_m5_*.log`, runs `output/mixed_vms/newton_probe/oss_m5_*/`.
+
+**C_a: τ_a unbounded.** Without the Δt term τ_a reaches ≈ 7 s ≫ Δt at velocity nodes and the run
+blows up at step 2 (adv1, all1). With `vms_dt_term` (τ_a ≤ Δt/2) C_a and C_a + C_η run 25 / 40 steps
+at 3 Newton iterations. ⚠ **But that run is inert:** its energy matches the unstabilised m5 mixed run
+to ΔE/E₀ ≤ 2.2e-7 over 40 steps (E/E₀ − 1 = 2.14489e-3 vs 2.14467e-3 at step 40). It is not evidence
+of a working stabiliser.
+
+**C_w: a growth riding the crest.** C_w = 1 alone (Δt term on): flat to step 16, E/E₀ = 1.015 at step
+24, then ×1.85 per step in energy (≈ 15 s⁻¹ in energy, ≈ 8 s⁻¹ in amplitude); Newton fails at step 35.
+max|η| follows the crest. All three coefficients follow the C_w-only run step for step. **C_w = 0.1**
+(100 steps): the energy excess over the unstabilised run grows from 1.3e-4 (step 55) to 3.8e-3 (step
+80); E/E₀ = 1.044 and max|η| = 7.7e-2 (+52 %) at step 100, Newton up to 4 iterations. The same
+instability, ≈ 2.8× later. A smaller C_w delays it and does not remove it.
+
+**Mechanism (hypothesis H1).** Inserting the subscales gives `∫ L*(v)·τ P⊥(Rˢ)`. The test operator
+L*(v) holds the transport parts only (advection `N_b∂_bW`, PSPG `Φ∂q`, LSIC `∇·W`). When L*(u) matches
+the part of Rˢ it multiplies, the term is `Rˢ·τ·P⊥Rˢ ≥ 0` in the energy pairing (test `(gη, 𝗎)`): a
+dissipation. That holds for the continuity pair (`ū·∇η` + `HΦ·∇·𝗎` = `∇·(Hū)`) and for the
+advection/PSPG pair. **But Rˢ also holds 𝓝**, whose strong form `∂ₐ(H² NP)` carries `∂𝖦 ~ ∂³𝗎`, and L*
+has no partner for it. The product `τ ∇q·P⊥(e·𝓝)` (and `τ (N∂W)·P⊥(𝓝)`) has no sign. It is
+proportional to the velocity and, at the grid scale, larger than the positive part by roughly
+(U/c₀)(kH)², i.e. O(10²) here.
+
+**Frozen spectrum** (`oss_cw_spectrum.jl`; report `output/mixed_vms/oss_spectrum/report.txt`). At the
+hot-start eigenmode ×a: A = ∂R/∂u (hand core + exact jet VMS part), B = ∂R/∂u̇ (Galerkin mass),
+algebraic fields (𝖦, 𝖥, Π, δ) eliminated by Schur complement; max Re λ of B u̇ = −A u (s⁻¹). `_noN`
+evaluates the same stabilisation with 𝓝 left out of Rˢ (a copy of the problem with
+`nl_pressure = false`, used only inside `vms_contrib` and `oss_consistent_ic`; nothing in `src/` changed):
+
+| variant | a = 0 | 0.5 | 1 | 2 |
+|---|---|---|---|---|
+| no stabilisation | 6e-13 | 0.067 | 0.30 | 0.77 |
+| C_w = 1 | 1e-13 | 3.63 | **9.01** | 79.99 |
+| C_w = 0.1 | 6e-13 | 1.15 | 2.70 | 5.72 |
+| C_a + C_η (τ_a ≤ Δt/2) | 2e-13 | 0.064 | 0.37 | 1.65 |
+| **C_w = 1, 𝓝 out** | 1e-13 | 0.049 | **0.099** | 0.19 |
+| **all three, 𝓝 out** | 2e-13 | 0.032 | **0.069** | 0.15 |
+
+* H1 holds: removing only the 𝓝 part of the stabilised residual takes C_w from 9.0 to 0.099 s⁻¹ at
+  run amplitude. The frozen 9.0 s⁻¹ reproduces the ≈ 8 s⁻¹ of the time run.
+* With 𝓝 in, C_a + C_η also destabilise at larger amplitude (×2 at a = 2, fastest mode at the grid
+  scale, k h_e/π ≈ 0.85). The growth rate scales roughly as √C_w (0.1× C_w → 0.3× rate).
+* With 𝓝 out, all three terms give 2–5× less growth than no stabilisation at every amplitude.
+* The unstabilised fastest mode is η-dominated and oscillatory; the one left with 𝓝 out is η-free,
+  non-oscillating (Im λ ≈ 0) and lives in the velocity (η share 0; vertical-structure share of its
+  kinetic energy 0.27–0.85): the same kind
+  as the v2 steady growth (`STABILITY.md`).
+* ⚠ The core ∂R/∂u is quasi-Newton in the 𝓝 blocks (rule 5): the comparison between variants (same
+  core) is the measurement, the absolute rates are indicative. Frozen spectra are not predictive of
+  long runs (`STABILITY.md` §2).
+
+### 9.6 Open decisions (author, 2026-11-18)
+
+1. **Take 𝓝 out of the stabilised residual.** Consistency is kept at the order OSS already has: for a
+   smooth solution P⊥ of any smooth term is O(hᵖ). Two forms:
+   * **(a) minimal:** an option that evaluates Rˢ without 𝓝 in `vms_contrib` and `oss_consistent_ic`
+     (what `_noN` measured);
+   * **(b) term-by-term ("split") OSS** (Codina 2008): `Σ_k τ_k ∫ P⊥(L_k v)·P⊥(L_k u)` over the
+     operators to stabilise (layer advection `N_b∂_b𝗎` with τ_a; the barotropic pair `Φ∂η`,
+     `∇·(Hū)`; possibly a term for the highest derivative of 𝓝 with its own τ). Dissipative by
+     construction, whatever the other terms of the model.
+2. **Then the first stability test:** closed-box m5 at 16 and 32 cells/λ (chapter-8 environment)
+   against the unstabilised controls (46.7 s / 19.9 s), with the carrier cost reported (rule 15).
+3. **τ_a.** Whether the Δt term becomes the default, and whether τ_a ≤ Δt/2 is too weak for the
+   non-oscillating vertical-structure mode that remains.
+
+Defaults of `vms.jl` stay unchanged until these decisions.
