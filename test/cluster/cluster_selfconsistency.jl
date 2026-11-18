@@ -37,34 +37,34 @@
 #  or the GMRES/Newton stack — over a long nonlinear run at scale.
 #
 #  LAUNCH (px·py MUST equal -n):
-#    LFEM_PX=4 LFEM_PY=2 LFEM_NX=400 LFEM_NY=200 LFEM_NSTEPS=200 \
+#    BABALFEM_PX=4 BABALFEM_PY=2 BABALFEM_NX=400 BABALFEM_NY=200 BABALFEM_NSTEPS=200 \
 #    ~/.julia/bin/mpiexecjl --project=. -n 8 julia --project=. \
-#        GridapLFEM.jl/test/cluster/cluster_selfconsistency.jl
+#        GridapBABALFEM.jl/test/cluster/cluster_selfconsistency.jl
 #
-#  Env vars: LFEM_PX,LFEM_PY; LFEM_NX,LFEM_NY; LFEM_LX,LFEM_LY; LFEM_D; LFEM_M;
-#    LFEM_DT; LFEM_NSTEPS; LFEM_AMP (nonlinearity strength); LFEM_NLPFULL (all
-#    𝓝 comps, default 1); LFEM_PRINT_EVERY; LFEM_OUTDIR.
+#  Env vars: BABALFEM_PX,BABALFEM_PY; BABALFEM_NX,BABALFEM_NY; BABALFEM_LX,BABALFEM_LY; BABALFEM_D; BABALFEM_M;
+#    BABALFEM_DT; BABALFEM_NSTEPS; BABALFEM_AMP (nonlinearity strength); BABALFEM_NLPFULL (all
+#    𝓝 comps, default 1); BABALFEM_PRINT_EVERY; BABALFEM_OUTDIR.
 # ==============================================================
 
 include(joinpath(@__DIR__, "..", "..", "examples", "distributed", "_dist_common.jl"))
-using GridapLFEM
+using GridapBABALFEM
 using Gridap
 using Gridap.ODEs
 using PartitionedArrays, MPI
 using LinearAlgebra, Printf
 
-px, py = genv_i("LFEM_PX", 2), genv_i("LFEM_PY", 1)
-nx, ny = genv_i("LFEM_NX", 40), genv_i("LFEM_NY", 24)
-Lx, Ly = genv_f("LFEM_LX", 2.0), genv_f("LFEM_LY", 1.0)
-d0     = genv_f("LFEM_D", 1.0)
-Mlay   = genv_i("LFEM_M", 2)
-dt     = genv_f("LFEM_DT", 0.05)
-Nsteps = genv_i("LFEM_NSTEPS", 60)
-amp    = genv_f("LFEM_AMP", 1.0)                 # scales the manufactured amplitude
-nlpfull= genv_b("LFEM_NLPFULL", 1)
-feord  = genv_i("LFEM_FE_ORDER", 2)
-prevery= genv_i("LFEM_PRINT_EVERY", 10)
-outdir = genv("LFEM_OUTDIR", joinpath(ROOT, "output", "cluster_selfconsistency"))
+px, py = genv_i("BABALFEM_PX", 2), genv_i("BABALFEM_PY", 1)
+nx, ny = genv_i("BABALFEM_NX", 40), genv_i("BABALFEM_NY", 24)
+Lx, Ly = genv_f("BABALFEM_LX", 2.0), genv_f("BABALFEM_LY", 1.0)
+d0     = genv_f("BABALFEM_D", 1.0)
+Mlay   = genv_i("BABALFEM_M", 2)
+dt     = genv_f("BABALFEM_DT", 0.05)
+Nsteps = genv_i("BABALFEM_NSTEPS", 60)
+amp    = genv_f("BABALFEM_AMP", 1.0)                 # scales the manufactured amplitude
+nlpfull= genv_b("BABALFEM_NLPFULL", 1)
+feord  = genv_i("BABALFEM_FE_ORDER", 2)
+prevery= genv_i("BABALFEM_PRINT_EVERY", 10)
+outdir = genv("BABALFEM_OUTDIR", joinpath(ROOT, "output", "cluster_selfconsistency"))
 g = 9.81; θ = 0.5; T = 2.0; ω = 2π/T
 
 result = with_mpi() do distribute
@@ -73,7 +73,7 @@ result = with_mpi() do distribute
     r0 && mkpath(outdir)
 
     vert = assemble_vertical_tensors(Mlay, 1, cbdy_override() === nothing ?
-              get(GridapLFEM.DEFAULT_CBDY, Mlay, collect(LinRange(0,1,Mlay+1))) : cbdy_override())
+              get(GridapBABALFEM.DEFAULT_CBDY, Mlay, collect(LinRange(0,1,Mlay+1))) : cbdy_override())
     Nσ = vert.N_dof
     model, trian = build_horizontal_model_distributed(ranks, (px,py),
                        (0.0,Lx,0.0,Ly), (nx,ny))

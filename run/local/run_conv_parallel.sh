@@ -33,10 +33,10 @@ run_one() {
     tag="${dom}_Q${pu}_${mode}"
     # 2-D is far more expensive per level: fewer levels and a smaller base mesh.
     if [ "$dom" = "d1" ]; then lv=4; nx0=16; ny0=3; else lv=3; nx0=6; ny0=4; fi
-    LFEM_CONV_PU="$pu" LFEM_CONV_DOMAIN="$dom" LFEM_CONV_MODE="$mode" \
-    LFEM_CONV_LEVELS="$lv" LFEM_CONV_NX0="$nx0" LFEM_CONV_NY0="$ny0" \
-    LFEM_CONV_DIST=0 LFEM_CONV_DT=1e-5 LFEM_CONV_NSTEPS=100 \
-    LFEM_CONV_OUT="output/local/mms_conv/$tag" \
+    BABALFEM_CONV_PU="$pu" BABALFEM_CONV_DOMAIN="$dom" BABALFEM_CONV_MODE="$mode" \
+    BABALFEM_CONV_LEVELS="$lv" BABALFEM_CONV_NX0="$nx0" BABALFEM_CONV_NY0="$ny0" \
+    BABALFEM_CONV_DIST=0 BABALFEM_CONV_DT=1e-5 BABALFEM_CONV_NSTEPS=100 \
+    BABALFEM_CONV_OUT="output/local/mms_conv/$tag" \
     OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 \
         stdbuf -oL -eL julia --project=. examples/local_mms/run_mms_matrix.jl \
         > "$OUT/conv_$tag.log" 2>&1

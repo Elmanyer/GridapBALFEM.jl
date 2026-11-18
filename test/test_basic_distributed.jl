@@ -14,10 +14,10 @@
 #
 #  RUN (from the project root; system mpiexec fails with PMIx mismatch):
 #    ~/.julia/bin/mpiexecjl --project=. -n 4 julia --project=. \
-#        GridapLFEM.jl/test/test_basic_distributed.jl
+#        GridapBABALFEM.jl/test/test_basic_distributed.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Printf
 
 # sequential references (same config via setup_and_run, LU + Newton, 120 steps)

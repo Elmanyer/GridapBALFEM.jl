@@ -6,8 +6,8 @@
 #
 #  RUN:  julia --project=. examples/plot_dispersion.jl [csv] [kd_app]
 # ==============================================================
-include(joinpath(@__DIR__, "..", "src", "GridapLFEMPost.jl"))
-using .GridapLFEMPost
+include(joinpath(@__DIR__, "..", "src", "GridapBABALFEMPost.jl"))
+using .GridapBABALFEMPost
 
 csv = length(ARGS) ≥ 1 ? ARGS[1] :
       joinpath(@__DIR__, "..", "..", "output", "dispersion_nonlinear.csv")

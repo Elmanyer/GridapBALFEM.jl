@@ -6,10 +6,10 @@
 #  discrete-eigenmode :model polarization), propagates down the flume and is
 #  absorbed by the right sponge. Hann ramp over 2 periods; cold start.
 #
-#  RUN:  julia --project=. GridapLFEM.jl/examples/bc_plane_wave.jl
+#  RUN:  julia --project=. GridapBABALFEM.jl/examples/bc_plane_wave.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Printf
 
 println("=" ^ 60)
@@ -72,4 +72,4 @@ for (i, gxy) in enumerate(gauges)
     amp = isempty(gv) ? 0.0 : maximum(abs.(gv[n2:end]))
     @printf("  gauge %d at x=%.1f m:  steady amplitude ≈ %.5f m\n", i, gxy[1], amp)
 end
-println("\n  VTK output: GridapLFEM.jl/output/bc_plane_wave/solution.pvd")
+println("\n  VTK output: GridapBABALFEM.jl/output/bc_plane_wave/solution.pvd")

@@ -13,17 +13,17 @@
 #  with the postprocessing library.
 #
 #  ANALYSIS SCRIPT (many FEM runs — tens of minutes). RUN:
-#    julia --project=. GridapLFEM.jl/examples/validation/dispersion_sweep.jl
-#  Env: LFEM_M (vertical layers, default 2), LFEM_KD (comma-sep kd list).
+#    julia --project=. GridapBABALFEM.jl/examples/validation/dispersion_sweep.jl
+#  Env: BABALFEM_M (vertical layers, default 2), BABALFEM_KD (comma-sep kd list).
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Printf, LinearAlgebra
 
-M      = parse(Int, get(ENV, "LFEM_M", "2"))
+M      = parse(Int, get(ENV, "BABALFEM_M", "2"))
 c_bdy  = M == 3 ? [0.0,0.726,0.925,1.0] :
          M == 4 ? [0.0,0.745,0.923,0.977,1.0] : [0.0,0.728,1.0]
-kd_list = haskey(ENV,"LFEM_KD") ? parse.(Float64, split(ENV["LFEM_KD"],",")) :
+kd_list = haskey(ENV,"BABALFEM_KD") ? parse.(Float64, split(ENV["BABALFEM_KD"],",")) :
           [0.5, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 8.0, 10.0]
 
 println("=" ^ 66)

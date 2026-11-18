@@ -24,10 +24,10 @@
 #  to kd≈10.9). The 4% gate reflects that floor and still catches regressions (a
 #  broken solver reads ~25% off). CSV written for plotting.
 #
-#  RUN:  julia --project=. GridapLFEM.jl/test/test_dispersion_nonlinear.jl
+#  RUN:  julia --project=. GridapBABALFEM.jl/test/test_dispersion_nonlinear.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Printf, LinearAlgebra
 
 println("=" ^ 66)

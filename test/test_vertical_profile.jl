@@ -16,10 +16,10 @@
 #  L∞ profile error over σ∈[0,1] at several kd and require it small inside the
 #  applicable band and clearly larger past it.
 #
-#  RUN:  julia --project=. GridapLFEM.jl/test/test_vertical_profile.jl
+#  RUN:  julia --project=. GridapBABALFEM.jl/test/test_vertical_profile.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Gridap
 using Printf, LinearAlgebra
 

@@ -32,12 +32,12 @@ run_one_dist() {
     else
         lv=3; nx0=6;  ny0=4; px=2;        py=2
     fi
-    env LFEM_CONV_PU="$pu" LFEM_CONV_DOMAIN="$dom" LFEM_CONV_MODE="$mode" \
-        LFEM_CONV_LEVELS="$lv" LFEM_CONV_NX0="$nx0" LFEM_CONV_NY0="$ny0" \
-        LFEM_CONV_DIST=1 LFEM_CONV_PX="$px" LFEM_CONV_PY="$py" \
-        LFEM_CONV_LSRTOL=1e-13 LFEM_CONV_NLTOL=1e-13 \
-        LFEM_CONV_DT=1e-5 LFEM_CONV_NSTEPS=100 \
-        LFEM_CONV_OUT="output/local/mms_conv/$tag" \
+    env BABALFEM_CONV_PU="$pu" BABALFEM_CONV_DOMAIN="$dom" BABALFEM_CONV_MODE="$mode" \
+        BABALFEM_CONV_LEVELS="$lv" BABALFEM_CONV_NX0="$nx0" BABALFEM_CONV_NY0="$ny0" \
+        BABALFEM_CONV_DIST=1 BABALFEM_CONV_PX="$px" BABALFEM_CONV_PY="$py" \
+        BABALFEM_CONV_LSRTOL=1e-13 BABALFEM_CONV_NLTOL=1e-13 \
+        BABALFEM_CONV_DT=1e-5 BABALFEM_CONV_NSTEPS=100 \
+        BABALFEM_CONV_OUT="output/local/mms_conv/$tag" \
         OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1 \
         stdbuf -oL -eL "$HOME/.julia/bin/mpiexecjl" --project=. -n $((px*py)) \
         julia --project=. examples/local_mms/run_mms_matrix.jl \

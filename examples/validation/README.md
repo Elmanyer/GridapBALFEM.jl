@@ -17,13 +17,13 @@ The fast, gated correctness tests live in `../../test/` (see `../../ValidationTe
 ## Running
 
 ```bash
-# from inside GridapLFEM.jl/
+# from inside GridapBABALFEM.jl/
 julia --project=. examples/validation/<script>.jl
 # or from the parent repository
-julia --project=GridapLFEM.jl GridapLFEM.jl/examples/validation/<script>.jl
+julia --project=GridapBABALFEM.jl GridapBABALFEM.jl/examples/validation/<script>.jl
 ```
 
-The project must be the **`GridapLFEM.jl` package environment**: the scripts do `using GridapLFEM`,
+The project must be the **`GridapBABALFEM.jl` package environment**: the scripts do `using GridapBABALFEM`,
 which only resolves where the package is available.
 
 All default to a **quick** size; each script's header documents the production size (finer mesh, more

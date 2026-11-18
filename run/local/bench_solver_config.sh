@@ -55,7 +55,7 @@
 # ==============================================================
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-source run/local/lfem_local.sh
+source run/local/babalfem_local.sh
 
 RANKS="${RANKS:-12}"
 STEPS="${STEPS:-30}"
@@ -68,12 +68,12 @@ echo "config,precond,ls_rtol,ranks,steps,s_per_step,gmres_min,gmres_max,nl_per_s
 
 export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 JULIA_NUM_THREADS=1
 # Fixed physical case for every configuration: the 2-D nonlinear plane wave.
-export LFEM_WAVE_GEN=line LFEM_REGIME=nonlinear LFEM_NL_PRESSURE=full LFEM_FLAT_BED=1
-export LFEM_LX=40.0 LFEM_LY=15.0 LFEM_NX=96 LFEM_NY=36
-export LFEM_PX=4 LFEM_PY=3 LFEM_MPI=1
-export LFEM_TFINAL="$TF" LFEM_DT="$DT"
-export LFEM_SAVE_EVERY=0 LFEM_WRITE_W=0 LFEM_WRITE_PRESSURE=0
-export LFEM_PRINT_EVERY=10 LFEM_DIAG_EVERY=5
+export BABALFEM_WAVE_GEN=line BABALFEM_REGIME=nonlinear BABALFEM_NL_PRESSURE=full BABALFEM_FLAT_BED=1
+export BABALFEM_LX=40.0 BABALFEM_LY=15.0 BABALFEM_NX=96 BABALFEM_NY=36
+export BABALFEM_PX=4 BABALFEM_PY=3 BABALFEM_MPI=1
+export BABALFEM_TFINAL="$TF" BABALFEM_DT="$DT"
+export BABALFEM_SAVE_EVERY=0 BABALFEM_WRITE_W=0 BABALFEM_WRITE_PRESSURE=0
+export BABALFEM_PRINT_EVERY=10 BABALFEM_DIAG_EVERY=5
 
 # precond  ls_rtol   label
 #  The ladder brackets the ADOPTED default (ls_rtol=1e-5): one order tighter, the
@@ -100,10 +100,10 @@ fi
 for cfg in "${CONFIGS[@]}"; do
   set -- $cfg; pc=$1; rt=$2; label=$3
   echo "=== $label : precond=$pc ls_rtol=$rt ==="
-  export LFEM_PRECOND="$pc" LFEM_LS_RTOL="$rt"
-  export LFEM_OUTDIR="output/local/bench_${pc}_${rt}"
+  export BABALFEM_PRECOND="$pc" BABALFEM_LS_RTOL="$rt"
+  export BABALFEM_OUTDIR="output/local/bench_${pc}_${rt}"
   log="$OUT/bench_${pc}_${rt}.log"
-  lfem_local_mpi "$RANKS" examples/local_2d/run_small_2d.jl > "$log" 2>&1
+  babalfem_local_mpi "$RANKS" examples/local_2d/run_small_2d.jl > "$log" 2>&1
   rc=$?
 
   sps=$(grep -oE '\([0-9.]+ s/step average\)' "$log" | grep -oE '[0-9.]+' | head -1)
@@ -111,7 +111,7 @@ for cfg in "${CONFIGS[@]}"; do
   gmax=$(grep -oE 'gmres [0-9]+/[0-9]+' "$log" | grep -oE '[0-9]+' | sort -n | tail -1)
   # per-step Newton iterations and the final amplitude come from the CSV, which
   # is written continuously and survives a truncated run
-  read nlps meta rss <<<"$(python3 - "$LFEM_OUTDIR/diagnostics.csv" <<'PY'
+  read nlps meta rss <<<"$(python3 - "$BABALFEM_OUTDIR/diagnostics.csv" <<'PY'
 import csv,sys
 try:
     rows=list(csv.DictReader(open(sys.argv[1])))

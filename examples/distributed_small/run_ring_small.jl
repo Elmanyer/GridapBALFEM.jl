@@ -6,10 +6,10 @@
 #  ring observation case (case 4). Physics via environment variables.
 #
 #  Config via env (base = nonlinear / full pressure / flat bed / A=0.1):
-#    LFEM_REGIME       linear | nonlinear                    (default nonlinear)
-#    LFEM_NL_PRESSURE  none | native | full                  (default full)
-#    LFEM_AWAVE        wave amplitude [m]                    (default 0.1)
-#    LFEM_TWAVE        wave period [s]                       (default 2.0)
+#    BABALFEM_REGIME       linear | nonlinear                    (default nonlinear)
+#    BABALFEM_NL_PRESSURE  none | native | full                  (default full)
+#    BABALFEM_AWAVE        wave amplitude [m]                    (default 0.1)
+#    BABALFEM_TWAVE        wave period [s]                       (default 2.0)
 #
 #  Fixed defaults: domain 50x20, mesh 200x80 (square 0.25 m cells, isotropic for
 #  the ring), partition 8x8 (64 ranks), p_horizontal 2, dt 0.02, d 3.5, 4-side
@@ -21,37 +21,37 @@
 
 include(joinpath(@__DIR__, "..", "distributed", "_dist_common.jl"))
 
-get!(ENV, "LFEM_REGIME", "nonlinear")
-get!(ENV, "LFEM_NL_PRESSURE", "full")
-get!(ENV, "LFEM_FLAT_BED", "1")
+get!(ENV, "BABALFEM_REGIME", "nonlinear")
+get!(ENV, "BABALFEM_NL_PRESSURE", "full")
+get!(ENV, "BABALFEM_FLAT_BED", "1")
 
-M       = genv_i("LFEM_M", 2)
-px, py  = genv_i("LFEM_PX", 8), genv_i("LFEM_PY", 8)      # 8*8 = 64 ranks
-nx, ny  = genv_i("LFEM_NX", 160), genv_i("LFEM_NY", 160)   # square cells 0.25x0.25
-feord   = genv_i("LFEM_FE_ORDER", 2)
+M       = genv_i("BABALFEM_M", 2)
+px, py  = genv_i("BABALFEM_PX", 8), genv_i("BABALFEM_PY", 8)      # 8*8 = 64 ranks
+nx, ny  = genv_i("BABALFEM_NX", 160), genv_i("BABALFEM_NY", 160)   # square cells 0.25x0.25
+feord   = genv_i("BABALFEM_FE_ORDER", 2)
 #  p_eta = 0 keeps the historical EQUAL-ORDER spaces (unchanged default).
-#  Set LFEM_P_ETA = LFEM_FE_ORDER-1 for the Taylor-Hood-like pairing, which is
+#  Set BABALFEM_P_ETA = BABALFEM_FE_ORDER-1 for the Taylor-Hood-like pairing, which is
 #  the only one measured to reach the theoretical order in BOTH fields. It is
 #  NOT automatically the better production choice: at a GIVEN mesh the
 #  equal-order spaces were 40x more accurate, because eta sits in a richer
 #  space. Compare error-vs-DOF before switching.
-p_eta   = genv_i("LFEM_P_ETA", 0)
-Lx, Ly  = genv_f("LFEM_LX", 40.0), genv_f("LFEM_LY", 40.0)
-d       = genv_f("LFEM_D", 3.5)
-Twave   = genv_f("LFEM_TWAVE", 2.0)
-Awave   = genv_f("LFEM_AWAVE", 0.1)
-x_wm    = genv_f("LFEM_XWM", Lx/2)
-y_wm    = genv_f("LFEM_YWM", Ly/2)
-spX     = genv_f("LFEM_SPONGE_X", 4.0)
-spY     = genv_f("LFEM_SPONGE_Y", 4.0)
-mumax   = genv_f("LFEM_MUMAX", 40.0)   # strong: kill the reflected/boundary mode fast
-dt      = genv_f("LFEM_DT", 0.02)
-periods = genv_f("LFEM_PERIODS", 12.0)
-Tfinal  = haskey(ENV, "LFEM_TFINAL") ? genv_f("LFEM_TFINAL", 0.0) : periods * Twave
-save_ev = genv_i("LFEM_SAVE_EVERY", 10)
+p_eta   = genv_i("BABALFEM_P_ETA", 0)
+Lx, Ly  = genv_f("BABALFEM_LX", 40.0), genv_f("BABALFEM_LY", 40.0)
+d       = genv_f("BABALFEM_D", 3.5)
+Twave   = genv_f("BABALFEM_TWAVE", 2.0)
+Awave   = genv_f("BABALFEM_AWAVE", 0.1)
+x_wm    = genv_f("BABALFEM_XWM", Lx/2)
+y_wm    = genv_f("BABALFEM_YWM", Ly/2)
+spX     = genv_f("BABALFEM_SPONGE_X", 4.0)
+spY     = genv_f("BABALFEM_SPONGE_Y", 4.0)
+mumax   = genv_f("BABALFEM_MUMAX", 40.0)   # strong: kill the reflected/boundary mode fast
+dt      = genv_f("BABALFEM_DT", 0.02)
+periods = genv_f("BABALFEM_PERIODS", 12.0)
+Tfinal  = haskey(ENV, "BABALFEM_TFINAL") ? genv_f("BABALFEM_TFINAL", 0.0) : periods * Twave
+save_ev = genv_i("BABALFEM_SAVE_EVERY", 10)
 
 tag     = "$(regime_sym())_$(nl_pressure_sym())_A$(Awave)_T$(Twave)"
-outdir  = genv("LFEM_OUTDIR", joinpath(ROOT, "output", "small_ring_$(tag)_M$(M)"))
+outdir  = genv("BABALFEM_OUTDIR", joinpath(ROOT, "output", "small_ring_$(tag)_M$(M)"))
 
 banner("SMALL | ring wave (point source, flat bed) | $(regime_sym()) $(nl_pressure_sym()) A=$Awave",
        M, (px,py), (nx,ny), nx*ny, outdir)
@@ -72,7 +72,7 @@ diags, vert, prob = setup_and_run_distributed(
     ls_rtol=ls_rtol_val(), ls_maxiter=ls_maxiter_val(), krylov_m=krylov_m_val(), precond=precond_sym(),
     diag_every=diag_every_val(), diag_csv=diag_csv_flag(),
     div_factor=div_factor_val(), eta_ref=eta_ref_val(),
-    print_every=genv_i("LFEM_PRINT_EVERY", 10))
+    print_every=genv_i("BABALFEM_PRINT_EVERY", 10))
 
 is_rank0() && @printf("ring [%s] done: %d steps, %d snapshots to %s\n",
                       tag, length(diags), length(diags) ÷ max(save_ev,1), outdir)

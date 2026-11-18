@@ -10,8 +10,8 @@
 #
 #  RUN:  julia --project=. examples/vertical_profiles.jl [pvd-or-dir] [x] [y] [kd] [d]
 # ==============================================================
-include(joinpath(@__DIR__, "..", "src", "GridapLFEMPost.jl"))
-using .GridapLFEMPost
+include(joinpath(@__DIR__, "..", "src", "GridapBABALFEMPost.jl"))
+using .GridapBABALFEMPost
 
 src = length(ARGS) ≥ 1 ? ARGS[1] : joinpath(@__DIR__, "..", "..", "output", "pp_demo")
 x   = length(ARGS) ≥ 2 ? parse(Float64, ARGS[2]) : 24.0

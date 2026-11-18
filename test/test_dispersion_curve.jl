@@ -12,10 +12,10 @@
 #    * the error is (essentially) monotone increasing past kd_app.
 #  No time stepping — this is the cheapest, most fundamental physics check.
 #
-#  RUN:  julia --project=. GridapLFEM.jl/test/test_dispersion_curve.jl
+#  RUN:  julia --project=. GridapBABALFEM.jl/test/test_dispersion_curve.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Printf, LinearAlgebra
 
 println("=" ^ 64)

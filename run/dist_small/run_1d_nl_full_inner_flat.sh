@@ -1,7 +1,7 @@
 #!/bin/bash
 # CLUSTER quasi-1D flume - nl_full_inner_flat
 #   The {1,2,4,5} frozen-projection tier - the one that NaN'd on the cluster
-#SBATCH --job-name="LFEM_1d_nl_full_inner_flat"
+#SBATCH --job-name="BABALFEM_1d_nl_full_inner_flat"
 #SBATCH --partition=rome
 #SBATCH --time=11:59:00
 #SBATCH --ntasks=32
@@ -19,24 +19,24 @@
 #SBATCH --output=%x.%j.out
 #SBATCH --error=%x.%j.err
 
-source $HOME/GridapLFEM.jl/run/lfem_env.sh
+source $HOME/GridapBABALFEM.jl/run/babalfem_env.sh
 
 # --- MPI process grid: a 1-D flume is partitioned in x only ---
-export LFEM_MPI=1
-export LFEM_PX=32           # 32 x 1 = 32 ranks; LFEM_NX must divide by LFEM_PX
+export BABALFEM_MPI=1
+export BABALFEM_PX=32           # 32 x 1 = 32 ranks; BABALFEM_NX must divide by BABALFEM_PX
 
-export LFEM_WAVE_GEN=inner
-export LFEM_REGIME=nonlinear
-export LFEM_NL_PRESSURE=full
-export LFEM_FLAT_BED=1
+export BABALFEM_WAVE_GEN=inner
+export BABALFEM_REGIME=nonlinear
+export BABALFEM_NL_PRESSURE=full
+export BABALFEM_FLAT_BED=1
 
 # cluster sizing: 200 x 3 m, dx=0.25, 60 periods
-export LFEM_LX=200.0
-export LFEM_NX=800
-export LFEM_XBAR=100.0
-export LFEM_PERIODS=60
-export LFEM_SAVE_EVERY=25
-export LFEM_DIAG_EVERY=10
-export LFEM_PRINT_EVERY=10
+export BABALFEM_LX=200.0
+export BABALFEM_NX=800
+export BABALFEM_XBAR=100.0
+export BABALFEM_PERIODS=60
+export BABALFEM_SAVE_EVERY=25
+export BABALFEM_DIAG_EVERY=10
+export BABALFEM_PRINT_EVERY=10
 
-lfem_run 32 examples/local_1d/run_flume_1d.jl
+babalfem_run 32 examples/local_1d/run_flume_1d.jl

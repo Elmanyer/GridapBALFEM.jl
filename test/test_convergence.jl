@@ -19,10 +19,10 @@
 #  the residual code — specified in ValidationTests.tex.
 #
 #  A multi-run FEM test — minutes after JIT. RUN:
-#    julia --project=. GridapLFEM.jl/test/test_convergence.jl
+#    julia --project=. GridapBABALFEM.jl/test/test_convergence.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Printf, LinearAlgebra
 
 println("=" ^ 60)

@@ -18,10 +18,10 @@
 #  Results are printed as a table and appended to spectral_fidelity.csv.
 #  Quick default: 60 Tp, 20 bins. Production: 200+ Tp, 40+ bins.
 #
-#  RUN:  julia --project=. GridapLFEM.jl/examples/validation/spectral_fidelity.jl
+#  RUN:  julia --project=. GridapBABALFEM.jl/examples/validation/spectral_fidelity.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Printf, LinearAlgebra
 
 println("=" ^ 64)

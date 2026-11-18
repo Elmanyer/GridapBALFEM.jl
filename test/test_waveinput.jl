@@ -10,10 +10,10 @@
 #    and the WaveSpec.AiryState converter (amplitude/phase snapshot, Hs
 #    recovery, seed reproducibility).
 #
-#  RUN:  julia --project=. GridapLFEM.jl/test/test_waveinput.jl
+#  RUN:  julia --project=. GridapBABALFEM.jl/test/test_waveinput.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using LinearAlgebra, Printf
 using Gridap: VectorValue
 import Gridap

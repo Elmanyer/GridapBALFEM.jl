@@ -15,10 +15,10 @@
 #    D. fully nonlinear short run — stability of the Dirichlet BCs with the
 #       H-weighted terms and advection.
 #
-#  RUN:  julia --project=. GridapLFEM.jl/test/test_bc_generation.jl
+#  RUN:  julia --project=. GridapBABALFEM.jl/test/test_bc_generation.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Printf, LinearAlgebra
 
 println("=" ^ 60)

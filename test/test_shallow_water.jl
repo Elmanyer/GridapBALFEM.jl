@@ -21,10 +21,10 @@
 #    is enough to fail the physics gates and look like a model defect. See the
 #    measured sweep at the mesh definition below.
 #
-#  RUN:  julia --project=. GridapLFEM.jl/test/test_shallow_water.jl
+#  RUN:  julia --project=. GridapBABALFEM.jl/test/test_shallow_water.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Printf, LinearAlgebra
 
 println("=" ^ 64)

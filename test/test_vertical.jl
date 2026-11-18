@@ -6,12 +6,12 @@
 #    identities P[:,:,3] = −B and Kcal = Pcal − ∫σΘφᵢ, and the dispersion
 #    bridge vs Yang & Liu (2024) Table 1 applicable-kd values.
 #
-#  RUN:  julia --project=. GridapLFEM.jl/test/test_vertical.jl
+#  RUN:  julia --project=. GridapBABALFEM.jl/test/test_vertical.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Gridap.TensorValues   # VectorValue — used below to evaluate φ_int at σ=0,1.
-                            # GridapLFEM does not re-export Gridap's names, so a
+                            # GridapBABALFEM does not re-export Gridap's names, so a
                             # consumer that constructs Gridap values imports them.
 using LinearAlgebra, Printf
 

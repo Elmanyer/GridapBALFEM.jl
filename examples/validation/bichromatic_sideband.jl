@@ -17,10 +17,10 @@
 #  enlarge the domain to many group lengths, extend the run, and (for sidebands)
 #  replace the source by a carrier + seeded ±δω perturbation.
 #
-#  RUN:  julia --project=. GridapLFEM.jl/examples/validation/bichromatic_sideband.jl
+#  RUN:  julia --project=. GridapBABALFEM.jl/examples/validation/bichromatic_sideband.jl
 # ==============================================================
 
-using GridapLFEM
+using GridapBABALFEM
 using Gridap
 using Printf, LinearAlgebra
 

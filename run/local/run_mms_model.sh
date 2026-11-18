@@ -17,12 +17,12 @@
 # ==============================================================
 set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
-source run/local/lfem_local.sh
+source run/local/babalfem_local.sh
 mkdir -p output/local/logs output/local/mms_model
 
 MODE="${MODE:-space}"; LEVELS="${LEVELS:-3}"; NMODE="${NMODE:-1}"
-cat > /tmp/_lfem_mms_model.jl <<'JL'
-using GridapLFEM, Printf
+cat > /tmp/_babalfem_mms_model.jl <<'JL'
+using GridapBABALFEM, Printf
 mode   = Symbol(get(ENV, "MODE", "space"))
 levels = parse(Int, get(ENV, "LEVELS", "3"))
 nmode  = parse(Int, get(ENV, "NMODE", "1"))
@@ -46,4 +46,4 @@ open("output/local/mms_model/model_convergence_$(mode).csv","w") do io
 end
 JL
 MODE="$MODE" LEVELS="$LEVELS" NMODE="$NMODE" \
-    lfem_local_run /tmp/_lfem_mms_model.jl 2>&1 | tee "output/local/logs/mms_model_${MODE}.log"
+    babalfem_local_run /tmp/_babalfem_mms_model.jl 2>&1 | tee "output/local/logs/mms_model_${MODE}.log"

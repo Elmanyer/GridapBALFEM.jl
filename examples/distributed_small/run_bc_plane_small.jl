@@ -9,14 +9,14 @@
 #  interior-line-source plane wave that seeded the open-boundary instability.
 #
 #  Config via env (base = nonlinear / full pressure / flat bed / A=0.1 / T=2.0):
-#    LFEM_REGIME       linear | nonlinear                    (default nonlinear)
-#    LFEM_NL_PRESSURE  none | native | full                  (default full)
-#    LFEM_FLAT_BED     1 flat | 0 variable (=> submerged bar built here)   (1)
-#    LFEM_AWAVE        wave amplitude [m]                    (default 0.1)
-#    LFEM_TWAVE        wave period [s]                       (default 2.0)
-#    LFEM_WAVE_DIR     propagation angle vs +x [rad]         (default 0.0)
-#    LFEM_BC_PROFILE   model | airy  (vertical polarization) (default model)
-#    LFEM_HBAR/XBAR/WBAR   bar shape, used only when FLAT_BED=0   1.5 / 26 / 6
+#    BABALFEM_REGIME       linear | nonlinear                    (default nonlinear)
+#    BABALFEM_NL_PRESSURE  none | native | full                  (default full)
+#    BABALFEM_FLAT_BED     1 flat | 0 variable (=> submerged bar built here)   (1)
+#    BABALFEM_AWAVE        wave amplitude [m]                    (default 0.1)
+#    BABALFEM_TWAVE        wave period [s]                       (default 2.0)
+#    BABALFEM_WAVE_DIR     propagation angle vs +x [rad]         (default 0.0)
+#    BABALFEM_BC_PROFILE   model | airy  (vertical polarization) (default model)
+#    BABALFEM_HBAR/XBAR/WBAR   bar shape, used only when FLAT_BED=0   1.5 / 26 / 6
 #
 #  Fixed defaults baked in here: domain 50x20, mesh 200x40, partition 8x4 (32
 #  ranks), p_horizontal 2, dt 0.02, d 3.5, LEFT relaxation zone (width ~1λ) + right
@@ -28,46 +28,46 @@
 include(joinpath(@__DIR__, "..", "distributed", "_dist_common.jl"))
 
 # base-case physics (launcher overrides; get! => banner and solver stay consistent)
-get!(ENV, "LFEM_REGIME", "nonlinear")
-get!(ENV, "LFEM_NL_PRESSURE", "full")
-get!(ENV, "LFEM_FLAT_BED", "1")
-get!(ENV, "LFEM_RELAX", "1"); get!(ENV, "LFEM_RELAX_W", "6")
+get!(ENV, "BABALFEM_REGIME", "nonlinear")
+get!(ENV, "BABALFEM_NL_PRESSURE", "full")
+get!(ENV, "BABALFEM_FLAT_BED", "1")
+get!(ENV, "BABALFEM_RELAX", "1"); get!(ENV, "BABALFEM_RELAX_W", "6")
 
 # ---- fixed geometry / numerics defaults (common to all bc-plane cases) ----
-M       = genv_i("LFEM_M", 2)
-px, py  = genv_i("LFEM_PX", 8), genv_i("LFEM_PY", 4)      # 8*4 = 32 ranks
-nx, ny  = genv_i("LFEM_NX", 200), genv_i("LFEM_NY", 40)   # dx=0.25, dy=0.5
-feord   = genv_i("LFEM_FE_ORDER", 2)
+M       = genv_i("BABALFEM_M", 2)
+px, py  = genv_i("BABALFEM_PX", 8), genv_i("BABALFEM_PY", 4)      # 8*4 = 32 ranks
+nx, ny  = genv_i("BABALFEM_NX", 200), genv_i("BABALFEM_NY", 40)   # dx=0.25, dy=0.5
+feord   = genv_i("BABALFEM_FE_ORDER", 2)
 #  p_eta = 0 keeps the historical EQUAL-ORDER spaces (unchanged default).
-#  Set LFEM_P_ETA = LFEM_FE_ORDER-1 for the Taylor-Hood-like pairing, which is
+#  Set BABALFEM_P_ETA = BABALFEM_FE_ORDER-1 for the Taylor-Hood-like pairing, which is
 #  the only one measured to reach the theoretical order in BOTH fields. It is
 #  NOT automatically the better production choice: at a GIVEN mesh the
 #  equal-order spaces were 40x more accurate, because eta sits in a richer
 #  space. Compare error-vs-DOF before switching.
-p_eta   = genv_i("LFEM_P_ETA", 0)
-Lx, Ly  = genv_f("LFEM_LX", 50.0), genv_f("LFEM_LY", 20.0)
-d       = genv_f("LFEM_D", 3.5)
-spR     = genv_f("LFEM_SPONGE_R", 12.0)
-mumax   = genv_f("LFEM_MUMAX", 40.0)   # strong: kill the outgoing/boundary mode fast
-dt      = genv_f("LFEM_DT", 0.02)
-save_ev = genv_i("LFEM_SAVE_EVERY", 10)
+p_eta   = genv_i("BABALFEM_P_ETA", 0)
+Lx, Ly  = genv_f("BABALFEM_LX", 50.0), genv_f("BABALFEM_LY", 20.0)
+d       = genv_f("BABALFEM_D", 3.5)
+spR     = genv_f("BABALFEM_SPONGE_R", 12.0)
+mumax   = genv_f("BABALFEM_MUMAX", 40.0)   # strong: kill the outgoing/boundary mode fast
+dt      = genv_f("BABALFEM_DT", 0.02)
+save_ev = genv_i("BABALFEM_SAVE_EVERY", 10)
 # ---- per-case knobs (defaults = base case) ----
-Twave   = genv_f("LFEM_TWAVE", 2.0)
-Awave   = genv_f("LFEM_AWAVE", 0.1)
-wdir    = genv_f("LFEM_WAVE_DIR", 0.0)
-periods = genv_f("LFEM_PERIODS", 12.0)
-Tfinal  = haskey(ENV, "LFEM_TFINAL") ? genv_f("LFEM_TFINAL", 0.0) : periods * Twave
+Twave   = genv_f("BABALFEM_TWAVE", 2.0)
+Awave   = genv_f("BABALFEM_AWAVE", 0.1)
+wdir    = genv_f("BABALFEM_WAVE_DIR", 0.0)
+periods = genv_f("BABALFEM_PERIODS", 12.0)
+Tfinal  = haskey(ENV, "BABALFEM_TFINAL") ? genv_f("BABALFEM_TFINAL", 0.0) : periods * Twave
 
 # bathymetry: flat_bed=false => variable bathymetry => build the y-invariant bar
 usebar  = !flat_bed_flag(1)
-hbar    = genv_f("LFEM_HBAR", 1.5); xbar = genv_f("LFEM_XBAR", 26.0); wbar = genv_f("LFEM_WBAR", 6.0)
+hbar    = genv_f("BABALFEM_HBAR", 1.5); xbar = genv_f("BABALFEM_XBAR", 26.0); wbar = genv_f("BABALFEM_WBAR", 6.0)
 sramp   = wbar / 3.0
 h_bathy = usebar ?
     (x -> d - 0.5*hbar*(tanh((x[1]-(xbar-wbar))/sramp) - tanh((x[1]-(xbar+wbar))/sramp))) : nothing
 
 bedtag  = usebar ? "bar" : "flat"
 tag     = "$(regime_sym())_$(nl_pressure_sym())_$(bedtag)_A$(Awave)_T$(Twave)"
-outdir  = genv("LFEM_OUTDIR", joinpath(ROOT, "output", "small_bcplane_$(tag)_M$(M)"))
+outdir  = genv("BABALFEM_OUTDIR", joinpath(ROOT, "output", "small_bcplane_$(tag)_M$(M)"))
 
 banner("SMALL | BC plane wave (Dirichlet left) | $(regime_sym()) $(nl_pressure_sym()) $bedtag A=$Awave T=$Twave",
        M, (px,py), (nx,ny), nx*ny, outdir)
@@ -89,7 +89,7 @@ diags, vert, prob = setup_and_run_distributed(
     ls_rtol=ls_rtol_val(), ls_maxiter=ls_maxiter_val(), krylov_m=krylov_m_val(), precond=precond_sym(),
     diag_every=diag_every_val(), diag_csv=diag_csv_flag(),
     div_factor=div_factor_val(), eta_ref=eta_ref_val(),
-    print_every=genv_i("LFEM_PRINT_EVERY", 10))
+    print_every=genv_i("BABALFEM_PRINT_EVERY", 10))
 
 is_rank0() && @printf("bc_plane [%s] done: %d steps, %d snapshots to %s\n",
                       tag, length(diags), length(diags) ÷ max(save_ev,1), outdir)
