@@ -5,7 +5,7 @@
 #  and with the completed jacobian_u). This prints the NLsolve trace of every iteration so the failure
 #  can be read: Jacobian stall (slow contraction) or iterates running off (blow-up).
 #  Knobs: BALFEM_PROBE_MODEL (5), BALFEM_PROBE_STEPS (2), BALFEM_PROBE_VARIANT (all1 | adv_eta | wave1 |
-#  all0.1), BALFEM_PROBE_OSS (1), BALFEM_PROBE_NLTOL (1e-8), BALFEM_PROBE_TAG (output-name suffix),
+#  wave0.1 | wave0.3 | adv1 | eta1 | all0.1), BALFEM_PROBE_OSS (1), BALFEM_PROBE_NLTOL (1e-8), BALFEM_PROBE_TAG (output-name suffix),
 #  BALFEM_VMS_DT (0; 1 adds (2/Δt)² to τ_a).
 #  Output: output/mixed_vms/newton_probe/oss_m<m>_<variant>/.
 # ==============================================================
@@ -30,7 +30,8 @@ inc   = incident_fields(wi)
 bedf  = x -> d + (slope / (2π / Lx)) * cos(2π / Lx * x[1])
 
 coeffs = Dict("all1"    => (1.0, 1.0, 1.0), "adv_eta" => (1.0, 0.0, 1.0), "wave1" => (0.0, 1.0, 0.0),
-              "adv1"    => (1.0, 0.0, 0.0), "eta1" => (0.0, 0.0, 1.0), "all0.1" => (0.1, 0.1, 0.1))
+              "adv1"    => (1.0, 0.0, 0.0), "eta1" => (0.0, 0.0, 1.0), "all0.1" => (0.1, 0.1, 0.1),
+              "wave0.1" => (0.0, 0.1, 0.0), "wave0.3" => (0.0, 0.3, 0.0))
 ca, cw, ce = coeffs[vname]
 out = joinpath(ROOT_P, "output", "mixed_vms", "newton_probe", @sprintf("%s_m%d_%s%s", oss ? "oss" : "asgs", m, vname, suffix))
 println("PROBE m$m ", oss ? "OSS" : "ASGS", " $vname  C_a=$ca C_w=$cw C_η=$ce  Δt-term=$dtterm  → $out"); flush(stdout)
