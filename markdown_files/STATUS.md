@@ -1,5 +1,35 @@
 # STATUS.md — where the project stands (2026-10-09)
 
+> **Update 2026-11-17 (branch `mixed-vms-solver`): a second solver for the same model, as a research
+> instrument** (author's decision, 2026-11-16; record [`MIXED_VMS_PLAN.md`](MIXED_VMS_PLAN.md)).
+> * **Mixed formulation** (`formulation = :mixed`, models 5–6): `𝖦 ≈ ∇𝖲`, `𝖥 ≈ ∇𝖻` are unknowns, so the
+>   weak form is conforming on `C⁰` elements; no facet terms, no CIP. **Residual-based (VMS)
+>   stabilisation** (`vms = true`, models 3–4 primal and 5–6 mixed) is the only stabiliser, with a
+>   barotropic / vertical-structure split of τ aimed at the growing vertical-structure modes.
+>   Maths: `MODEL.md` §10.
+> * **Gates 29/29** (`test/test_mixed_vms.jl`); regression snapshot 12/12, so the v2 primal solver is
+>   unchanged on this branch.
+> * Name: **v3-mixed** (the mixed formulation of this branch; v1's mixed form differed in component 4
+>   off, a quasi-Newton mixed-row Jacobian, and CIP).
+> * **First comparison (1 λ box, n16, kA 0.08, CN, 5 periods):** m1–m4 primal reproduce the v2
+>   behaviour; **m5 and m6 mixed run 200/200 steps** (3 Newton iterations, E/E₀ − 1 ≤ 1e-4, ≈ 2×
+>   faster than primal + CIP). **Every VMS arm fails**: at step 2 with the hand Jacobian, and at steps
+>   16–24 with the exact AD Jacobian (which also costs 15–25× per step).
+> * **Diagnosis (`vms_jacobian_gap.jl`, 2026-11-17): two causes, no wiring bug.** (1) The `C_w`
+>   terms push the quasi-Newton contraction to ρ ≈ 0.91 (from 0.003), so the documented rule-5 gap
+>   (𝖴 rows × η columns) stalls Newton. (2) Momentum SUPG (`C_a`) weights the dispersive `𝗎̇` term
+>   and makes the effective mass `∂R/∂u̇` **indefinite** at nonzero velocity: the CN step matrix can
+>   go singular, which kills even exact Newton. **Decision needed** (plan §9.4): drop the dispersive
+>   `𝗎̇` from the SUPG-weighted residual (recommended first) / OSS / quasi-static subscales; and
+>   complete the core η-derivatives or lower `C_w`.
+> * **Unstabilised controls (closed box, m5, A 0.10, CN, chapter-8 environment): v3-mixed diverges
+>   at 46.7 s (16 cells/λ) and 19.9 s (32 cells/λ)**, grid-scale growth σ_E 0.26 → 0.95 s⁻¹: earlier
+>   than v2 primal without CIP (81 / 27 s). Conformity alone does not stabilise.
+>   Results: `MIXED_VMS_PLAN.md` §9.3, `output/mixed_vms/comparison/summary.txt`,
+>   `output/mixed_vms/box_controls/`.
+> * The delivered solver stays v2 (`v2-solver`). Open: the VMS fix above, then the stability study
+>   with this solver, and distributed mixed runs (plan §7 steps 9–10, need a decision).
+
 > **Update 2026-11-17: first integrator results; the cluster study waits for resources.**
 > * **Local SDIRK_2_2 box runs, m5 n32, Δt = 0.04, 200 periods, finished** (kA 0.158 and 0.25;
 >   `output/1D_stability_campaign/m5_q32_n32_sdirk{,_kA25}`). No burst (CN burst at 245 s), but the

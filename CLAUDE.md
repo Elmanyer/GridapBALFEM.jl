@@ -22,6 +22,27 @@
 > | outputs | `output_v1/` | `output/` |
 > | record | [`archive/HISTORY_V1.md`](markdown_files/archive/HISTORY_V1.md) (v1 `CLAUDE.md`, verbatim) | here + `STATUS.md` |
 
+> **Branch `mixed-vms-solver` (2026-11-16, cut from `v2-solver` @ `1be9c39`)** adds a second solver
+> for the same model: the **mixed formulation** (`formulation=:mixed`, models 5–6, 7 fields, no CIP)
+> and **residual-based VMS stabilisation** (`vms=true`, models 3–4 primal and 5–6 mixed). New files
+> `src/jets.jl`, `src/mixed.jl`, `src/vms.jl`, `test/test_mixed_vms.jl`,
+> `examples/local_1d/compare_mixed_vms.jl`, `vms_newton_probe.jl`, `vms_jacobian_gap.jl`,
+> `run/local/run_mixed_vms_compare.sh`, `run_mixed_box_controls.sh`;
+> knobs `BALFEM_FORMULATION`, `BALFEM_P_AUX`, `BALFEM_VMS`, `BALFEM_VMS_CADV/_CWAVE/_CETA`,
+> `BALFEM_VMS_DT`; outputs `output/mixed_vms/`. The v2 primal path is unchanged (regression snapshot
+> 12/12). Plan, maths, gates and results: [`MIXED_VMS_PLAN.md`](markdown_files/MIXED_VMS_PLAN.md)
+> (§9 = how to use it and where it stands); maths summary `MODEL.md` §10.
+> **State (2026-11-17):** the mixed solver ("**v3-mixed**") runs; unstabilised it diverges in the
+> closed box (46.7 s / 19.9 s at 16 / 32 cells/λ, earlier than v2 primal without CIP). **The VMS
+> design fails**: its SUPG term weights the dispersive `𝗎̇` and makes `∂R/∂u̇` indefinite (exact
+> Newton dies at steps 16–24), and `C_w` stalls the quasi-Newton core Jacobian. Fix options await the
+> author (plan §9.4); do not change `vms.jl` or the core Jacobian before that.
+> **Update 2026-11-18 (author decisions):** OSS implemented (`vms_oss=true`, G6 9/9; m3/m4 run 200/200
+> steps at ≈ 3 Newton iterations); `jacobian_u`'s η-derivatives of the pressure terms completed
+> (models 3–4 hand ≡ AD to round-off, ρ = 0; rule 5 now applies to the 𝓝 blocks only). Open: m5/m6
+> mixed + OSS blow up within a few steps, triggered by C_a (unbounded τ_a; the Δt term bounds it) with
+> a second growth when C_w is added. Not yet written into the plan, `MODEL.md` or `STATUS.md`.
+
 ---
 
 ## 0. What this is
@@ -47,7 +68,7 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 |---|---|
 | `Project.toml` / `Manifest.toml` | the package `GridapBALFEM`, loaded with **`using GridapBALFEM`, never `include()`**; also the working environment |
 | `src/` (19 files) | `problem.jl`: `BALFEMProblem`, `resolve_physics`, the loop-free residual and hand Jacobians · `nlpressure.jl`: `𝓝` {3,6,7,8} and the ∇h half · `broken.jl`: Class III cellwise Hessians + kind-S facet terms + exact Jacobian, the C⁰-CIP `:jumpgrad` (**mandatory with 𝓝**) and `:ghostvolume`; sequential **and distributed** (ghost sequential only) · `utilities.jl`: `setup_and_run`, `output_dir_name`, `check_v1_env`, `write_run_manifest` · `configuration.jl`: `write_run_configuration` (`CONFIGURATION.txt`) · `vopt.jl`, `mms.jl`, `vertical.jl`, … (`ARCHITECTURE.md` §2) |
-| `test/` | `runtests.jl` judges by gate output (never exit codes); `test/local/`, `test/cluster/`; `test_skeleton_ad.jl`; `test_nlp_distributed_parity.jl` (models 5–6, sequential ↔ distributed, debug or MPI backend); `test/v2_migration/regression_snapshot.jl` (v1→v2 gate, recording in `output/v2_baseline/`) |
+| `test/` | *(mixed-vms branch: `test_mixed_vms.jl`, gates G0–G5)* `runtests.jl` judges by gate output (never exit codes); `test/local/`, `test/cluster/`; `test_skeleton_ad.jl`; `test_nlp_distributed_parity.jl` (models 5–6, sequential ↔ distributed, debug or MPI backend); `test/v2_migration/regression_snapshot.jl` (v1→v2 gate, recording in `output/v2_baseline/`) |
 | `examples/` | `local_1d/` (`run_flume_1d.jl`, `run_periodic_1d.jl` the closed box, `stability_eig.jl`, `cip_eigen_analysis.jl`, `cip_eigen_order_rule.jl`), `local_2d/`, `local_mms/`, `distributed/`, `validation/` |
 | `run/` | `local/balfem_local.sh`, `balfem_env.sh` (cluster), SLURM launchers, `SNELLIUS_ROME_LAUNCH_CONFIGS.md`; `linear_production/` (v2 linear Snellius suite, single-node 1×42 directional); v2 box launchers `run/local/run_1dper_v2_unstab{,_extra,_q32}.sh` (⚠ their nlp1 rows are historical: 𝓝 now carries the mandatory CIP); **`integrator_study/`** (the time-integrator box study: `cases.py` → `cases.tsv`/`packs.tsv`, `submit.sh`, `run_pack.sh` with checkpoint segments, `cluster.sh` = per-cluster sbatch flags incl. the memory request, `BALFEM_CLUSTER=snellius\|blue`) |
 | `compile/` | cluster sysimage chain (`RUNNING.md` §5): `compile_snellius.sh` and `compile_blue.sh` (DelftBlue compute-p2, `load_modules_blue.sh`: OpenMPI 5.0.10 + juliaup Julia 1.10); `set_preferences.jl` adds the forks by URL and binds MPI to the system library |
@@ -125,7 +146,8 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
   * `{1,2,4,5}`: the ∇h half (block B) by exact integration by parts, and the **Class III** half
     (blocks C, L) by cellwise `∇∇` plus the kind-S facet term (`broken_class3_residual`), with an
     exact Jacobian;
-  * **the first-order C⁰-CIP is mandatory** (2026-10-30): `build_problem` attaches it on both fields at
+  * **the first-order C⁰-CIP is mandatory** (2026-10-30; on the primal formulation — the mixed
+    formulation of branch `mixed-vms-solver` needs none and refuses it): `build_problem` attaches it on both fields at
     `DEFAULT_CIP_GAMMA = 0.3`; `attach_skeleton!`, `global_residual` and `jacobian_u` refuse 𝓝 without
     it, and `p_eta < 2` is refused;
   * the `{1,2,5}` reduction is exact to 4.4e-16.

@@ -26,6 +26,7 @@ gitignored, so anything load-bearing belongs here.
 | [`VERIFIED_SCOPE.md`](VERIFIED_SCOPE.md) | is it correct, and how far does the claim reach? (MMS, AD oracle, Yang & Liu collapse; v1 measurements, models 1–4 unchanged in v2) |
 | [`TEST_SUITE.md`](TEST_SUITE.md) | what each test checks, and what would slip through (v1 scores; v2 status in `STATUS.md`) |
 | [`V2_SOLVER_PLAN.md`](V2_SOLVER_PLAN.md) | what v2 changed from v1 and why; the execution record; open step 10 (distributed) |
+| [`MIXED_VMS_PLAN.md`](MIXED_VMS_PLAN.md) | branch `mixed-vms-solver`: the mixed formulation + VMS solver — plan, maths, gates, how to run it, execution record and comparison results (§9) |
 | [`LATEX_STRUCTURE.md`](LATEX_STRUCTURE.md) | the v2 LaTeX document: chapter map, state of each chapter |
 | [`OUTPUT_NAMING_PROPOSAL.md`](OUTPUT_NAMING_PROPOSAL.md) | the output-directory grammar (implemented; rule 2c) |
 

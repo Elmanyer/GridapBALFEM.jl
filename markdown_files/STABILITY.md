@@ -80,6 +80,12 @@ the late growth rate if the run was still bounded at 160 s:
 cells/λ. Q3/Q2 at 16 cells: 26 s. Projected treatment: 8.8 s. `:native` diverged at Q2/Q1 64 cells
 (146 s) and grew at Q3/Q2 16 cells (+0.10 s⁻¹).
 
+**v3-mixed (branch `mixed-vms-solver`: all eight `𝓝` components, exact mixed-row Jacobian, no CIP, no
+VMS), m5 Q3/Q2, A = 0.10, CN, 2026-11-17:** Newton NaN at **46.7 s** (16 cells/λ) and **19.9 s** (32),
+HIGH-band σ_E +0.26 → +0.95 s⁻¹. Earlier than the v2 primal without CIP (81 / 27 s, §3b): the
+conforming mixed form does not remove the instability, and refinement brings the onset earlier
+(`MIXED_VMS_PLAN.md` §9.3).
+
 ## 3b. The chapter-7 solver (𝓝 + mandatory first-order CIP γ = 0.3): the 1-D campaign (2026-10-31 → 11-07)
 
 Closed box, Q3/Q2, CN, A = 0.10, dt = 0.04, **200 periods (320 s)**. Model 6 has a periodic cosine

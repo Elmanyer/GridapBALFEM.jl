@@ -85,6 +85,9 @@ See `src/nlpressure.jl`.
 | `problem.jl` | `BALFEMProblem`, `resolve_physics`, `global_residual`, `jacobian_u`, `jacobian_u_t` |
 | `nlpressure.jl` | 𝓝: components {3,6,7,8} direct, the exact-IBP ∇h half of {1,2,4,5}, the reduced Class-III contractions |
 | `broken.jl` | Class III by the BROKEN formulation (cellwise Hessians + skeleton layer) and its exact Jacobian; the skeleton stabilisers `:jumpgrad` / `:ghostvolume` (v2) |
+| `jets.jl` | *(branch `mixed-vms-solver`)* `Jet(value, tangent)`: residual and exact Jacobian integrands from one expression |
+| `mixed.jl` | *(branch `mixed-vms-solver`)* the mixed formulation: auxiliary `𝖦`, `𝖥` rows, Class III through them, consistent IC (`MODEL.md` §10) |
+| `vms.jl` | *(branch `mixed-vms-solver`)* residual-based (VMS) stabilisation: strong residuals, τ, the four terms (`MODEL.md` §10) |
 | `timeloop.jl` | sequential ODE operator, solver factory, time loop, VTK |
 | `timeloop_dist.jl` | distributed mesh builder, GMRES+Jacobi+Newton, distributed time loop |
 | `utilities.jl` | `setup_and_run` (the sequential driver), sponge, sources, dispersion helpers. `resolve_cbdy` is now the ONE place σ-element boundaries are chosen (shared with the distributed driver and the MMS drivers). Linear wave properties added 2026-08-21: `model_R` (R, R′, R″), `airy_R`, `wave_properties`, `property_errors`, `applicable_range` — `C_g` and `γ`, which the codebase previously lacked entirely |

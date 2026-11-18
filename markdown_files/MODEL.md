@@ -346,3 +346,48 @@ The eliminated vertical kinematics are rebuilt for output:
   flat-bed, `u̇` by backward finite difference), where `Π³_j = ∫_σ^1 φ_j_int`. `Π³_j` vanishes at
   `σ=1`, so the reconstructed non-hydrostatic pressure satisfies the free-surface condition
   `p_nh(1) = 0` **exactly** — a free sanity check on any output.
+
+---
+
+## 10. Branch `mixed-vms-solver`: the mixed formulation and residual-based stabilisation
+
+*Only on branch `mixed-vms-solver` (2026-11-16). Full derivation, design decisions D1–D5 and the
+gates: [`MIXED_VMS_PLAN.md`](MIXED_VMS_PLAN.md) §2–4. Nothing below changes the v2 primal residual
+(regression snapshot 12/12).*
+
+**Mixed form (`formulation = :mixed`, models 5–6).** Seven fields `[η, 𝖴x, 𝖴y, 𝖦x, 𝖦y, 𝖥x, 𝖥y]`,
+all `C⁰` Lagrange, `𝖦ₐ ≈ ∂ₐ𝖲` and `𝖥ₐ ≈ ∂ₐ𝖻` with `𝖲 = ∇·(H𝗎)` and `𝖻 = 𝗎·∇H`. Auxiliary rows,
+for each test `Ψ` of the auxiliary space:
+
+    ∫ 𝖦ₐ·Ψ + ∫ 𝖲·∂ₐΨ − ∮ 𝖲·Ψ nₐ = 0        (same for 𝖥ₐ with 𝖻)
+
+The boundary integral is assembled. The Class III blocks of `𝓝` (C, L) are written with `𝖦`, `𝖥` in
+place of the cellwise Hessians: `GU = Σₐ 𝖦ₐ⊗𝖴ₐ`, `SD = 𝖲⊗D`, `N4 = Σₐ 𝖴ₐ⊗𝖥ₐ` contracted with `𝒲^K`,
+`𝒲^P`. Every unknown then carries at most one derivative: no facet term, no CIP (γ > 0 refused).
+The system is an index-1 DAE (no `∂ₜ𝖦`, `∂ₜ𝖥`); the initial `𝖦`, `𝖥` are projected
+(`mixed_consistent_ic`).
+
+**VMS (`vms = true`; models 3–4 primal, 5–6 mixed).** With strong residuals `R_c` (continuity) and
+`R_m,a` (momentum, a = x, y), the subscales are
+
+    η′ = −τ_η R_c,      𝗎′ₐ = −T (H M)⁻¹ R_m,a,      T M⁻¹ = τ_w e eᵀ + τ_a (M⁻¹ − e eᵀ)
+
+(`M` = `Mmat`, `e` = all ones; barotropic part `τ_w`, vertical-structure part `τ_a`), with
+`h_e = h / p_u` (`h = √|K|`), `c₀ = √(gd)`,
+
+    τ_w = C_w h_e/(2c₀),   τ_η = C_η h_e/(2c₀),   τ_a = C_a [k_Δt + (2/h_e)²(u₀² + 𝗎·M𝗎)]^(−1/2),
+    u₀ = 10⁻³ c₀,   k_Δt = (2/Δt)² only with vms_dt_term.
+
+Four terms are added to the residual (`N_b = 𝓜·u_b`, `Zₐ = τ_w e (e·R_m,a) + τ_a (M⁻¹ − e eᵀ) R_m,a`):
+momentum SUPG `∫ Σₐ (N_b ∂_b Wₐ)·Zₐ`, continuity PSPG
+`∫ τ_w Σₐ ∂ₐq (e·R_m,a)`, continuity SUPG `∫ τ_η (ū·∇q) R_c`, and LSIC (momentum) `∫ τ_η g H (Φ·∇·W) R_c`. Not
+included: the adjoint of `𝓖`, zero-order adjoint terms, cross/Reynolds stresses, `∂ₜ` of the
+subscales. Model 6 needs the third bed derivative (`_bed_third`). Exact Jacobians through `Jet`
+(`src/jets.jl`).
+
+⚠ **Measured defect of this VMS form (2026-11-17, plan §9.3–9.4).** `R_m,a` includes the
+time-derivative part `H M 𝗎̇ₐ − d² B̃ ∂ₐ∇·𝗎̇` (dispersion), so momentum SUPG adds
+`∫ Σₐ (N_b ∂_b Wₐ)·Zₐ(𝗎̇)` to the effective mass `∂R/∂u̇`: non-symmetric, second-derivative, O(C_a).
+At nonzero velocity it makes the mass indefinite (8 negative eigenvalues at run amplitude, model 3
+box), and exact-Newton CN runs fail at steps 16–24. A fix (drop the dispersive `𝗎̇` term from the
+weighted residual, OSS, or quasi-static subscales) is the author's decision.
