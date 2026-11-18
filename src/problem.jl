@@ -630,6 +630,47 @@ function jacobian_u(t::Real, u, du, v, prob::BALFEMProblem, trian, dΩh)
         r = r + ∫( dη*(Wx ⋅ alg_mul(prob.Mv, ut[2])) + dη*(Wy ⋅ alg_mul(prob.Mv, ut[3])) ) * dΩh
     end
 
+    # η-derivatives of the two non-hydrostatic pressure terms (completed 2026-11-18, author's
+    # decision; were the rule-5 quasi-Newton omission, rows 𝖴 × columns η). Both terms are LINEAR
+    # in u̇ with coefficients H, H², ∇H; their ∂/∂u̇ is in jacobian_u_t, they carry no 𝖴, so this
+    # is their complete ∂/∂u. With L₁ = −u̇·∇h, L₂ = u̇·∇H, L₃ = −(H∇·u̇ + u̇·∇H):
+    #   δL₁ = 0,   δL₂ = u̇·∇δη,   δL₃ = −(δη ∇·u̇ + u̇·∇δη)
+    if !lin
+        Uxt_ = ut[2]; Uyt_ = ut[3]
+        dhxp = prob.flat_bed ? 0.0*alg_dx(d_cf) : alg_dx(d_cf)
+        dhyp = prob.flat_bed ? 0.0*alg_dy(d_cf) : alg_dy(d_cf)
+        dHxp = dhxp + alg_dx(η);  dHyp = dhyp + alg_dy(η)
+        DUt_ = alg_dx(Uxt_) + alg_dy(Uyt_)
+        UgHt = dHxp*Uxt_ + dHyp*Uyt_
+        dUgHt = alg_dx(dη)*Uxt_ + alg_dy(dη)*Uyt_
+        L1 = (-1.0)*(dhxp*Uxt_ + dhyp*Uyt_)
+        L2 = UgHt
+        L3 = (-1.0)*(H*DUt_ + UgHt)
+        dL2 = dUgHt
+        dL3 = (-1.0)*(dη*DUt_ + dUgHt)
+        #  leading pressure  R = −∫ H² (Σₖ Pₖ Lₖ)·∇·W   (or the Bv form without P_full)
+        if prob.P_full
+            sP  = alg_mul(prob.P[1], L1) + alg_mul(prob.P[2], L2) + alg_mul(prob.P[3], L3)
+            dsP = alg_mul(prob.P[2], dL2) + alg_mul(prob.P[3], dL3)
+            r = r + ∫( (-2.0)*H*dη*(sP ⋅ DW) + (-1.0)*(H*H)*(dsP ⋅ DW) ) * dΩh
+        else
+            X  = H*DUt_ + UgHt
+            dX = dη*DUt_ + dUgHt
+            r = r + ∫( (-2.0)*H*dη*((alg_mul(prob.Bv, X)) ⋅ DW)
+                     + (-1.0)*(H*H)*((alg_mul(prob.Bv, dX)) ⋅ DW) ) * dΩh
+        end
+        #  slope package  R = −∫ H [∇h·(W 𝓛A) + ∇H·(W 𝓛K)]   (same guard as the residual)
+        if prob.lin_pressure
+            LA  = alg_mul(prob.Av[1], L1) + alg_mul(prob.Av[2], L2) + alg_mul(prob.Av[3], L3)
+            LK  = alg_mul(prob.Kv[1], L1) + alg_mul(prob.Kv[2], L2) + alg_mul(prob.Kv[3], L3)
+            dLA = alg_mul(prob.Av[2], dL2) + alg_mul(prob.Av[3], dL3)
+            dLK = alg_mul(prob.Kv[2], dL2) + alg_mul(prob.Kv[3], dL3)
+            r = r + ∫( (-1.0)*dη*( dhxp*(Wx ⋅ LA) + dHxp*(Wx ⋅ LK) + dhyp*(Wy ⋅ LA) + dHyp*(Wy ⋅ LK) ) ) * dΩh
+            r = r + ∫( (-1.0)*H*( alg_dx(dη)*(Wx ⋅ LK) + alg_dy(dη)*(Wy ⋅ LK) ) ) * dΩh
+            r = r + ∫( (-1.0)*H*( dhxp*(Wx ⋅ dLA) + dHxp*(Wx ⋅ dLK) + dhyp*(Wy ⋅ dLA) + dHyp*(Wy ⋅ dLK) ) ) * dΩh
+        end
+    end
+
     # sponge (velocity + free-surface η damping; exact linear derivative)
     r = r + ∫( mu_cf*( q*dη
                      + (Wx ⋅ alg_mul(prob.Mv, dUx))
