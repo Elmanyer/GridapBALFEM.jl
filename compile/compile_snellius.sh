@@ -50,7 +50,7 @@ mpiexecjl --project="$PROJ" -n 1 julia --project="$PROJ" "$PROJ/compile/compile.
 #    that the solver was edited and the image is stale (run/balfem_env.sh,
 #    balfem_check_sysimage_freshness). Without the stamp they fall back to a
 #    coarser mtime comparison.
-source "$PROJ/run/balfem_env.sh"
+BALFEM_SKIP_STORAGE=1 source "$PROJ/run/balfem_env.sh"   # the build writes no run output
 balfem_write_sysimage_stamp "$PROJ/GridapBALFEM_sysimage.so" "$PROJ/src"
 
 echo "Sysimage built: $PROJ/GridapBALFEM_sysimage.so"

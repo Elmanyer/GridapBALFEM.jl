@@ -82,6 +82,9 @@ bash $HOME/GridapBALFEM.jl/run/linear_production/submit_all.sh directional  # a 
 
 Outputs go to `output/<output_dir_name>/`, one per case, with a `run_manifest.toml` that records
 the integrator and every knob. `unique_output_dir` never overwrites an existing directory.
+On the cluster `output/` is the link to `$STORAGE/GridapBALFEM_output` on the project storage
+(2026-11-23; `run/storage.sh`, `markdown_files/RUNNING.md` §4): `export STORAGE=…` in `~/.bashrc` and
+run `run/setup_storage.sh` once, or `submit_all.sh` and the launchers refuse to start.
 
 ## What to watch
 

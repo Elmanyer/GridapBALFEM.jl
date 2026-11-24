@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """cases.py — the case matrix of the time-integrator stability study (STABILITY.md §6b).
 
-    python3 run/integrator_study/cases.py            writes cases.tsv and packs.tsv next to this file,
-                                                     and cases_extra.tsv / packs_extra.tsv (below)
+    python3 run/integrator_study/cases.py            writes cases.tsv and packs.tsv next to this file
 
-EXTRA SET (author, 2026-11-18): TR-BDF2 and generalised-α (ρ∞ = 0 and 0.5) were added after the
-main matrix had been submitted. They form a separate case set with its own tables, so the main
-tables (and the pack ids of the jobs already running) do not change. Same configurations as the main
-matrix, tiers P A B C D E G (F and H are specific to the 4th-order schemes and to SDIRK_2_2/Crouzeix,
-so they are not repeated). Submit with submit_extra.sh (= BALFEM_STUDY_SET=extra submit.sh).
+ONE CASE SET (2026-11-23, author). TR-BDF2 and generalised-α (ρ∞ = 0 and 0.5) were added on
+2026-11-18 as a separate "extra" set (cases_extra.tsv, packs_extra.tsv, submit_extra.sh) so the pack
+ids of the jobs already running would not change. That campaign is over (results:
+markdown_files/INTEGRATOR_STUDY_RESULTS.md), so the two sets are now ONE table: the main matrix plus
+the extra integrators on tiers P A B C D E G (F and H are specific to the 4th-order schemes and to
+SDIRK_2_2/Crouzeix, so they are not repeated). Case names are unchanged, so the output tree of the
+first campaign resumes as it is; PACK IDS CHANGED (packs now mix the integrators of a tier and model).
 
 The closed x-periodic box (examples/local_1d/run_periodic_1d.jl), P1LFE-2, Q3/Q2, one model
 wavelength, seed 1e-8, 200 periods, 40 steps per period (dt = T/40, so ωΔt = 0.157 and every
@@ -78,7 +79,7 @@ INTEGRATORS = {
     "rk3":     ("sdirk",     "EXRK_SSP_3_3",        0.5, 0.5, 3.0),   # explicit, y⁴/24, limit ωΔt < √3
     "crz34":   ("sdirk",     "SDIRK_Crouzeix_3_4",  0.5, 0.5, 3.3),   # 4th order, 3 stages, R(∞)=0.63:
 }                                                                     #   the implicit stand-in for RK4
-#  The EXTRA set (author, 2026-11-18; cases_extra.tsv, packs_extra.tsv). Loss per step at ωΔt =
+#  The EXTRA integrators (author, 2026-11-18; one table with the rest since 2026-11-23). Loss per step at ωΔt =
 #  0.157 / 0.314 (2ω₀) / 1, and the carrier amplitude kept over 100 periods (dt = T/40):
 #    trbdf2   2.2e-6 / 3.5e-5 / 3.1e-3, L-stable (R(∞) = 0), 2nd order, 2 implicit stages: 99.1 %
 #    galpha0  1.4e-4 / 2.0e-3 / 6.7e-2, ρ∞ = 0 (R(∞) = 0), 2nd order, 1 implicit stage:      56 %
@@ -234,5 +235,4 @@ if __name__ == "__main__":
     extra = matrix(pool=EXTRA_INTEGRATORS)
     clash = {c["name"] for c in main} & {c["name"] for c in extra}
     assert not clash, f"extra cases share names with the main set: {sorted(clash)[:3]}"
-    write_set(main, "", "main set")
-    write_set(extra, "_extra", "extra set: TR-BDF2, generalised-α ρ∞ 0 and 0.5")
+    write_set(main + extra, "", "integrator study: main matrix + TR-BDF2, generalised-α ρ∞ 0 and 0.5")

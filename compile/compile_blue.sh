@@ -56,7 +56,7 @@ command -v mpiexecjl >/dev/null || julia --project="$PROJ" -e 'using MPI; MPI.in
 mpiexecjl --project="$PROJ" -n 1 julia --project="$PROJ" "$PROJ/compile/compile.jl"
 
 # 4) Stamp the image with a hash of src/*.jl (run/balfem_env.sh, balfem_check_sysimage_freshness).
-source "$PROJ/run/balfem_env.sh"
+BALFEM_SKIP_STORAGE=1 source "$PROJ/run/balfem_env.sh"   # the build writes no run output
 balfem_write_sysimage_stamp "$PROJ/GridapBALFEM_sysimage.so" "$PROJ/src"
 
 echo "Sysimage built: $PROJ/GridapBALFEM_sysimage.so"

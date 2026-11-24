@@ -4,10 +4,10 @@
 #
 #  One SLURM array task = one pack = up to 8 sequential box cases run side by side
 #  (examples/local_1d/run_periodic_1d.jl, one Julia process each, the sysimage loaded with -J).
-#  The case matrix and the packs: run/integrator_study/{cases,packs}.tsv (cases.py); with
-#  BALFEM_STUDY_SET=extra (submit_extra.sh) {cases,packs}_extra.tsv. The resubmission below keeps the
-#  set (--export=ALL carries BALFEM_STUDY_SET).
-#  Submit with submit.sh, never by hand (it maps tiers to array indices).
+#  The case matrix and the packs: run/integrator_study/{cases,packs}.tsv (cases.py; one table since
+#  2026-11-23). Submit with submit.sh, never by hand (it maps tiers to array indices).
+#  OUTPUT: $BALFEM_STUDY_OUT (default $BALFEM_OUTPUT_ROOT/integrator_study) on the project storage;
+#  balfem_env.sh refuses to run unless $STORAGE is set and output/ is its link (run/storage.sh).
 #
 #  SEGMENTS. A case may need more than the 120 h wall. Each case therefore runs in segments
 #  <case>/seg01, seg02, …: a segment is stopped by `timeout` before the wall, and the next one
@@ -25,6 +25,8 @@
 #  --mem-per-cpu, and a command-line flag cannot remove a header one). Snellius: --mem=28G = 1/8
 #  node for 8 cases (run/SNELLIUS_ROME_LAUNCH_CONFIGS.md §2; ≈ 3.5 GiB each; a 𝓝 box case peaked
 #  at 2.8–3.0 GB locally). One thread per case.
+#  BALFEM_CASE_FILTER (extended regex on the case name, carried by --export=ALL into the
+#  resubmissions): run only the matching cases of the pack (submit.sh resume; 2026-11-23).
 #  Per case from cases.tsv: physics, integrator, dt, the CIP penalty γ, and the output cadence
 #  (save/checkpoint every N steps, scaled with dt so every case keeps ≈ 8 samples per period).
 # ============================================================================
@@ -40,19 +42,17 @@
 source "${BALFEM_PROJ:-$HOME/GridapBALFEM.jl}/run/balfem_env.sh"
 set +e                                   # balfem_env.sh sets -e; a failing case must not end the pack
 here="$BALFEM_PROJ/run/integrator_study"
-: "${BALFEM_STUDY_OUT:=$BALFEM_PROJ/output/integrator_study}"
+: "${BALFEM_STUDY_OUT:=$BALFEM_OUTPUT_ROOT/integrator_study}"     # BALFEM_OUTPUT_ROOT: balfem_env.sh
 : "${BALFEM_SEG_HOURS:=119}"             # timeout of one segment (the wall is 119:59)
 : "${BALFEM_MAX_SEG:=10}"                # resubmissions stop after this many segments (the
                                          #   costliest case needs ≈ 7; a safety stop, not a budget)
 pack="${SLURM_ARRAY_TASK_ID:?run through submit.sh (an array task id is needed)}"
-#  the case set (submit.sh): unset/empty = main (cases.tsv, packs.tsv), "extra" = *_extra.tsv
-sfx="${BALFEM_STUDY_SET:+_$BALFEM_STUDY_SET}"
-cases_tsv="$here/cases$sfx.tsv"; packs_tsv="$here/packs$sfx.tsv"
+cases_tsv="$here/cases.tsv"; packs_tsv="$here/packs.tsv"
 
 line=$(awk -F'\t' -v p="$pack" 'NR > 1 && $1 == p' "$packs_tsv")
 [ -n "$line" ] || { echo "no pack $pack in $(basename "$packs_tsv")" >&2; exit 1; }
 IFS=',' read -r -a names <<< "$(cut -f3 <<< "$line")"
-echo "$(date '+%F %T') pack $pack (${BALFEM_STUDY_SET:-main} set, tier $(cut -f2 <<< "$line")): ${#names[@]} cases on $(hostname)"
+echo "$(date '+%F %T') pack $pack (tier $(cut -f2 <<< "$line")): ${#names[@]} cases on $(hostname), output $BALFEM_STUDY_OUT"
 
 #  the sysimage: present and fresh, or BALFEM_NO_SYSIMAGE=1 (then every case compiles)
 jflag=()
@@ -66,12 +66,15 @@ fi
 run_segment() {
     local name="$1" row case_dir last seg prev restart
     row=$(awk -F'\t' -v n="$name" 'NR > 1 && $1 == n' "$cases_tsv")
-    [ -n "$row" ] || { echo "case $name not in $(basename "$cases_tsv")" >&2; return; }
+    [ -n "$row" ] || { echo "case $name not in $(basename "$cases_tsv")" >&2; return 1; }
     IFS=$'\t' read -r _ tier model nlp flat slope T kA ncell dt periods solver tableau theta rho gamma \
                        save_every ckpt_every cost <<< "$row"
+    if [ -n "${BALFEM_CASE_FILTER:-}" ] && ! grep -qE "$BALFEM_CASE_FILTER" <<< "$name"; then
+        echo "  $name: not selected (BALFEM_CASE_FILTER)"; return 1
+    fi
     case_dir="$BALFEM_STUDY_OUT/$name"; mkdir -p "$case_dir"
-    [ -f "$case_dir/FINISHED" ] && { echo "  $name: finished"; return; }
-    [ -f "$case_dir/FAILED" ]   && { echo "  $name: failed earlier (see FAILED)"; return; }
+    [ -f "$case_dir/FINISHED" ] && { echo "  $name: finished"; return 1; }
+    [ -f "$case_dir/FAILED" ]   && { echo "  $name: failed earlier (see FAILED)"; return 1; }
     last=$(ls -d "$case_dir"/seg[0-9][0-9] 2>/dev/null | sort | tail -1)
     seg=$(printf "%02d" $(( ${last:+10#${last##*seg}} + 1 )))
     #  resume from the newest segment that holds a checkpoint
@@ -112,8 +115,8 @@ run_segment() {
 }
 
 for n in "${names[@]}"; do
-    run_segment "$n"
-    sleep 20                                          # stagger the starts (sysimage mmap, disk)
+    run_segment "$n" && sleep 20                      # stagger the starts (sysimage mmap, disk);
+                                                      #   a skipped case (1) costs no wait
 done
 wait
 echo "$(date '+%F %T') pack $pack: all cases exited"
@@ -122,13 +125,14 @@ echo "$(date '+%F %T') pack $pack: all cases exited"
 again=0
 for n in "${names[@]}"; do
     d="$BALFEM_STUDY_OUT/$n"
+    [ -n "${BALFEM_CASE_FILTER:-}" ] && ! grep -qE "$BALFEM_CASE_FILTER" <<< "$n" && continue
     [ -f "$d/FINISHED" ] || [ -f "$d/FAILED" ] && continue
     nseg=$(ls -d "$d"/seg[0-9][0-9] 2>/dev/null | wc -l)
     if [ "$nseg" -lt "$BALFEM_MAX_SEG" ]; then again=1
     else echo "  $n: $nseg segments without finishing — not resubmitted (raise BALFEM_MAX_SEG)"; fi
 done
 if [ "$again" = 1 ]; then
-    cd "$BALFEM_PROJ/output/slurm_logs/integrator_study" 2>/dev/null || true
+    cd "$BALFEM_OUTPUT_ROOT/slurm_logs/integrator_study" 2>/dev/null || true
     source "$here/cluster.sh"                         # the same cluster flags as the first submission
     sbatch --array="$pack" --job-name="${SLURM_JOB_NAME:-BALFEM_integ}" \
            ${STUDY_SBATCH_FLAGS[@]+"${STUDY_SBATCH_FLAGS[@]}"} --export=ALL "$here/run_pack.sh"

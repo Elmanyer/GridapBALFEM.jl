@@ -18,6 +18,8 @@
 # --- environment (edit paths/modules for your machine) --------------------------
 ROOT=$HOME/GridapBALFEM.jl
 source $ROOT/compile/load_modules_snellius.sh    # or your cluster's module setup
+# output on the project storage ($STORAGE in ~/.bashrc; $ROOT/output is its link): run/storage.sh
+BALFEM_PROJ=$ROOT; source $ROOT/run/storage.sh; balfem_storage_check || exit 1
 
 NP=$SLURM_NTASKS                                  # total ranks (= -n)
 export BALFEM_PX=${BALFEM_PX:-$NP}                    # process grid; PX*PY must equal NP
