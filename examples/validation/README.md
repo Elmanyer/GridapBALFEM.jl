@@ -3,7 +3,7 @@
 Benchmark reproductions from Yang & Liu (2024, *J. Fluid Mech.* **999**, A32) and classical
 wave-model validation cases. These are **analysis scripts** (multi-minute to multi-hour runs), not
 CI tests — they print measured quantities and light PASS/FAIL where a clean analytical target exists.
-The fast, gated correctness tests live in `../../test/` (see `../../ValidationTests.md`).
+The fast, gated correctness tests live in `../../test/` (see `../../markdown_files/TEST_SUITE.md`).
 
 | Script | Benchmark | What it measures | Paper ref |
 |--------|-----------|------------------|-----------|

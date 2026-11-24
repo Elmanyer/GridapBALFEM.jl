@@ -2,7 +2,7 @@
 
 *Restructured 2026-10-09: completed plans and full campaign records moved to [`archive/`](archive/README.md);
 the current state lives in a few short files.* ⚠ This directory is **tracked**; `latex_docs/` is
-gitignored, so anything load-bearing belongs here.
+gitignored (only a link to the LaTeX project, `CLAUDE.md` §2), so anything load-bearing belongs here.
 
 ## Reading order for a new agent
 

@@ -174,7 +174,7 @@ What remains, in order of effort: **field-split/Schur** (medium) → **geometric
 **ring-vs-plane gap on an identical mesh is an isolated, cheap, reproducible test bed** — a
 preconditioner that closes it likely helps everywhere.
 
-`run/local/bench_solver_config.sh` compares configurations on one fixed case and reports iterations,
+`run/local/bench_solver_config.sh` (v1; removed in v2, tag `v1_final_solver`) compared configurations on one fixed case and reports iterations,
 wall time **and** `max|η|`, so a cheaper setting is rejected if it changes the answer. It brackets
 the adopted `ls_rtol=1e-5` rather than searching for it, and the two measured-dead preconditioners
 are opt-in behind `BENCH_FAILED_PRECOND=1`.

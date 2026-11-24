@@ -52,7 +52,7 @@ right; a collapsed rate on an *isolated* study proves it was not.
 
 ## 0b. ✅ THE ONE EXTERNAL ORACLE: BALFE-M at `p=1` collapses onto Yang & Liu's LFE-M
 
-> Added 2026-09-16. Full account: `CLAUDE.md` §5.2d and `latex_docs/BALFEM_models/ModelVerification.tex`.
+> Added 2026-09-16. Full account: `CLAUDE.md` §5.2d and `latex_docs/GridapBALFEM_documentation/BALFEM_derivation/ModelVerification.tex` (chapter 4).
 
 §0 says that most of this suite is **self-consistency** and would pass for a consistently-wrong
 residual, and that only the analytic MMS can detect one. **That is now too weak a statement in one

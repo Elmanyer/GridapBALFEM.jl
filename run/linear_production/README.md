@@ -5,7 +5,7 @@ They run v2 (branch `v2-solver`). The linear residual and both Jacobians are ide
 entry (`test/v2_migration/regression_snapshot.jl`: `lin_flat`, `lin_bed`, `lin_bed_q21`, relative
 difference 0.00e+00).
 
-Domains are those of the v1 `run/dist_small/` suite. The directional sea uses the **wide_small**
+Domains are those of the v1 `run/dist_small/` suite (removed in v2; tag `v1_final_solver`). The directional sea uses the **wide_small**
 domain (50 × 40 m, 2 m lateral sponges).
 
 ## Cases

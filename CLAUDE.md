@@ -11,7 +11,8 @@
 >
 > Reference documents: [`INDEX.md`](markdown_files/INDEX.md). Completed plans and full v1 records:
 > [`markdown_files/archive/`](markdown_files/archive/README.md). ⚠ `markdown_files/` is **tracked**;
-> `latex_docs/` is **gitignored**, so anything load-bearing goes in `markdown_files/`.
+> `latex_docs/` is **gitignored** (it only holds a link to the LaTeX project, §2), so anything
+> load-bearing goes in `markdown_files/`.
 >
 > **Sister solver (split 2026-11-23).** The mixed formulation of the BALFE-M models (auxiliary
 > unknowns for the 𝓝 gradients, conforming without CIP) with residual-based (VMS) stabilisation is
@@ -25,7 +26,7 @@
 > | | v1 (frozen) | v2 (active) |
 > |---|---|---|
 > | code | branches `main`, `v1-solver`; tag `v1_final_solver` | branch **`v2-solver`** |
-> | LaTeX | `latex_docs/BALFEM_models_v1/` | `latex_docs/BALFEM_models_v2/` (Overleaf) |
+> | LaTeX | `../LATEX_DOCS/BALFEM_models_v1/` | `latex_docs/GridapBALFEM_documentation/` (Overleaf, §2) |
 > | outputs | `output_v1/` | `output/` |
 > | record | [`archive/HISTORY_V1.md`](markdown_files/archive/HISTORY_V1.md) (v1 `CLAUDE.md`, verbatim) | here + `STATUS.md` |
 
@@ -53,7 +54,7 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 | path | what it is |
 |---|---|
 | `Project.toml` / `Manifest.toml` | the package `GridapBALFEM`, loaded with **`using GridapBALFEM`, never `include()`**; also the working environment |
-| `src/` (19 files) | `problem.jl`: `BALFEMProblem`, `resolve_physics`, the loop-free residual and hand Jacobians · `nlpressure.jl`: `𝓝` {3,6,7,8} and the ∇h half · `broken.jl`: Class III cellwise Hessians + kind-S facet terms + exact Jacobian, the C⁰-CIP `:jumpgrad` (**mandatory with 𝓝**) and `:ghostvolume`; sequential **and distributed** (ghost sequential only) · `utilities.jl`: `setup_and_run`, `output_dir_name`, `check_v1_env`, `write_run_manifest` · `configuration.jl`: `write_run_configuration` (`CONFIGURATION.txt`) · `vopt.jl`, `mms.jl`, `vertical.jl`, … (`ARCHITECTURE.md` §2) |
+| `src/` (20 files) | `problem.jl`: `BALFEMProblem`, `resolve_physics`, the loop-free residual and hand Jacobians · `nlpressure.jl`: `𝓝` {3,6,7,8} and the ∇h half · `broken.jl`: Class III cellwise Hessians + kind-S facet terms + exact Jacobian, the C⁰-CIP `:jumpgrad` (**mandatory with 𝓝**) and `:ghostvolume`; sequential **and distributed** (ghost sequential only) · `utilities.jl`: `setup_and_run`, `output_dir_name`, `check_v1_env`, `write_run_manifest` · `configuration.jl`: `write_run_configuration` (`CONFIGURATION.txt`) · `vopt.jl`, `mms.jl`, `vertical.jl`, … (`ARCHITECTURE.md` §2) |
 | `test/` | `runtests.jl` judges by gate output (never exit codes); `test/local/`, `test/cluster/`; `test_skeleton_ad.jl`; `test_nlp_distributed_parity.jl` (models 5–6, sequential ↔ distributed, debug or MPI backend); `test/v2_migration/regression_snapshot.jl` (v1→v2 gate, recording in `output/v2_baseline/`) |
 | `examples/` | `local_1d/` (`run_flume_1d.jl`, `run_periodic_1d.jl` the closed box, `stability_eig.jl`, `cip_eigen_analysis.jl`, `cip_eigen_order_rule.jl`), `local_2d/`, `local_mms/`, `distributed/`, `validation/` |
 | `run/` | `local/balfem_local.sh`, `balfem_env.sh` (cluster), SLURM launchers, `SNELLIUS_ROME_LAUNCH_CONFIGS.md`; `linear_production/` (v2 linear Snellius suite, single-node 1×42 directional); v2 box launchers `run/local/run_1dper_v2_unstab{,_extra,_q32}.sh` (⚠ their nlp1 rows are historical: 𝓝 now carries the mandatory CIP); **`integrator_study/`** (the time-integrator box study: `cases.py` → ONE `cases.tsv`/`packs.tsv` (275 cases), ONE `submit.sh` (tiers, `status`, `requeue-quota`, `resume`, `BALFEM_CASE_FILTER`), `run_pack.sh` with checkpoint segments, `cluster.sh` = per-cluster sbatch flags incl. the memory request, `BALFEM_CLUSTER=snellius\|blue`; `analysis/` = the 2026-11-23 analysis scripts); **`storage.sh`** + **`setup_storage.sh`**: cluster output on the project storage (`STORAGE` in `~/.bashrc`; `output/` → `$STORAGE/GridapBALFEM_output`; checked by `balfem_env.sh` and every submit script) |
@@ -62,14 +63,22 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 | `postprocessing/` | `GridapBALFEMPost`, its own environment; `examples/periodic_growth.jl` gives the band growth rates; `examples/reconstruct_3d_vtk.jl` writes 3-D `.vts` series (u, v, w, p, p_nh, p_dyn) from a run's stored modes for ParaView |
 | `WaveSpec.jl/` | vendored sea-state synthesis (GitHub version) |
 | `Gridap.jl/` | the Gridap **fork** (`Elmanyer/Gridap.jl` @ `fix-transient-multifield-ad`, v0.20.8) with two AD patches: transient multifield (`fa860899c`) and skeleton integrals on transient fields (`3928b98b9`, **not pushed**; loaded locally via `Pkg.develop`) |
-| `latex_docs/` | `BALFEM_models_v1/` (frozen), `BALFEM_models_v2/` (Overleaf), `CFC2027_abstract/`, `doc_figures/` |
+| `latex_docs/` | gitignored; only the link `GridapBALFEM_documentation` → `../LATEX_DOCS/GridapBALFEM_documentation` (§2). The other LaTeX projects (v1, the superseded combined `BALFEM_models_v2`, the derivation, the sister solver's documentation, `CFC2027_abstract`, `doc_figures`) are siblings in `../LATEX_DOCS/` |
 
 ## 2. The LaTeX project
 
-* **`latex_docs/BALFEM_models_v2/` is the single source of mathematical truth.** It is its own git
-  repository (remote `overleaf`). **The author edits it in Overleaf**, so always run
-  `git fetch overleaf` and fast-forward before editing; the author may stash local edits when
-  pulling.
+* **`latex_docs/GridapBALFEM_documentation/` is the single source of mathematical truth** (since
+  2026-11-23; a link to `../LATEX_DOCS/GridapBALFEM_documentation`). It is its own git repository
+  (remote **`origin`** = its Overleaf project). **The author edits it in Overleaf**, so always run
+  `git fetch origin` and fast-forward before editing; the author may stash local edits when pulling.
+  * **Chapters 1–5 (the model derivation) are not written here.** They are the folder
+    `BALFEM_derivation/`, which comes from the separate Overleaf project
+    `../LATEX_DOCS/BALFEM_models_derivation` (shared with the sister solver's
+    `GridapBALFEMixed_documentation`). Edit those chapters in that project; `main.tex` here reads them
+    with `\input{BALFEM_derivation/…}` and also takes its commands (`newcommands_config`),
+    `hyperref_config` and bibliography.
+  * `../LATEX_DOCS/BALFEM_models_v2/` (remote `overleaf`, last commit 2026-11-09) is the superseded
+    combined document; do not edit it.
 * **Chapter map** (`LATEX_STRUCTURE.md`):
   * model 1–3;
   * checks without a solver 4–5;
@@ -247,7 +256,8 @@ update is the current route); actions: [`CH8_CAMPAIGN_TODO.md`](markdown_files/C
   analysed 2026-11-23: [`INTEGRATOR_STUDY_RESULTS.md`](markdown_files/INTEGRATOR_STUDY_RESULTS.md).**
   * ⚠ **161 cases were killed by the Snellius HOME quota** (VTK output) at a median 49 % of their time.
     Their data is used, and their checkpoints are intact. The launchers now write to the project storage
-    (rule 47c); the resubmission plan is drafted (§6 of the record), **not submitted** (author).
+    (rule 47c; set up on Snellius 2026-11-24); the resubmission plan is drafted (§6 of the record),
+    **not submitted** (author).
   * **No integrator holds m5/m6 at kd 5.5, n32, kA ≥ 0.25 while keeping the carrier.** Survivors remove
     90–100 % of its energy. The gentle schemes (73–94 % kept over 200 T) delay the burst 1.2–1.9× at kA
     0.32; at kA 0.158 / 0.25 they were cut before CN's onset (open).
@@ -478,7 +488,7 @@ unchanged, because code and documents cite them. Rules earned on v1 still apply:
      killed 161 of 275 integrator-study cases on 2026-11-21. `STORAGE` is exported in `~/.bashrc`
      (Snellius: `/gpfs/admin/projectlinks/prjs1960`); `output/` on the cluster is a link to
      `$STORAGE/GridapBALFEM_output` (`run/storage.sh`, one-time `run/setup_storage.sh`).
-     `balfem_env.sh` and every submit script refuse otherwise. Size a campaign's output before
+     `balfem_env.sh` and every submit script refuse otherwise. Set up on Snellius 2026-11-24. Size a campaign's output before
      submitting it (≈ 200 MB per 1-D box case with sub-cell VTK).
 
 ### Testing and measurement

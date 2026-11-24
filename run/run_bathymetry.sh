@@ -41,7 +41,7 @@ export BALFEM_PY=6            # 7*6 = 42 ranks
 
 # --- Sea-bed geometry (variable bed → ∇h terms ON) --------------------------
 # export BALFEM_FLAT_BED=0         # 0 = variable bathymetry (default for the bar); 1 = flat bed (∇h≡0)
-# export BALFEM_NL_PRESSURE=0   # v2: 0|1 (all eight 𝓝 comps); 1 is not yet distributed (V2_SOLVER_PLAN.md step 10)
+# export BALFEM_NL_PRESSURE=0   # v2: 0|1 (all eight 𝓝 comps, with the mandatory C⁰-CIP); distributed since 2026-10-30
 
 # --- Solver knobs (RungeKutta :SDIRK_2_2 defaults; bump if Newton stalls) ----
 # export BALFEM_LS_MAXITER=4000

@@ -88,7 +88,8 @@ v2 launchers are added as the v2 campaign needs them (`V2_SOLVER_PLAN.md` §4).
 > ### ⚠ OUTPUT GOES TO THE PROJECT STORAGE, NEVER TO `$HOME` (2026-11-23)
 >
 > On 2026-11-21 the integrator study filled the Snellius home quota with VTK output, and 161 of its
-> 275 cases died writing a file (`INTEGRATOR_STUDY_RESULTS.md` §0). One-time set-up per account:
+> 275 cases died writing a file (`INTEGRATOR_STUDY_RESULTS.md` §0). One-time set-up per account
+> (done for the author's Snellius account on 2026-11-24):
 >
 > ```bash
 > echo 'export STORAGE=/gpfs/admin/projectlinks/prjs1960' >> ~/.bashrc && source ~/.bashrc   # Snellius project space
@@ -131,17 +132,21 @@ A launcher is therefore **only** its `#SBATCH` header, its `BALFEM_*` overrides,
 **A missing image fails the job immediately** with the build command, rather than silently falling
 back to a ~45 min/rank compile.
 
-**Contents:** 9 production cases in `run/` (plane / ring / periodic-plane wave, IC hump, bathymetry,
-irregular + directional sea, plus the DelftBlue `run_blue.sh`), and **20 small-domain
-observation/comparison cases** in `run/dist_small/` (v1 — removed in v2, tag `v1_final_solver`), each overriding only what changes (regime /
-`nl_pressure` / `flat_bed`→bar / amplitude / period). Small-domain geometry: 50×20 m, `d=3.5`,
-`T=2.0` (`kd≈3.5`), `save_every=10`, partition **8×4 = 32 ranks** (plane/irregular, 200×40) or
-**8×8 = 64** (directional 200×80; ring 160×160 on a 40×40 m domain — square cells throughout,
-because GMRES iteration count grows with mesh anisotropy).
+**Contents (v2):**
+* 9 production cases in `run/` (plane / ring / periodic-plane wave, IC hump, bathymetry, irregular +
+  directional sea, the Snellius template `run_snellius.sh` and the DelftBlue `run_blue.sh`), each
+  driving `examples/distributed/*.jl`;
+* `run/linear_production/`: the v2 linear Snellius suite (`submit_all.sh`, its README);
+* `run/integrator_study/`: the time-integrator box study (`submit.sh`, its README;
+  `INTEGRATOR_STUDY_RESULTS.md`).
+
+The v1 small-domain suite `run/dist_small/` (20 observation cases on 50×20 m, `d = 3.5`, `T = 2.0`,
+8×4 or 8×8 ranks, square cells because the GMRES count grows with mesh anisotropy) was removed in v2
+(tag `v1_final_solver`); `linear_production/` reuses its domains.
 
 **Resources:** every Snellius launcher runs on `rome` with `--mem-per-cpu=4G`, sized to fit a node
 (256 GB / 128 cores), so ranks are spread `nodes × ntasks-per-node` and no launcher requests more
-than 256 GB/node. The 4 GB/core is **required, not compile headroom** — see `OPEN_ISSUES.md` §1.
+than 256 GB/node. The 4 GB/core is **required, not compile headroom** — see `OPEN_ISSUES.md` §5 (cluster memory).
 
 ---
 

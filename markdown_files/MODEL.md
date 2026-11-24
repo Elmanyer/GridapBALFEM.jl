@@ -4,10 +4,10 @@
 `Nσ+2` horizontal PDEs, what each vertical σ-tensor is, and how every term of the global residual is
 written in Gridap operators. It is the specification `src/problem.jl` is audited against.
 
-**Authority.** The LaTeX project `BALFEM_models/` is the source of mathematical truth; this file is
-its solver-facing condensation plus the code mapping. If you change the maths, change both.
-The term-by-term classification used as the residual's *specification* lives in
-`BALFEM_models/NumericalImplementation/GridapImplementation.tex`, §`subsec: term classification`.
+**Authority.** The LaTeX project `latex_docs/GridapBALFEM_documentation/` (`CLAUDE.md` §2) is the source of mathematical truth;
+this file is its solver-facing condensation plus the code mapping. If you change the maths, change
+both. The term-by-term classification used as the residual's *specification* lives in
+`NumericalImplementation/MultiFidelity.tex` (chapter 8), §`subsec: term classification`.
 
 Related: [`ARCHITECTURE.md`](ARCHITECTURE.md) (how the code is laid out),
 [`VERIFIED_SCOPE.md`](VERIFIED_SCOPE.md) (what is proven about it).

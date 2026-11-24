@@ -20,7 +20,7 @@ into one file, so every MPI rank **loads** the code instead of JIT-compiling it.
 > occurs before step 1. Both defects were real and both are fixed; see `krylov_m` vs `ls_maxiter`
 > in the root `CLAUDE.md` §7.
 
-**Every launcher in `run/` and `run/dist_small/` uses the image** — via the shared helper
+**Every cluster launcher in `run/` uses the image** — via the shared helper
 `run/balfem_env.sh`. Build it once (Steps 1–2), then just `sbatch` the case you want.
 
 **Why it matters here**
@@ -48,7 +48,7 @@ into one file, so every MPI rank **loads** the code instead of JIT-compiling it.
 | `compile_snellius.sh` | SLURM job that runs the build steps end to end (partition `rome`), then stamps the image with a hash of `src/*.jl` for the launchers' staleness check. |
 | `compile_blue.sh` | The same on DelftBlue (partition `compute-p2`, account `innovation`, 15 cores × `--mem-per-cpu=3900M`; `Pkg.instantiate` first, installs `mpiexecjl` if missing). Run on `compute-p2` only: the image is compiled for the build node's CPU. |
 
-The image is **used** by every launcher in `../run/` and `../run/dist_small/`, through the shared
+The image is **used** by every cluster launcher in `../run/` (incl. `linear_production/`, `integrator_study/`), through the shared
 helper **`../run/balfem_env.sh`** — see "How the launchers use the image" below.
 
 ---
@@ -138,7 +138,7 @@ No compile, no OOM, on `rome`/L1.
 
 ## How the launchers use the image
 
-All launchers in `run/` and `run/dist_small/` are thin SLURM wrappers around one shared helper,
+All cluster launchers in `run/` are thin SLURM wrappers around one shared helper,
 **`run/balfem_env.sh`**, which holds the three build↔run invariants in a single place. A launcher is
 just its `#SBATCH` header, the case's env-var overrides, and one call:
 

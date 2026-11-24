@@ -11,7 +11,8 @@ It leans on the regime that challenges the full nonlinear solver: steep waves (k
 > Short version: no integrator holds m5/m6 at kd 5.5, n32, kA ≥ 0.25 while keeping the carrier; the
 > burst is a steady (ω ≈ 0) 2-cell vertical-structure velocity mode, worse under refinement, and a
 > larger CIP γ makes it earlier (H2 falsified). Since 2026-11-23: ONE case table and ONE `submit.sh`
-> (the extra set is merged), and all output on the project storage `$STORAGE` (`run/storage.sh`).
+> (the extra set is merged), and all output on the project storage `$STORAGE` (`run/storage.sh`;
+> set up on Snellius 2026-11-24).
 
 ## The set-up (every case)
 

@@ -246,7 +246,7 @@ separate solver `GridapBALFEMixed.jl`.)
 ```bash
 # 0. nothing of the old campaign still queued (pack 18 resubmitted itself on 2026-11-22: check it)
 squeue -u $USER                       # cancel stale BALFEM_integ_* jobs; their pack ids are the OLD ones
-# 1. storage (once)
+# 1. storage (once) — DONE 2026-11-24 (output/ is the link, copy verified); skip to 2
 echo 'export STORAGE=/gpfs/admin/projectlinks/prjs1960' >> ~/.bashrc && source ~/.bashrc
 cd $HOME/GridapBALFEM.jl && git pull  # the launchers of 2026-11-23
 bash run/setup_storage.sh             # output/ → $STORAGE/GridapBALFEM_output, link, home backup kept
