@@ -501,6 +501,17 @@ supporting measurement is in the linked document.
     enclosing `do`-block in `run_time_loop`. The real cause is higher up; use
     `grep -m1 '^ERROR' run.log`. This misled the first reading of four crashed arms.
 
+47c. ⚠ **CLUSTER OUTPUT GOES TO THE PROJECT STORAGE, NEVER TO `$HOME` (2026-11-23).** The Snellius
+     integrator study wrote ≈ 200 MB per case (VTK with sub-cell samples, 8 per period; 256 k files)
+     under `$HOME/GridapBALFEM.jl/output/`. On 2026-11-21 05:00 the home quota filled, and every running
+     case died writing `solution.pvd` (LightXML `XMLWriteError`, `Disk quota exceeded`): 161 of 275
+     cases, at a median 49 % of their time. Their checkpoints survived, so they can resume, but ≈ 1.8 × 10⁴
+     case-hours of work remain. The fix is structural, not a reminder: `STORAGE` in `~/.bashrc` (Snellius
+     project space `/gpfs/admin/projectlinks/prjs1960`), `output/` on the cluster a link to
+     `$STORAGE/GridapBALFEM_output` (`run/storage.sh`, `run/setup_storage.sh`), and `balfem_env.sh` plus
+     every submit script refuse to start otherwise. Size a campaign's output before submitting it.
+     Record: `markdown_files/INTEGRATOR_STUDY_RESULTS.md` §0, §6.
+
 ### Testing and measurement
 
 28. **"The suite passes" is not "the model is verified."** Most of the suite is

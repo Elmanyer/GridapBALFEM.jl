@@ -12,6 +12,7 @@ gitignored, so anything load-bearing belongs here.
 3b. [`CH8_CAMPAIGN_TODO.md`](CH8_CAMPAIGN_TODO.md): **the working to-do list** from the current state to the running 1-D stability campaign (opened 2026-10-31).
 3c. [`LINEAR_PRODUCTION_RESULTS.md`](LINEAR_PRODUCTION_RESULTS.md): the Snellius linear production suite checked (2026-11-02): bar vs flat, sponge reflection, the periodic "irregular" sea, the directional time-out.
 3d. [`SPONGE_SWEEP_RESULTS.md`](SPONGE_SWEEP_RESULTS.md): the 1-D sponge-reflection sweep, stage A partial (26/84, 2026-11-07): Kr law, best (W, μ_max), how to resume.
+3e. [`INTEGRATOR_STUDY_RESULTS.md`](INTEGRATOR_STUDY_RESULTS.md): the Snellius time-integrator study (275 box cases, 2026-11-17 → 22) analysed 2026-11-23: results, conclusions, the launcher changes (one `submit.sh`, output on `$STORAGE`) and the resubmission plan.
 4. [`OPEN_ISSUES.md`](OPEN_ISSUES.md): every other open item, with its next step.
 
 ## Reference (current)
@@ -35,6 +36,8 @@ gitignored, so anything load-bearing belongs here.
 |---|---|
 | current state, the filter decision and its options | `STATUS.md` |
 | the grid-scale instability: evidence, mechanism, penalties tried, acceptance criteria | `STABILITY.md` |
+| what time-integrator dissipation buys and costs (the cluster study) | `INTEGRATOR_STUDY_RESULTS.md` |
+| where cluster output goes (`$STORAGE`, never `$HOME`) | `RUNNING.md` §4, `run/storage.sh` |
 | Taylor–Hood requirement / the equal-order artefact | `CLAUDE.md` rules 2b, 12b |
 | `SDIRK_2_2` is dissipative; stability needs Crank–Nicolson | `CLAUDE.md` rule 15 |
 | the incomplete Jacobian does not affect stability | `CLAUDE.md` rule 17b |

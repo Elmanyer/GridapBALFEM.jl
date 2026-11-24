@@ -58,6 +58,12 @@ Standing constraints:
 >    10 submitted jobs, 64 CPUs / 250 GB per job. With a research/project account: `BALFEM_ACCOUNT=…`,
 >    then the pilot (`submit.sh P`) for DelftBlue speeds. Otherwise rework `run_pack.sh` for 24 h
 >    segments and ≤ 4 worker-pool jobs of 64 cases (claim files, rule 44).
+>    **2026-11-18: run on Snellius instead (SBU grant); DelftBlue void. DONE 2026-11-22, analysed
+>    2026-11-23: [`INTEGRATOR_STUDY_RESULTS.md`](INTEGRATOR_STUDY_RESULTS.md).** 161 of 275 cases cut by
+>    the home quota (resumable). No integrator holds m5/m6 at kd 5.5 n32 kA ≥ 0.25 while keeping the
+>    carrier. The burst is a steady 2-cell vertical-structure mode, worse with refinement; H1 confirmed
+>    (kA 0.158 only), H2 falsified (larger γ → earlier burst), H3: Δt not γ. Launchers reworked (one
+>    `submit.sh`, output on `$STORAGE`); resubmission plan drafted, not submitted (author).
 >    (The 2-step smoke of every tableau: `test/local/smoke_integrators.jl`.)
 > 4. **ASK:** the hard case m3 T = 1.4/1.5 s n64 (CN 8.7/12.9 s) under the best candidates.
 > 5. **ASK:** m5/m6 n32 with the best one or two (cost: m5 ≈ 1–2 weeks per run under SDIRK; the
@@ -148,6 +154,17 @@ Damping per unit time scales as Δt^(q−1): 8× from T/80 to T/40 for a 3rd-ord
 * At γ = 0.5 and 1, SDIRK_2_2 and Crouzeix survive longer at T/20 than at T/80. Crouzeix keeps more
   carrier at the same survival.
 * If T/80 survives as long as T/20, the integrator is not the active ingredient: γ is.
+
+**Results (2026-11-23; [`INTEGRATOR_STUDY_RESULTS.md`](INTEGRATOR_STUDY_RESULTS.md) §4).**
+* **H1 confirmed.** At k₀A 0.158, Crouzeix T/20 (9 % carrier energy) and T/10 (0 %) and RK4 T/10 (22 %, the
+  best trade-off) survive 200 periods; Crouzeix T/40 and RK4 T/20 die like CN. At k₀A 0.25 only Crouzeix
+  T/10 survives, with the carrier gone; at 0.32 everything dies. No best Δt appeared (iii).
+* **H2 falsified.** The CIP does not remove the n32 burst (a steady 2-cell vertical-structure mode). At
+  k₀A 0.25 a larger γ brings it earlier: CN onset 101 / 76 / 60 / 51 periods, σ 0.069 → 0.159 s⁻¹ for
+  γ 0.1 / 0.3 / 0.5 / 1; m6 the same. γ is inert at 0.158 and 0.32. The mode does not escape to the mid
+  band.
+* **H3: Δt is the active ingredient, γ is not.** T/20 survives and T/80 bursts (33–55 periods) at every γ.
+  Every survival cost ≥ 90 % of the carrier energy.
 
 **Controls.**
 * CN is the diagnosis pair in every cell (rule 15).

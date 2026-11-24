@@ -260,6 +260,29 @@ T = 1.6 s, and the carrier amplitude lost over 100 periods):
    of the chosen scheme; the amplitude ceiling). Only if no integrator passes, or the accuracy cost is
    too high, move to weak-form terms (STATUS §4).
 
+**Result (Snellius study, run 2026-11-17 → 22, analysed 2026-11-23; full record
+[`INTEGRATOR_STUDY_RESULTS.md`](INTEGRATOR_STUDY_RESULTS.md)).** 275 cases, nine integrators; 161 were cut
+by the home quota at a median 49 % of their time (resumable), the rest are results.
+* **No integrator passes §6 on the full model at kd 5.5, n32, kA ≥ 0.25.** The schemes that last 200
+  periods (SDIRK_2_2, generalised-α ρ∞ = 0, any scheme at T/20) remove 90–100 % of the carrier energy.
+  The gentle ones (SDIRK_4_3, Crouzeix 3/4, TR-BDF2, generalised-α 0.5; 73–94 % of the carrier kept over
+  200 T) delay the burst at kA 0.32 by 1.2–1.9× (Crouzeix: no onset to 71 periods against CN's 39, then
+  cut). At kA 0.158 and 0.25 they were cut before CN's own onset: **undecided**.
+* **The burst is a steady (ω ≈ 0), grid-scale (λ ≈ 2 cells at n32 and at n64) vertical-structure velocity
+  mode** (|η̂|/|v| ≈ 0.03–0.2). It is out of reach of frequency damping. It is absent at n16 and earlier
+  and faster at n64 (rule 38b: a discretisation-stability problem).
+* **The CIP does not control it (H2 falsified):** at kA 0.25 a larger γ brings it earlier (CN onset 101 /
+  76 / 60 / 51 periods at γ 0.1 / 0.3 / 0.5 / 1), and γ is inert at kA 0.158 and 0.32. H3: Δt, not γ,
+  sets the survival, always at the carrier's expense. H1 (m3, 4th-order damping aimed at 2ω₀) is
+  confirmed at kA 0.158 only.
+* Under CN, m5/m6 n32 saturate after the burst and finish 200 periods with ≈ 10 % spurious grid-scale
+  velocity ("completed" is not "clean"). Once excited, the steady vertical-structure field persists even
+  after the carrier is gone.
+* kd 2.9 and 1.7 are clean under CN up to kA 0.25; the burst belongs to the 2ω₀ ≈ ω∞ regime.
+* **Implication (§4 of this plan):** the remedy must act on the steady grid-scale vertical-structure
+  velocity at any frequency. That means a weak-form term on each u_j (STATUS §4, VMS/SUPG): the route
+  now taken on branch `mixed-vms-solver`.
+
 ## 7. Tools
 
 | tool | use |

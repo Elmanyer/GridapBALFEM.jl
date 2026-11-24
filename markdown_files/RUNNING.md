@@ -85,6 +85,28 @@ v2 launchers are added as the v2 campaign needs them (`V2_SOLVER_PLAN.md` §4).
 > count over a boundary. The full rules, worked examples and traps are in that file.
 
 
+> ### ⚠ OUTPUT GOES TO THE PROJECT STORAGE, NEVER TO `$HOME` (2026-11-23)
+>
+> On 2026-11-21 the integrator study filled the Snellius home quota with VTK output, and 161 of its
+> 275 cases died writing a file (`INTEGRATOR_STUDY_RESULTS.md` §0). One-time set-up per account:
+>
+> ```bash
+> echo 'export STORAGE=/gpfs/admin/projectlinks/prjs1960' >> ~/.bashrc && source ~/.bashrc   # Snellius project space
+> bash $HOME/GridapBALFEM.jl/run/setup_storage.sh     # copies output/ there, keeps a home backup, links
+> ```
+>
+> * The output root is `$STORAGE/GridapBALFEM_output`, and the repository's `output/` on the cluster
+>   is a **link** to it (`run/storage.sh`). Every driver that writes to `<repo>/output/…` (all examples
+>   and tests, and every `BALFEM_OUTDIR` built from `$BALFEM_PROJ/output`) therefore lands on the
+>   storage space with no change to any Julia file.
+> * `balfem_env.sh` (so every launcher that sources it), `run/integrator_study/submit.sh`,
+>   `run/linear_production/submit_all.sh` and `test/cluster/slurm_validation.sh` **refuse to run** when
+>   `STORAGE` is unset, or when `output/` is a real directory in home.
+> * The sysimage build skips the check (`BALFEM_SKIP_STORAGE=1`).
+> * DelftBlue: `STORAGE` defaults to `/scratch/$USER`.
+> * A launcher whose SLURM `.out/.err` land in the submit directory should be submitted from
+>   `$STORAGE` or from `output/slurm_logs/…`, as the submit scripts do.
+
 **All 29 launchers run against the prebuilt sysimage**, through the shared helper
 **`run/balfem_env.sh`**: it loads the cluster modules the image was built with, resolves and
 verifies `GridapBALFEM_sysimage.so`, and exposes
@@ -100,6 +122,8 @@ A launcher is therefore **only** its `#SBATCH` header, its `BALFEM_*` overrides,
 |---|---|
 | `BALFEM_PROJ` | project path (default `$HOME/GridapBALFEM.jl`) |
 | `BALFEM_CLUSTER` | `snellius` / `blue` |
+| `STORAGE` | project storage root, **required on Snellius** (`~/.bashrc`); output root `$STORAGE/GridapBALFEM_output` = `BALFEM_OUTPUT_ROOT` |
+| `BALFEM_SKIP_STORAGE=1` | skip the storage check (sysimage build only) |
 | `BALFEM_SYSIMAGE` | explicit image path |
 | `BALFEM_NO_SYSIMAGE=1` | escape hatch — drop `-J` and JIT-compile (for a stale image or a mid-rebuild) |
 | `BALFEM_STRICT_SYSIMAGE=1` | upgrade the staleness warning to a hard abort (use for long production jobs) |

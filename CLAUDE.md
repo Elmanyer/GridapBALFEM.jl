@@ -49,7 +49,7 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 | `src/` (19 files) | `problem.jl`: `BALFEMProblem`, `resolve_physics`, the loop-free residual and hand Jacobians · `nlpressure.jl`: `𝓝` {3,6,7,8} and the ∇h half · `broken.jl`: Class III cellwise Hessians + kind-S facet terms + exact Jacobian, the C⁰-CIP `:jumpgrad` (**mandatory with 𝓝**) and `:ghostvolume`; sequential **and distributed** (ghost sequential only) · `utilities.jl`: `setup_and_run`, `output_dir_name`, `check_v1_env`, `write_run_manifest` · `configuration.jl`: `write_run_configuration` (`CONFIGURATION.txt`) · `vopt.jl`, `mms.jl`, `vertical.jl`, … (`ARCHITECTURE.md` §2) |
 | `test/` | `runtests.jl` judges by gate output (never exit codes); `test/local/`, `test/cluster/`; `test_skeleton_ad.jl`; `test_nlp_distributed_parity.jl` (models 5–6, sequential ↔ distributed, debug or MPI backend); `test/v2_migration/regression_snapshot.jl` (v1→v2 gate, recording in `output/v2_baseline/`) |
 | `examples/` | `local_1d/` (`run_flume_1d.jl`, `run_periodic_1d.jl` the closed box, `stability_eig.jl`, `cip_eigen_analysis.jl`, `cip_eigen_order_rule.jl`), `local_2d/`, `local_mms/`, `distributed/`, `validation/` |
-| `run/` | `local/balfem_local.sh`, `balfem_env.sh` (cluster), SLURM launchers, `SNELLIUS_ROME_LAUNCH_CONFIGS.md`; `linear_production/` (v2 linear Snellius suite, single-node 1×42 directional); v2 box launchers `run/local/run_1dper_v2_unstab{,_extra,_q32}.sh` (⚠ their nlp1 rows are historical: 𝓝 now carries the mandatory CIP); **`integrator_study/`** (the time-integrator box study: `cases.py` → `cases.tsv`/`packs.tsv`, `submit.sh`, `run_pack.sh` with checkpoint segments, `cluster.sh` = per-cluster sbatch flags incl. the memory request, `BALFEM_CLUSTER=snellius\|blue`) |
+| `run/` | `local/balfem_local.sh`, `balfem_env.sh` (cluster), SLURM launchers, `SNELLIUS_ROME_LAUNCH_CONFIGS.md`; `linear_production/` (v2 linear Snellius suite, single-node 1×42 directional); v2 box launchers `run/local/run_1dper_v2_unstab{,_extra,_q32}.sh` (⚠ their nlp1 rows are historical: 𝓝 now carries the mandatory CIP); **`integrator_study/`** (the time-integrator box study: `cases.py` → ONE `cases.tsv`/`packs.tsv` (275 cases), ONE `submit.sh` (tiers, `status`, `requeue-quota`, `resume`, `BALFEM_CASE_FILTER`), `run_pack.sh` with checkpoint segments, `cluster.sh` = per-cluster sbatch flags incl. the memory request, `BALFEM_CLUSTER=snellius\|blue`; `analysis/` = the 2026-11-23 analysis scripts); **`storage.sh`** + **`setup_storage.sh`**: cluster output on the project storage (`STORAGE` in `~/.bashrc`; `output/` → `$STORAGE/GridapBALFEM_output`; checked by `balfem_env.sh` and every submit script) |
 | `compile/` | cluster sysimage chain (`RUNNING.md` §5): `compile_snellius.sh` and `compile_blue.sh` (DelftBlue compute-p2, `load_modules_blue.sh`: OpenMPI 5.0.10 + juliaup Julia 1.10); `set_preferences.jl` adds the forks by URL and binds MPI to the system library |
 | `output/` · `output_v1/` | gitignored. `output/` = v2 only; every run writes `run_manifest.toml` (machine record) and `CONFIGURATION.txt` (readable identity card: a one-line `ID`, model, physics with the derived kd/kA/λ/dispersion errors, discretisation, integrator with its carrier damping, output; same sections in every run; 2026-11-11) |
 | `postprocessing/` | `GridapBALFEMPost`, its own environment; `examples/periodic_growth.jl` gives the band growth rates; `examples/reconstruct_3d_vtk.jl` writes 3-D `.vts` series (u, v, w, p, p_nh, p_dyn) from a run's stored modes for ParaView |
@@ -190,7 +190,7 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 
 ## 5. Current Implementation Stage
 
-*Updated 2026-11-17. Full picture: [`markdown_files/STATUS.md`](markdown_files/STATUS.md) (its 2026-11-11
+*Updated 2026-11-23. Full picture: [`markdown_files/STATUS.md`](markdown_files/STATUS.md) (its 2026-11-11
 update is the current route); actions: [`CH8_CAMPAIGN_TODO.md`](markdown_files/CH8_CAMPAIGN_TODO.md)
 "RESUME HERE".*
 
@@ -235,20 +235,26 @@ update is the current route); actions: [`CH8_CAMPAIGN_TODO.md`](markdown_files/C
   * open: "SDIRK broke the mechanism" vs "SDIRK starved it of carrier" are not separated by these runs
     (rule 12c); the integrator study's Crouzeix 3/4 arm (damps 2ω₀, keeps the carrier) separates them.
 * m3 n32 kA 0.25 under SDIRK_2_2 diverged at 172 s (pre-cluster check 1).
-* **Cluster integrator study** (`run/integrator_study/`, 170 cases, tiers P–H, 2026-11-11/13):
-  * **Snellius pilot done** (2026-11-13, `output/snellius/integrator_study/`, 5 cases × 100 steps):
-    m5 n32 CN 32.5 s/step; cost vs CN: SDIRK_2_2 ×1.91, Crouzeix 3/4 ×2.85, SDIRK_4_3 ×3.20; γ = 1
-    vs 0.3 leaves the Newton count unchanged (+5 % time). Carrier amplitude loss at kA 0.25: SDIRK_2_2
-    0.0078 s⁻¹, SDIRK_4_3 and Crouzeix ≈ 0.0005 s⁻¹. Full study ≈ 2.1 × 10⁴ case-hours at Snellius speed.
-  * **To run on DelftBlue** (author, 2026-11-14; never mix clusters within a comparison). Launchers
-    adapted (`BALFEM_CLUSTER=blue`: compute-p2, `--cpus-per-task=8 --mem-per-cpu=3900M`; the memory flag
-    lives in `cluster.sh`, sbatch refuses `--mem` with `--mem-per-cpu`).
-  * ⚠ **Postponed until more resources:** the only account, `innovation`, allows 24 h per job, 4 running
-    / 10 submitted jobs, 64 CPUs / 250 GB per job; the launchers assume 120 h segments and 23 packs.
-    With a research/project account they run as they are (`BALFEM_ACCOUNT`); on `innovation` they need
-    24 h segments and ≤ 4 large worker-pool jobs.
-* Weak-form stabilisers (filtering F1–F4, SUPG / VMS) only if no integrator passes `STABILITY.md` §6
-  within the accuracy budget — the steady vertical-structure growth above may force that question.
+* **Cluster integrator study** (`run/integrator_study/`, 275 cases: tiers P–H × CN, SDIRK_2_2, SDIRK_4_3,
+  Crouzeix 3/4, TR-BDF2, generalised-α ρ∞ 0 / 0.5; RK3/RK4 on m3) **ran on Snellius 2026-11-17 → 22,
+  analysed 2026-11-23: [`INTEGRATOR_STUDY_RESULTS.md`](markdown_files/INTEGRATOR_STUDY_RESULTS.md).**
+  * ⚠ **161 cases were killed by the Snellius HOME quota** (VTK output) at a median 49 % of their time.
+    Their data is used, and their checkpoints are intact. The launchers now write to the project storage
+    (rule 47c); the resubmission plan is drafted (§6 of the record), **not submitted** (author).
+  * **No integrator holds m5/m6 at kd 5.5, n32, kA ≥ 0.25 while keeping the carrier.** Survivors remove
+    90–100 % of its energy. The gentle schemes (73–94 % kept over 200 T) delay the burst 1.2–1.9× at kA
+    0.32; at kA 0.158 / 0.25 they were cut before CN's onset (open).
+  * **The burst is a steady (ω ≈ 0) vertical-structure velocity mode at λ ≈ 2 cells** (n32 and n64),
+    absent at n16 and faster at n64 (rule 38b). **A larger CIP γ brings it earlier** (CN onset 101 / 76
+    / 60 / 51 periods at γ 0.1 / 0.3 / 0.5 / 1, kA 0.25): H2 falsified. H3: Δt, not γ. H1 (m3)
+    confirmed at kA 0.158 only.
+  * Under CN, m5/m6 n32 **saturate** after the burst (≈ 10 % spurious grid-scale velocity, 200 periods
+    "completed"). kd 2.9 / 1.7 are clean under CN up to kA 0.25.
+  * ⚠ Unexplained: on m3 the multi-stage schemes (SDIRK_4_3, RK3, RK4) die earlier than CN at kd 1.7
+    kA 0.25.
+* **Consequence:** the integrator route is closed for the kd 5.5 regime (`STABILITY.md` §6b result). The
+  remedy must act on the steady grid-scale vertical-structure velocity at any frequency: a weak-form
+  term on each u_j. VMS on the mixed formulation is that attempt (branch `mixed-vms-solver`).
 
 ### Other open items (`OPEN_ISSUES.md`)
 * Models 5–6 outside the verified MMS scope (`p_u` 3.94 → 1.97 on fine meshes, cause unknown);
@@ -459,6 +465,13 @@ unchanged, because code and documents cite them. Rules earned on v1 still apply:
       admits a case while MemAvailable, minus the growth still owed by cases younger than `YOUNG_S` = 40 min (`RUN_GB` = 3 each),
       stays ≥ `MIN_FREE_GB` = 6. The 2026-11-07 thermal throttle (> 3 busy cores → 1.1 GHz) was a
       machine fault cleared by a reboot; the old `MAXP = 3` rule is withdrawn.
+
+47c. **Cluster output goes to the project storage, never to `$HOME`** (2026-11-23). The home quota
+     killed 161 of 275 integrator-study cases on 2026-11-21. `STORAGE` is exported in `~/.bashrc`
+     (Snellius: `/gpfs/admin/projectlinks/prjs1960`); `output/` on the cluster is a link to
+     `$STORAGE/GridapBALFEM_output` (`run/storage.sh`, one-time `run/setup_storage.sh`).
+     `balfem_env.sh` and every submit script refuse otherwise. Size a campaign's output before
+     submitting it (≈ 200 MB per 1-D box case with sub-cell VTK).
 
 ### Testing and measurement
 

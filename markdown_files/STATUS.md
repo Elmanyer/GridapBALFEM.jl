@@ -1,5 +1,28 @@
 # STATUS.md — where the project stands (2026-10-09)
 
+> **Update 2026-11-23: the Snellius integrator study is analysed. No integrator holds the full model
+> without destroying the carrier.** Record: [`INTEGRATOR_STUDY_RESULTS.md`](INTEGRATOR_STUDY_RESULTS.md).
+> * The study ran on Snellius 2026-11-17 → 22 (SBU grant, author 2026-11-18; the DelftBlue plan of
+>   2026-11-14 is void). **161 of 275 cases were killed by the home quota** (VTK output) at a median 49 %
+>   of their time. Their data is used, and their checkpoints are intact (resumable). 59 completed,
+>   33 diverged (guard), 22 Newton blow-ups.
+> * **Result.** At kd 5.5, n32, kA ≥ 0.25, the schemes that last 200 periods remove 90–100 % of the carrier
+>   energy. The gentle ones delay the burst only 1.2–1.9× at kA 0.32; at kA 0.158 / 0.25 they were cut
+>   before CN's onset (open).
+> * **What grows:** a steady (ω ≈ 0) vertical-structure velocity mode at λ ≈ 2 cells (n32 and n64),
+>   absent at n16, faster at n64 (rule 38b). A larger CIP γ brings it earlier (H2 falsified). Under CN,
+>   m5/m6 n32 saturate at ≈ 10 % spurious velocity rather than blow up. kd 2.9 / 1.7 are clean to kA 0.25.
+> * **Consequence:** the integrator route (§6b of STABILITY) is closed for the kd 5.5 regime. The next
+>   step is a weak-form term on each u_j: VMS on the mixed formulation, branch `mixed-vms-solver`
+>   (author, 2026-11-18).
+> * **Launchers (2026-11-23):**
+>   * one case table and one `submit.sh` for the integrator study, with `status` / `requeue-quota` /
+>     `resume` and `BALFEM_CASE_FILTER`;
+>   * **all cluster output on the project storage** (`STORAGE` in `~/.bashrc`, Snellius
+>     `/gpfs/admin/projectlinks/prjs1960`; `output/` is a link to `$STORAGE/GridapBALFEM_output`;
+>     `run/storage.sh`, `run/setup_storage.sh`);
+>   * the resubmission plan is drafted (`INTEGRATOR_STUDY_RESULTS.md` §6), **not submitted** (author).
+
 > **Update 2026-11-17: first integrator results; the cluster study waits for resources.**
 > * **Local SDIRK_2_2 box runs, m5 n32, Δt = 0.04, 200 periods, finished** (kA 0.158 and 0.25;
 >   `output/1D_stability_campaign/m5_q32_n32_sdirk{,_kA25}`). No burst (CN burst at 245 s), but the
