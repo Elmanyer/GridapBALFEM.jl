@@ -205,9 +205,10 @@ Model 6 behaves as m5: CN onset 75 (kA 0.25) and 39 (kA 0.32); the same γ trend
 only if no integrator passes §6 within the accuracy budget". On this evidence none does at kd 5.5. The
 remedy has to act on the steady grid-scale vertical-structure velocity, at any frequency: a term on each
 layer velocity u_j at the 2Δx scale (VMS/SUPG-type, a filter F1–F4 of STATUS §4, or a VS-targeted
-dissipation). The mixed-formulation VMS work on `mixed-vms-solver` is the current attempt.
+dissipation). Which one this solver adopts is open. (The mixed formulation with VMS is studied in the
+separate solver `GridapBALFEMixed.jl`.)
 
-## 6. Resubmission plan (drafted 2026-11-23; **not submitted**: the author works on the mixed formulation)
+## 6. Resubmission plan (drafted 2026-11-23; **not submitted**)
 
 ### 6.1 What changed in the launchers (2026-11-23)
 

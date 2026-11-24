@@ -11,6 +11,11 @@ governing equations into a native Gridap tensor contraction instead of a Julia `
 
 Repository: `GridapBALFEM.jl`. Module: `src/GridapBALFEM.jl` → `module GridapBALFEM`. Fully self-contained.
 
+> **Sister solver.** This repository is the primal formulation stabilised by the C⁰ interior penalty
+> (CIP). The mixed formulation of the same models (conforming without CIP) with residual-based (VMS)
+> stabilisation is a separate solver, [`GridapBALFEMixed.jl`](https://github.com/Elmanyer/GridapBALFEMixed.jl),
+> split from this repository on 2026-11-23 (history: tag `archive/mixed-vms-solver-pre-split`).
+
 ---
 
 ## The core idea

@@ -280,8 +280,8 @@ by the home quota at a median 49 % of their time (resumable), the rest are resul
   after the carrier is gone.
 * kd 2.9 and 1.7 are clean under CN up to kA 0.25; the burst belongs to the 2ω₀ ≈ ω∞ regime.
 * **Implication (§4 of this plan):** the remedy must act on the steady grid-scale vertical-structure
-  velocity at any frequency. That means a weak-form term on each u_j (STATUS §4, VMS/SUPG): the route
-  now taken on branch `mixed-vms-solver`.
+  velocity at any frequency. That means a weak-form term on each u_j (STATUS §4, VMS/SUPG); which one
+  this solver adopts is open. (The mixed formulation with VMS is the separate solver `GridapBALFEMixed.jl`.)
 
 ## 7. Tools
 

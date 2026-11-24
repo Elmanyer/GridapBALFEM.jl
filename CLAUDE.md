@@ -13,6 +13,13 @@
 > [`markdown_files/archive/`](markdown_files/archive/README.md). ⚠ `markdown_files/` is **tracked**;
 > `latex_docs/` is **gitignored**, so anything load-bearing goes in `markdown_files/`.
 >
+> **Sister solver (split 2026-11-23).** The mixed formulation of the BALFE-M models (auxiliary
+> unknowns for the 𝓝 gradients, conforming without CIP) with residual-based (VMS) stabilisation is
+> its own repository, [`GridapBALFEMixed.jl`](https://github.com/Elmanyer/GridapBALFEMixed.jl). Its
+> plans, results and conclusions live there, not here. Its development history in this repository is
+> kept by the tag `archive/mixed-vms-solver-pre-split`. This repository is the primal formulation with
+> the C⁰ interior penalty (CIP) only.
+>
 > **v1 and v2 are separated (2026-10-05).**
 >
 > | | v1 (frozen) | v2 (active) |
@@ -254,7 +261,8 @@ update is the current route); actions: [`CH8_CAMPAIGN_TODO.md`](markdown_files/C
     kA 0.25.
 * **Consequence:** the integrator route is closed for the kd 5.5 regime (`STABILITY.md` §6b result). The
   remedy must act on the steady grid-scale vertical-structure velocity at any frequency: a weak-form
-  term on each u_j. VMS on the mixed formulation is that attempt (branch `mixed-vms-solver`).
+  term on each u_j (open for this solver). The mixed formulation with residual-based (VMS)
+  stabilisation is a separate solver, `GridapBALFEMixed.jl` (see the note at the top).
 
 ### Other open items (`OPEN_ISSUES.md`)
 * Models 5–6 outside the verified MMS scope (`p_u` 3.94 → 1.97 on fine meshes, cause unknown);

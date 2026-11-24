@@ -13,8 +13,8 @@
 >   absent at n16, faster at n64 (rule 38b). A larger CIP γ brings it earlier (H2 falsified). Under CN,
 >   m5/m6 n32 saturate at ≈ 10 % spurious velocity rather than blow up. kd 2.9 / 1.7 are clean to kA 0.25.
 > * **Consequence:** the integrator route (§6b of STABILITY) is closed for the kd 5.5 regime. The next
->   step is a weak-form term on each u_j: VMS on the mixed formulation, branch `mixed-vms-solver`
->   (author, 2026-11-18).
+>   step for this solver is a weak-form term on each u_j (to be studied). The mixed formulation with VMS
+>   is developed separately in `GridapBALFEMixed.jl` (split 2026-11-23).
 > * **Launchers (2026-11-23):**
 >   * one case table and one `submit.sh` for the integrator study, with `status` / `requeue-quota` /
 >     `resume` and `BALFEM_CASE_FILTER`;
