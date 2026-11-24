@@ -11,8 +11,8 @@
 #  WHAT IT COMPARES, AND WHY THAT IS THE RIGHT OBJECT. It evaluates both
 #  formulations AT A PRESCRIBED STATE: an arbitrary smooth (u_j, H, h) supplied
 #  directly, with no solve, no horizontal mesh, no time stepping and no assembly.
-#  It therefore tests the OPERATOR alone. In particular the Class-III frozen L2
-#  projections play no part, so a projection error cannot mask or mimic a
+#  It therefore tests the OPERATOR alone. In particular no assembly choice for the Class-III
+#  terms plays a part, so an assembly error cannot mask or mimic a
 #  derivation error here -- the two failure modes are separated by construction.
 #
 #  STAGE 1 (this file): the vertical velocity w, our
@@ -133,8 +133,12 @@ end
               ("M=2 c2=0.5",   [0.0, 0.5,   1.0]),
               ("M=3",          [0.0, 0.4, 0.8, 1.0]),
               ("M=4",          [0.0, 0.3, 0.6, 0.85, 1.0]))
-    #  x = 12.0 sits on the bed bump, where h' is largest -- the station that
-    #  actually exercises the variable-bathymetry terms of (A.1).
+    #  x = 12.0 is the bump crest: h' = 0 there and h'' is largest, so it isolates
+    #  the bed-curvature content. x = 11.3 is the steepest station (h' = -0.068),
+    #  the one that exercises the bed-slope terms of (A.1) hardest.
+    #  The differences are round-off; their size follows the cancellation in the
+    #  layer sum at each station (all u_m one sign at x = 0, mixed at x = 19.4),
+    #  not the distance from x = 0 (LaTeX ModelVerification, stage 1).
     stations = (0.0, 3.7, 11.3, 12.0, 19.4)
     worst = 0.0
     for (lab, c) in meshes

@@ -32,7 +32,7 @@
 #  error being measured, and the rate would mean nothing.
 #
 #  ENV: PU, DOMAIN(d1|d2), MODE(static|transient), LEVELS, NX0, AB, D0,
-#       REGIME(linear|nonlinear), NLP(none|native|full), NL_ITER, NL_TOL,
+#       REGIME(linear|nonlinear), NLP(0|1: all eight 𝓝 components off/on), NL_ITER, NL_TOL,
 #       M (vertical elements), PVERT (vertical FE order)  ⇒ P{PVERT}LFE-{M}
 #
 #  RUN
@@ -44,7 +44,7 @@ gi(k,d)=parse(Int,get(ENV,k,string(d))); gf(k,d)=parse(Float64,get(ENV,k,string(
 p_u=gi("PU",3); dom=Symbol(get(ENV,"DOMAIN","d1")); mode=Symbol(get(ENV,"MODE","static"))
 lv=gi("LEVELS",4); nx0=gi("NX0",16); ab=gf("AB",0.2); d0=gf("D0",2.5)
 regime = Symbol(get(ENV,"REGIME","linear"))
-nlp    = Symbol(get(ENV,"NLP","none"))
+nlp    = lowercase(get(ENV,"NLP","0")) in ("1","true")
 #  VERTICAL basis — a parameter, not a constant. c_bdy resolves from M.
 Mv=gi("M",2); pv=gi("PVERT",1)
 #  A linear problem converges in ONE Newton iteration per stage (the linear
@@ -55,7 +55,7 @@ nl_tol  = gf("NL_TOL",  regime === :linear ? 1e-14 : 1e-9)
 model   = regime === :linear ? 2 : 4
 
 println("#"^72)
-println("#  VARIABLE-BED MMS — Model $model  ($regime / :$nlp)  P$(pv)LFE-$(Mv)  Q$(p_u)/Q$(p_u-1)  $dom  $mode")
+println("#  VARIABLE-BED MMS — Model $model  ($regime / nlp$(Int(nlp)))  P$(pv)LFE-$(Mv)  Q$(p_u)/Q$(p_u-1)  $dom  $mode")
 println("#    h = $d0 (1 + $ab sin(1.3x))   d0!=1 and a_b>0 are deliberate")
 println("#    gates:  u -> $(p_u+1)   eta -> $(p_u)   (different optima, by design)")
 println("#    Newton: nl_iter=$nl_iter  nl_tol=$nl_tol")

@@ -11,6 +11,11 @@ governing equations into a native Gridap tensor contraction instead of a Julia `
 
 Repository: `GridapBALFEM.jl`. Module: `src/GridapBALFEM.jl` → `module GridapBALFEM`. Fully self-contained.
 
+> **Sister solver.** This repository is the primal formulation stabilised by the C⁰ interior penalty
+> (CIP). The mixed formulation of the same models (conforming without CIP) with residual-based (VMS)
+> stabilisation is a separate solver, [`GridapBALFEMixed.jl`](https://github.com/Elmanyer/GridapBALFEMixed.jl),
+> split from this repository on 2026-11-23 (history: tag `archive/mixed-vms-solver-pre-split`).
+
 ---
 
 ## The core idea
@@ -328,7 +333,7 @@ by mtime when an image predates that stamp. Set `BALFEM_STRICT_SYSIMAGE=1` to ab
 | `T_ramp`, `ic_from_bc` | Hann start-up ramp (default 2 peak periods); hot start from the incident field (needs `T_ramp=0`) |
 | `relax_bc`, `relax_width` | generation/absorption relaxation zone at the inflow (strength `mu_max`, default width one peak wavelength) |
 | `y_wall_bc`, `x_wall_bc` | lateral BC **symbol** `{:wall, :open, :periodic}` (directional seas need `:open`/`:periodic`); `x_wall_bc::Bool` closed-x basin, mandatory for any IC-release problem |
-| `solver_type`, `tableau` | time integrator: `:sdirk` (default, `SDIRK_2_2`, L-stable) \| `:theta` (Crank–Nicolson); `:rk3` (`SDIRK_3_4`) sequential-only |
+| `solver_type`, `tableau` | time integrator: `:sdirk` (default, `SDIRK_2_2`, A-stable but **not** L-stable, dissipative; any Gridap tableau via `tableau`) \| `:theta` (Crank–Nicolson) |
 | `write_w`, `write_pressure`, `rho` | reconstruct vertical velocity / total pressure at every σ-node into VTK |
 | `save_every`, `output_dir`, `gauges` | VTK snapshot cadence, output directory, point-gauge stations (sequential only) |
 | **`diag_every`, `diag_csv`** | field-diagnostics sampling (`0` → follow `print_every`, `−1` → off) and the `diagnostics.csv` step log: **where** max\|η\| sits, its interior/damped split, \|u\|/\|η\|, mass & energy, GMRES saturation, per-rank RSS. Overhead measured within noise |
@@ -336,8 +341,8 @@ by mtime when an image predates that stamp. Set `BALFEM_STRICT_SYSIMAGE=1` to ab
 
 Distributed adds `cpu_grid=(px,py)`, the Krylov controls (`nl_iter`, `nl_tol`, `ls_rtol`,
 `ls_maxiter`, `krylov_m`, `nlp_cg_rtol`, `nlp_cg_maxiter`) and **`precond`**
-(`:jacobi` | `:schwarz` | `:gs`), plus the same `solver_type`/`tableau`; the linear solve is
-GMRES+Jacobi+Newton. It drops `gauges` (global reductions instead).
+(`:jacobi` | `:schwarz`, the latter an exact LU on each rank's own block), plus the same
+`solver_type`/`tableau`; the linear solve is GMRES+Newton with that preconditioner. It drops `gauges` (global reductions instead).
 
 > **Solver tolerances (retuned 2026-08-11/12, on measurement).** `ls_rtol = 1e-5`, `nl_tol = 1e-5`.
 > The two are **not** the same kind of knob:

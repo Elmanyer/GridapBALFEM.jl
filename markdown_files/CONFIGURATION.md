@@ -234,7 +234,8 @@ node-default 2 GB/core job was OOM-killed; see `OPEN_ISSUES.md` §1.
   sitting +5.2 % above the linear control — the second-order Stokes crest elevation. That is 100×
   the old cap. ⚠ Physical limits (Miche, breaking) still apply; the model has no breaking closure.
   See `CLAUDE.md` rules 2b and 12b.
-* **`nl_pressure=:native` is the production tier.** The whole `{1,2,4,5}` hierarchy contributes
+* ⚠ **v1: `nl_pressure=:native` was the production tier — the tier no longer exists in v2** (all
+  eight components or none; `V2_SOLVER_PLAN.md`). v1 measured: the whole `{1,2,4,5}` hierarchy contributes
   **0.013 % (1-D) / 0.094 % (2-D)** on top of advection's 0.77 % / 1.84 % at `A=1e-3` — the most
   expensive part of the residual changing the answer in the fourth significant figure. `:full` also
   carries a mesh-independent velocity-error floor (`VERIFIED_SCOPE.md` §4).

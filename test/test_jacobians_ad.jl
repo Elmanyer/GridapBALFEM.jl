@@ -41,10 +41,10 @@
 #      assembled row has its exact derivative. Here we demand equality to
 #      round-off. (This is the matrix-level counterpart of the one-Newton-
 #      iteration gate in test_linear_newton_gate.jl.)
-#    * the NONLINEAR branch is QUASI-NEWTON BY CHOICE — advection is
-#      differentiated in full, but the leading- and slope-pressure packages
-#      contribute no η-derivative, the 𝓐/𝓚 package is absent from ∂R/∂u̇
-#      entirely, and the 𝓝 blocks add to the residual but not the Jacobian.
+#    * the NONLINEAR branch is QUASI-NEWTON BY CHOICE — advection and (v2) the
+#      Class-III 𝓝 blocks are differentiated in full, but the leading- and
+#      slope-pressure packages contribute no η-derivative and the other 𝓝 blocks
+#      ({3,6,7,8}, the ∇h IBP half) add to the residual but not the Jacobian.
 #      Demanding equality there would assert something the code deliberately
 #      does not do, and the test would fail by design rather than on a defect.
 #      So the gate is the one property that MUST hold anyway:
@@ -59,7 +59,7 @@
 #
 #  COST — READ THIS BEFORE RUNNING. The AD JIT compile is paid PER DISTINCT
 #  BRANCH COMBINATION of the residual, NOT once per process: turning on
-#  `flat_bed=false`, advection, or a 𝓝 tier each routes through code the previous
+#  `flat_bed=false`, advection, or nl_pressure each routes through code the previous
 #  model never touched, so each pays its own compile. Measured on this machine:
 #  M1 ~12 min, M1+M2 ~20 min, M1–M3 ~38 min. Budget an hour or more for the full
 #  sweep. (An earlier version of this note claimed "~700 s once, then ~1 s each";
@@ -68,8 +68,11 @@
 #  flushed after every model so a long run is visibly alive, and
 #  BALFEM_JAC_MODELS=M5,M6 finishes a clipped tail without redoing what passed.
 #
+#  SIX models — regime × bed × nl_pressure (V2_SOLVER_PLAN.md §1). M5/M6 are nl_pressure=true:
+#  all eight 𝓝 components, Class III by the broken formulation (its skeleton layer included).
+#
 #  RUN:  julia --project=. test/test_jacobians_ad.jl
-#        BALFEM_JAC_MODELS=M5,M6,M7,M8 julia --project=. test/test_jacobians_ad.jl
+#        BALFEM_JAC_MODELS=M5,M6 julia --project=. test/test_jacobians_ad.jl
 # ==============================================================
 
 using GridapBALFEM
@@ -120,6 +123,10 @@ model, trian = build_horizontal_model(((0.0, LX), (0.0, LY)), (NX, NY))
 U, V         = build_fe_spaces(model, 2, Nσ; y_wall_bc = :wall, x_wall_bc = true,
                                p_eta = 1)
 dΩh          = Measure(trian, 6)
+#  nl_pressure=true (M5/M6) requires p_eta ≥ 2 and carries the mandatory C⁰-CIP (LaTeX §6.4,
+#  2026-10-30): those models run on Q3/Q2 spaces over the same mesh.
+U3, V3       = build_fe_spaces(model, 3, Nσ; y_wall_bc = :wall, x_wall_bc = true, p_eta = 2)
+dΩh3         = Measure(trian, 8)
 
 @printf("  mesh %dx%d   Nσ=%d   free DOFs=%d   bed h=%.2f(1+%.2f sin(%.1f x))\n",
         NX, NY, Nσ, num_free_dofs(U), D0, AB, KBX)
@@ -142,7 +149,7 @@ Assemble (A_hand, B_hand, A_ad, B_ad) for `prob` at state amplitude `a`.
 `u` and `u̇` are independent fields here, as they are for the integrator: the
 two Jacobians are partial derivatives at frozen opposite argument.
 """
-function jac_pair(prob, a)
+function jac_pair(prob, a; U = U, V = V, dΩh = dΩh)
     uh  = interpolate_everywhere(state_funs(a),       U)
     uth = interpolate_everywhere(state_funs(0.6 * a), U)
     tu  = TransientCellField(uh, (uth,))
@@ -168,7 +175,7 @@ reldiff(H, D) = absdiff(H, D) / max(norm(Matrix(D)), 1e-300)
 #  large, because the denominator ‖A_ad‖ contains the very terms that are missing
 #  and therefore grows with amplitude too: with ‖ΔA‖ ~ cε and ‖A_ad‖ ~ a + bε the
 #  ratio behaves like cε/(a+bε), which flattens as bε approaches a. Measured
-#  first-hand: the :full tier reported order 0.59/0.54 on the relative metric —
+#  first-hand: a large-gap model reported order 0.59/0.54 on the relative metric —
 #  read as a FAIL — while the small-gap models reported a correct ~1.1 because
 #  their denominator barely moved. The numerator alone scales as O(εᵏ) cleanly
 #  and is what the gate is actually about. Relative values are still printed,
@@ -176,25 +183,22 @@ reldiff(H, D) = absdiff(H, D) / max(norm(Matrix(D)), 1e-300)
 
 # ---------------------------------------------------------------------------
 #  The models. Every combination `resolve_physics` accepts:
-#  `regime=:linear` with `nl_pressure≠:none` is rejected by the solver itself,
-#  so the linear row has only the `:none` tier.
+#  `regime=:linear` with `nl_pressure=true` is rejected by the solver itself.
 #
 #  `exact = true` marks the configurations whose hand Jacobian is CLAIMED to be
 #  the exact derivative; those are gated on equality. The rest are gated on the
 #  amplitude-vanishing property (see the header).
 # ---------------------------------------------------------------------------
 all_models = [
-    (tag="M1", name="M1  linear    / flat bed / :none  ", regime=:linear,    nlp=:none,   flat=true,  exact=true),
-    (tag="M2", name="M2  linear    / var  bed / :none  ", regime=:linear,    nlp=:none,   flat=false, exact=true),
-    (tag="M3", name="M3  nonlinear / flat bed / :none  ", regime=:nonlinear, nlp=:none,   flat=true,  exact=false),
-    (tag="M4", name="M4  nonlinear / var  bed / :none  ", regime=:nonlinear, nlp=:none,   flat=false, exact=false),
-    (tag="M5", name="M5  nonlinear / flat bed / :native", regime=:nonlinear, nlp=:native, flat=true,  exact=false),
-    (tag="M6", name="M6  nonlinear / var  bed / :native", regime=:nonlinear, nlp=:native, flat=false, exact=false),
-    (tag="M7", name="M7  nonlinear / flat bed / :full  ", regime=:nonlinear, nlp=:full,   flat=true,  exact=false),
-    (tag="M8", name="M8  nonlinear / var  bed / :full  ", regime=:nonlinear, nlp=:full,   flat=false, exact=false),
+    (tag="M1", name="M1  linear    / flat bed / nlp0", regime=:linear,    nlp=false, flat=true,  exact=true),
+    (tag="M2", name="M2  linear    / var  bed / nlp0", regime=:linear,    nlp=false, flat=false, exact=true),
+    (tag="M3", name="M3  nonlinear / flat bed / nlp0", regime=:nonlinear, nlp=false, flat=true,  exact=false),
+    (tag="M4", name="M4  nonlinear / var  bed / nlp0", regime=:nonlinear, nlp=false, flat=false, exact=false),
+    (tag="M5", name="M5  nonlinear / flat bed / nlp1", regime=:nonlinear, nlp=true,  flat=true,  exact=false),
+    (tag="M6", name="M6  nonlinear / var  bed / nlp1", regime=:nonlinear, nlp=true,  flat=false, exact=false),
 ]
 
-#  Model selection, e.g. BALFEM_JAC_MODELS=M5,M6,M7,M8.
+#  Model selection, e.g. BALFEM_JAC_MODELS=M5,M6.
 #  This exists because the AD compile is paid PER BRANCH COMBINATION, not once
 #  per process (measured — see the cost note in the header), so the full sweep is
 #  long enough that being able to finish a clipped tail without re-deriving the
@@ -211,12 +215,6 @@ SEL == "all" || println("  MODEL SUBSET: $SEL  (partial run — not a full verif
 const TOL_EXACT = 1e-10   # round-off is ~1e-15; this is a generous ceiling
 const AMP       = 1.0     # reference state amplitude for the nonlinear scaling gate
 
-#  `nl_pressure=:full` reads frozen L²-projections (π𝖲, π𝖻) off prob.nlp_state[].
-#  With the state unset those blocks are silently SKIPPED, so half the tier would
-#  go untested. Build the context and seed the state so both halves are live —
-#  and note the frozen fields are constants to hand and AD alike, which is
-#  exactly how the integrator sees them (they are lagged one step by design).
-nlp_ctx = build_nlp_ctx(model, 2, Nσ, trian, dΩh)
 
 # ---------------------------------------------------------------------------
 #  A0 — the vendored Gridap fork is still in place.
@@ -241,25 +239,27 @@ let T = Gridap.ODEs.TransientMultiFieldCellField
           "\n          fix-transient-multifield-ad and use_ad=true will MethodError.")
 end
 
+#  A0b — the fork also carries the SKELETON-AD patch (2026-10-05). Without it the AD reference for
+#  the nl_pressure=true models (M5/M6) cannot be built: their broken Class-III layer is a skeleton
+#  integral, and `DomainStyle(::Type{SkeletonCellFieldPair})` was missing (test_skeleton_ad.jl).
+check("A0b vendored fork carries the skeleton-AD patch (type-level DomainStyle of SkeletonCellFieldPair)",
+      any(m -> occursin("Type{<:Gridap.CellData.SkeletonCellFieldPair", string(m.sig)),
+          methods(Gridap.CellData.DomainStyle)))
+
 for m in models
     println("-" ^ 78)
     println("  $(m.name)   [", m.exact ? "EXACT: equality gate" :
                                          "QUASI-NEWTON: amplitude-vanishing gate", "]")
     flush(stdout)
 
+    sp   = m.nlp ? (U = U3, V = V3, dΩh = dΩh3) : (U = U, V = V, dΩh = dΩh)
     prob = build_problem(vert; g = G, h_bathy = h_bathy,
                          regime = m.regime, nl_pressure = m.nlp, flat_bed = m.flat,
+                         model = model, quad_degree = m.nlp ? 8 : 6,   # skeleton (nlp1): facet terms + CIP
+                         p_eta = m.nlp ? 2 : 1,
                          mu_sponge = (x -> 0.0), wm_src = ((x, t) -> 0.0))
 
-    #  Re-seed the frozen projections AT THE AMPLITUDE BEING TESTED. Leaving them
-    #  at the reference amplitude while the state is halved would break the very
-    #  scaling the nonlinear gate measures: the 𝓝-frozen contribution would stay
-    #  O(1) while everything else shrank, and the measured order would be wrong.
-    seed_nlp!(a) = m.nlp === :full &&
-        update_nlp_state!(prob, nlp_ctx, interpolate_everywhere(state_funs(a), U))
-
-    seed_nlp!(AMP)
-    A_h, B_h, A_d, B_d = jac_pair(prob, AMP)
+    A_h, B_h, A_d, B_d = jac_pair(prob, AMP; sp...)
     rA = reldiff(A_h, A_d)
     rB = reldiff(B_h, B_d)
     @printf("      ‖ΔA‖/‖A‖ = %.3e      ‖ΔB‖/‖B‖ = %.3e\n", rA, rB)
@@ -272,8 +272,7 @@ for m in models
         #  Halving the amplitude must shrink the discrepancy. A wrong LEADING-order
         #  term would leave it flat; the deliberate quasi-Newton omissions are all
         #  higher order and must decay.
-        seed_nlp!(AMP / 2)
-        A_h2, B_h2, A_d2, B_d2 = jac_pair(prob, AMP / 2)
+        A_h2, B_h2, A_d2, B_d2 = jac_pair(prob, AMP / 2; sp...)
         #  Absolute norms for the ORDER (see the note at `absdiff`), relative for scale.
         aA, aB   = absdiff(A_h,  A_d),  absdiff(B_h,  B_d)
         aA2, aB2 = absdiff(A_h2, A_d2), absdiff(B_h2, B_d2)

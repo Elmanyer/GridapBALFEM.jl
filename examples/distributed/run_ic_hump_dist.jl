@@ -56,7 +56,7 @@ save_ev  = genv_i("BALFEM_SAVE_EVERY", 25)
 #  below: it is what makes the <domain> token truthful.
 _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:wall,
                            wave_kind="hump", wave_gen=(:ic),
-                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           regime=regime_sym(), nl_pressure=nl_pressure_flag(),
                            bed="flat", p_u=feord, p_eta=p_eta,
                            amplitude=Awave, period=Twave, irregular=false)
 outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
@@ -75,7 +75,7 @@ diags, vert, prob = setup_and_run_distributed(
     sponge_wL=0.0, sponge_wR=0.0, sponge_wB=0.0, sponge_wT=0.0, mu_max=0.0,
     T_final=Tfinal, dt=dt,
     eta0_func=eta0,                                  # ★ initial condition release
-    regime=regime_sym(), nl_pressure=nl_pressure_sym(), flat_bed=flat_bed_flag(),          # flat sea bed (∇h≡0); set BALFEM_FLAT_BED=0 for variable bathymetry
+    regime=regime_sym(), nl_pressure=nl_pressure_flag(), flat_bed=flat_bed_flag(),          # flat sea bed (∇h≡0); set BALFEM_FLAT_BED=0 for variable bathymetry
     y_wall_bc=:wall, x_wall_bc=true,                  # ★ CLOSED basin (mandatory for IC)
     output_dir=outdir, save_every=save_ev,
     write_w=write_w_flag(), write_pressure=write_p_flag(), rho=rho_val(),

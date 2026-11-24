@@ -76,7 +76,44 @@ julia --project=. examples/make_wave_animation.jl  [pvd-or-dir]        # η(x,y,
 julia --project=. examples/plot_dispersion.jl      [csv] [kd_app]      # Cm/Ce(kd) with ±2% band
 julia --project=. examples/vertical_profiles.jl    [dir] [x] [y] [kd]  # w(σ), p(σ) vs Airy
 julia --project=. examples/conservation_plots.jl   [csv]               # cluster CSV drift/error traces
+julia --project=. examples/periodic_viz.jl         <run_dir> [opts]    # periodic box: every figure + videos (below)
 ```
+
+## The closed x-periodic box (1-D stability runs)
+
+`src/periodic.jl` (data, harmonics, energy) and `src/periodic_plots.jl` (figures, videos), for runs of
+`examples/local_1d/run_periodic_1d.jl`. Worked example with explanations:
+`notebooks/mode_visualisation.ipynb`. Every function has a docstring.
+
+```julia
+R = load_periodic("output/1D_stability_campaign/m3_q32_n32")   # η[t,x], U[j,t,x], σ-basis, D, A, B, manifest, diagnostics.csv
+```
+
+* **Parts** (keyword `part` of every plot): `:total`, `:carrier` (n ≤ 4), `:disturbance` (n ≥ 5), `:steady`
+  (disturbance averaged over one wave period), `:oscillating` (the rest), or a harmonic list `[16]`, `5:20`.
+* **State at one instant:** `plot_state(R, t; part)`: η, every layer u_j with ū, the water column
+  u(x,σ) with streamlines; beside η the surface energy per η mode (n ≤ ncell·p_eta/2), beside the water column
+  the kinetic energy per velocity mode (n ≤ ncell·p_u/2; depth-mean / shear / w), and the energy totals.
+  The modes come from the nodal values (`mode_energy`, `state_spectrum`): each mode once, no images.
+  `plot_state_wiggle(R, t; part)`: the same, with the layer panel merged into the water column: u(x,σ) against σ,
+  each u_j(x) drawn on its own node σ_j (right axis in m/s about each baseline).
+* **Time marching:** `animate_run(R; frames, part)` (mp4; `.gif` if `out` ends so), `animate_mode(R, n)`.
+  Frames from `select_frames(R; trange, dt | every | n | times | phase)`; `phase` gives a stroboscopic view
+  (one frame per period: the carrier is frozen).
+* **Modes:** `growing_harmonics` (table: σ, ω/ω0, |u|/|ū|, η share), `pick_triad`, `plot_mode_amplitudes`,
+  `plot_mode_timeseries`, `plot_mode_phasors`, `plot_mode_cycle`, `plot_mode_profiles`.
+* **Space–time:** `plot_layers_hovmoller`, `plot_steady_split`, `plot_column`, `plot_komega` (with the model's
+  dispersion branch, `model_dispersion`).
+* **Energy:** `harmonic_energy` (per harmonic: surface, depth-mean kinetic, vertical-shear kinetic, vertical
+  kinetic of w), `plot_energy`, `plot_energy_spectrum`, `plot_growth_overview`.
+  `plot_energy_history(R; modes)`: energy against time for every mode (`:all`, coloured by n), for groups
+  (`:groups`: total, carrier, bound harmonics, disturbance, n = 0) or for a list (`[14, 16, 32]`); data from
+  `energy_history` (nodal modes). ⚠ The solver's monitor
+  (`energy_ratio`) leaves out the kinetic energy of w; the snapshots reproduce it to 0.1 % without w.
+* **Everything:** `periodic_report(R)` → `<run>/viz/`.
+
+`periodic_viz.jl` options: `--no-anim`, `--parts total,disturbance,steady,16`, `--dt 1.0`, `--trange 150 246`,
+`--phase 0.0`, `--fps 12`, `--out DIR`.
 
 ## Vertical-profile reconstruction (w and p from the modes)
 

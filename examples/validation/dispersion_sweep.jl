@@ -57,7 +57,7 @@ for kd in kd_list
         h_val=d, T_wave=T_wave, A_wave=A_wave, x_wm=x_wm, y_wm=nothing,
         sponge_wL=6.0, sponge_wR=8.0, mu_max=30.0, T_final=14*T_wave, dt=T_wave/24,
         save_every=0, gauges=[(x,Ly/2) for x in xg],
-        regime=:nonlinear, nl_pressure=:none, flat_bed=true,  # constant depth ⇒ ∇h≡0
+        regime=:nonlinear, nl_pressure=false, flat_bed=true,  # constant depth ⇒ ∇h≡0
         print_every=10_000)
     Cm = celerity_spatial(diags, xg, omega, k)
     r  = isnan(Cm) ? NaN : Cm/Ce; err = isnan(Cm) ? NaN : abs(r-1)

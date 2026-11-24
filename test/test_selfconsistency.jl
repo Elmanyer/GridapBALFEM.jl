@@ -46,18 +46,14 @@
 #  run would expose an inconsistency in the nonlinear assembly, the Jacobians,
 #  or the multi-step bookkeeping.
 #
-#  Physics. Fully nonlinear: advection ON, full leading pressure (P_full), and
-#  the native nonlinear-pressure set 𝓝∈{3,6,7,8} (nl_pressure68). The MMS is
-#  finite-amplitude on a sloped bed, so these terms are a SIGNIFICANT fraction
-#  of the residual (verified below). The remaining 𝓝∈{1,2,4,5} frozen-projection
-#  components are O(A³) corrections validated to machine precision by
-#  test_nlpressure.jl (exact-IBP identity) and exercised at scale by
-#  test/cluster/cluster_selfconsistency.jl; set env MMS_FULL=1 to include them here too
-#  (much heavier first-compile).
+#  Physics. Fully nonlinear: advection ON, full leading pressure (P_full), and the
+#  nonlinear pressure 𝓝 with ALL EIGHT components (v2: nl_pressure=true — Class III by the
+#  broken formulation, cellwise Hessians + skeleton layer). The MMS is finite-amplitude on a
+#  sloped bed, so these terms are a SIGNIFICANT fraction of the residual (verified below).
 #
 #  Gates: (1) machine-precision recovery over the whole unsteady run; (2) the
 #  nonlinear terms are a SIGNIFICANT fraction of the residual (genuinely
-#  nonlinear); (3) the native nonlinear-pressure block is computed (nonzero).
+#  nonlinear); (3) the 𝓝 blocks are computed (nonzero).
 #
 #  RUN:  julia --project=. GridapBALFEM.jl/test/test_selfconsistency.jl
 # ==============================================================
@@ -67,11 +63,8 @@ using Gridap
 using Gridap.ODEs
 using LinearAlgebra, Printf
 
-FULL = lowercase(get(ENV, "MMS_FULL", "0")) in ("1","true","yes")
-
 println("=" ^ 66)
-println("  test_selfconsistency.jl — residual self-consistency (Jacobians + stepping)",
-        FULL ? "  [FULL 𝓝]" : "")
+println("  test_selfconsistency.jl — residual self-consistency (Jacobians + stepping)")
 println("=" ^ 66)
 
 n_pass = 0; n_fail = 0
@@ -101,11 +94,11 @@ ustar(t)   = interpolate_everywhere(
                      stackf([x -> uys(j,x,t) for j in 1:Nσ])], U)
 ustar_dofs(t) = get_free_dof_values(ustar(t))
 
-# ---- problem: fully nonlinear (advection + full leading + native 𝓝) ------------
+# ---- problem: fully nonlinear (advection + full leading + all eight 𝓝 components) ----
 prob = build_problem(vert; g=g, h_bathy=h_bathy,
-    regime=:nonlinear, nl_pressure=(FULL ? :full : :native), flat_bed=false,   # curved bed (∇h,∇²h ≠ 0)
+    regime=:nonlinear, nl_pressure=true, flat_bed=false,       # curved bed (∇h,∇²h ≠ 0)
+    model=model, quad_degree=2*feo + 2,                        # broken Class-III skeleton
     mu_sponge=x -> 0.0, wm_src=(x,t) -> 0.0)
-ctx = FULL ? build_nlp_ctx(model, feo, Nσ, trian, dΩh) : nothing
 
 dt = 0.06; θ = 0.5; N = 12                            # unsteady CN march (≈0.36 period)
 TCF(vec, dvec) = TransientCellField(FEFunction(U, vec), (FEFunction(U, dvec),))
@@ -114,7 +107,6 @@ TCF(vec, dvec) = TransientCellField(FEFunction(U, vec), (FEFunction(U, dvec),))
 println("\n-- unsteady nonlinear march ($N steps) --")
 # ================================================================
 un = ustar_dofs(0.0)                                  # start from u*(0)
-FULL && update_nlp_state!(prob, ctx, FEFunction(U, un))
 errs = Float64[]; nl_iters_tot = 0
 for n in 0:N-1
     global un, nl_iters_tot
@@ -136,7 +128,6 @@ for n in 0:N-1
     end
     push!(errs, norm(u1 .- us1)/norm(us1))
     un = u1                                           # = u*(t_{n+1}) to machine precision
-    FULL && update_nlp_state!(prob, ctx, FEFunction(U, un))
 end
 @printf("  steps=%d  Newton iters=%d (%.2f/step)  max rel err over run = %.3e\n",
         N, nl_iters_tot, nl_iters_tot/N, maximum(errs))
@@ -176,17 +167,21 @@ nl_frac = norm(R_full .- R_lin) / norm(R_full)
 check("MMS is genuinely nonlinear (nonlinear residual fraction > 3%)", nl_frac > 0.03,
       "($(round(100*nl_frac,digits=1))%)")
 
-# native nonlinear-pressure block is computed (nonzero)
+# 𝓝 blocks are computed (nonzero)
 um_fe = FEFunction(U, um); ηm = um_fe[1]; Uxm = um_fe[2]; Uym = um_fe[3]
 dcf = CellField(h_bathy, trian); Hm = dcf + ηm
 dhx = alg_dx(dcf); dhy = alg_dy(dcf); dHx = dhx + alg_dx(ηm); dHy = dhy + alg_dy(ηm)
 DUm = alg_dx(Uxm) + alg_dy(Uym); afm = dhx*Uxm + dhy*Uym; bfm = dHx*Uxm + dHy*Uym
 Sm  = Hm*DUm + bfm
-r_nat = assemble_vector(v -> nlp_native_contrib(prob, dcf, ηm, Hm, dhx, dhy, dHx, dHy,
+r_nat = assemble_vector(v -> nlp_direct_contrib(prob, dcf, ηm, Hm, dhx, dhy, dHx, dHy,
                              Uxm, Uym, v[2], v[3], alg_dx(v[2])+alg_dy(v[3]),
                              afm, bfm, Sm, DUm, dΩh), V)
-@printf("  native nonlinear-pressure block ‖·‖ = %.3e  (𝓝 comps {3,6,7,8} active)\n", norm(r_nat))
-check("native nonlinear-pressure block is computed (nonzero)", norm(r_nat) > 1e-9)
+@printf("  𝓝 {3,6,7,8} block ‖·‖ = %.3e\n", norm(r_nat))
+check("𝓝 {3,6,7,8} block is computed (nonzero)", norm(r_nat) > 1e-9)
+r_c3 = assemble_vector(v -> broken_class3_residual(prob, prob.skel[], dcf, ηm, Hm, dHx, dHy,
+                             Uxm, Uym, DUm, Sm, bfm, v[2], v[3], alg_dx(v[2])+alg_dy(v[3]), dΩh), V)
+@printf("  𝓝 Class-III (broken) block ‖·‖ = %.3e\n", norm(r_c3))
+check("𝓝 Class-III (broken) block is computed (nonzero)", norm(r_c3) > 1e-9)
 
 println()
 println("=" ^ 66)

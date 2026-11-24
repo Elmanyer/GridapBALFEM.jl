@@ -108,7 +108,9 @@ it buys nothing the solver needs and pushes almost every rank count over a tier 
 #SBATCH --ntasks=28
 #SBATCH --ntasks-per-node=28
 #SBATCH --cpus-per-task=1
-#SBATCH --mem-per-cpu=4G        # 112 GiB = exactly 4/8 of a rome node
+#SBATCH --mem=112G              # per-node total: 4/8 of a rome node, 112/28 = 4 GiB per rank
+                                # NEVER --mem-per-cpu: it is counted against the 16-core-rounded
+                                # allocation (32 x 4G = 128 GiB -> billed 5/8 or refused, §4)
 export BALFEM_PX=7
 export BALFEM_PY=4              # 7*4 = 28
 ```
@@ -125,8 +127,9 @@ export BALFEM_PY=4              # 7*4 = 28
   than a node has**. The flag inflated the request past the machine, which is why Slurm answered
   *"Requested node configuration is not available"*. With `--mem` the row is fine:
   `1 node × 56 @ --mem=224G` bills 8/8 (128 CPUs), **identical to 2 nodes × 28 @ 112G**, and avoids
-  inter-node traffic. Both are valid; the launchers here use 2 × 28 because that is what has been
-  submitted successfully. A single-node 224G request may want `--exclusive`.
+  inter-node traffic. A single-node 224G request may want `--exclusive` (or `--exclusive --mem=0`).
+  The v2 linear directional launchers (`run/linear_production/`) use 1 × 42 at 168G: the v1 wide
+  directional data came from 1 node × 40, and a single node bills 6/8 instead of 8/8.
 * ⛔ **`--mem-per-cpu` IS COUNTED AGAINST ALL *ALLOCATED* CPUs, NOT YOUR TASKS — AND THE ALLOCATION
   IS ROUNDED UP TO 16 CORES.** Measured 2026-09-13. `--ntasks-per-node=28 --mem-per-cpu=4G` does not
   request 112 GiB: Slurm rounds 28 cores up to 32 and asks for `32 × 4 = 128 GiB`, a different tier,

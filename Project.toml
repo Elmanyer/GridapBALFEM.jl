@@ -3,18 +3,6 @@ uuid = "43e94d05-4d7d-4679-96a4-d46e2615da34"
 authors = ["Pau Manyer <p.manyerfuertes@tudelft.nl>", "Oriol Colomés <j.o.colomesgene@tudelft.nl>"]
 version = "0.1.0"
 
-# NOTE — this environment is BOTH the package and the working environment used to
-# run the tests, examples and cluster/compile tooling directly
-# (`julia --project=. test/test_basic.jl`, `julia --project=. compile/set_preferences.jl`).
-# `Test`, `BlockArrays`, `MPIPreferences` and `Preferences` are therefore kept in
-# [deps] rather than [extras]/[targets]: under [extras] they are only visible to
-# `Pkg.test()` and those direct invocations would fail. `BlockArrays` is needed by
-# the differently-structured oracle `LFEModel2D` that test_equivalence.jl loads.
-# Plots is a dep of THIS environment (not of the solver): building_files/doc_figures/
-# generate_doc_plots.ipynb activates this project to reach the vertical-tensor
-# assembly, so the figure notebook needs it resolvable here.
-# WARNING: `Pkg.add` REWRITES this file and STRIPS every comment below. If a
-# dependency is added, restore the commentary from git before committing.
 [deps]
 BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
@@ -24,6 +12,7 @@ GridapSolvers = "6d3209ee-5e3c-4db7-a716-942eb12ed534"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 MPI = "da04e1cc-30fd-572f-bb4f-1f8673147195"
 MPIPreferences = "3da0fdf6-3ccc-4f1b-acd9-58baa6c99267"
+PackageCompiler = "9b87118b-4619-50d2-8e1e-99f35a4d4d9d"
 PartitionedArrays = "5a9dfac6-5c52-46f7-8278-5e2210713be9"
 Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
 Preferences = "21216c6a-2e73-6563-6e65-726566657250"
@@ -32,31 +21,6 @@ SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 WaveSpec = "908d4cf6-a6c0-449c-92e4-852c8f288332"
 
-# Bounds on the stack the solver is validated against and that the cluster system
-# image is built from.
-#
-# The two-minor ranges are deliberate and EVIDENCE-BACKED, not a hedge. Measured
-# 2026-08-05 by running test_basic.jl in two pinned environments:
-#
-#     Gridap 0.19.11 + GridapSolvers 0.6.2 -> max eta 0.00410 m, 408 Newton its (3.40/step)
-#     Gridap 0.20.8  + GridapSolvers 0.7.1 -> max eta 0.00410 m, 408 Newton its (3.40/step)
-#
-# i.e. identical at printed precision, and the package precompiles cleanly on
-# both. So either minor is a valid target and the ranges cost nothing, while
-# still blocking an unbounded jump to a new minor (which would invalidate the
-# sysimage and, for Gridap, the transient-API assumptions).
-#
-# What is ACTUALLY in use:
-#   * this environment + the cluster : Gridap 0.20.x, GridapSolvers 0.7.1.
-#     The cluster is identified from its own tracebacks — package directory
-#     slugs are content-addressed and therefore stable across machines, and the
-#     cluster logs reference GridapSolvers/WuCdi = 0.7.1, PartitionedArrays/
-#     MVmxR = 0.3.5, MPI/pvbg6 = 0.20.26.
-#   * the PARENT environment ../ (legacy 1D/2D solvers) : Gridap 0.19.11,
-#     GridapSolvers 0.6.2. It is a different environment for different code and
-#     does not need to match.
-# NOTE: a sysimage is only valid for the versions it was built against; build it
-# in the same environment you run in.
 [compat]
 BlockArrays = "1"
 Gridap = "0.19, 0.20"

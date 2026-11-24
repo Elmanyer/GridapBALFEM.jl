@@ -9,24 +9,105 @@
 #  u2x, …) so the VTK/ParaView files carry familiar, human-readable field names.
 # ==============================================================
 
+#  Gridap tableaus that are defective in the fork, checked against the Runge–Kutta order conditions
+#  on 2026-11-11 (CLAUDE.md rule 15). They run, but they are not the schemes their names say:
+#    SDIRK_3_3              labelled 3rd order, only 1st order (b·c = 1.02, not ½)
+#    SDIRK_LobattoIIIC_2_2  the explicit Heun scheme (A = [0 0; 1 0]), not Lobatto IIIC
+const DEFECTIVE_TABLEAUS = (:SDIRK_3_3, :SDIRK_LobattoIIIC_2_2)
+
+"Stability function `R(z) = 1 + z bᵀ(I − zA)⁻¹𝟙` of a Butcher tableau."
+function tableau_R(tb, z)
+    A = Gridap.ODEs.get_matrix(tb); b = Gridap.ODEs.get_weights(tb)
+    return 1 + z * (b' * ((I - z * A) \ ones(length(b))))
+end
+
 """
-    build_ode_solver(dt; solver_type, theta, rho_inf, tableau, nl_iter, nl_tol,
+    check_time_integrator(; solver_type, theta, tableau, rho_inf, where)
+
+Refuse an integrator choice `build_time_integrator` cannot build (unknown `solver_type`, a name that
+is not a Gridap tableau, an IMEX tableau, θ ∉ (0, 1], ρ∞ ∉ [0, 1]). The drivers call it before the
+mesh, the σ-tensors and the JIT, so a typo in a cluster job fails in seconds, not after the compile.
+"""
+function check_time_integrator(; solver_type::Symbol, theta::Float64, tableau::Symbol,
+                               rho_inf::Float64, where::AbstractString = "check_time_integrator")
+    if solver_type === :sdirk || solver_type === :rk
+        (isdefined(Gridap.ODEs, tableau) && getfield(Gridap.ODEs, tableau) isa Type &&
+         getfield(Gridap.ODEs, tableau) <: Gridap.ODEs.TableauName) ||
+            error("$where: `$tableau` is not a Gridap Butcher tableau " *
+                  "(see Gridap.jl/src/ODEs/ODESolvers/Tableaus{DIM,EX}.jl)")
+        tb = Gridap.ODEs.ButcherTableau(getfield(Gridap.ODEs, tableau)())
+        Gridap.ODEs.TableauType(tb) == Gridap.ODEs.ImplicitExplicitTableau &&
+            error("$where: `$tableau` is an IMEX tableau; it needs an implicit/explicit " *
+                  "split of the operator, which BALFE-M does not define")
+    elseif solver_type === :theta
+        0 < theta <= 1 || error("$where: theta must lie in (0, 1] (got $theta)")
+    elseif solver_type === :gen_alpha
+        0 <= rho_inf <= 1 || error("$where: rho_inf must lie in [0, 1] (got $rho_inf)")
+    else
+        error("$where: unknown solver_type `$solver_type`; choose :theta, :sdirk " *
+              "(any Gridap tableau; alias :rk) or :gen_alpha")
+    end
+    return nothing
+end
+
+"""
+    build_time_integrator(nls, ls, dt; solver_type, theta, tableau, rho_inf)
+
+The time integrator around a nonlinear solver `nls` (and linear solver `ls`), shared by the
+sequential and distributed factories:
+
+* `:theta` — `ThetaMethod(nls, dt, theta)`; `theta = 0.5` is Crank–Nicolson (no damping, the
+  diagnosis integrator of rule 15), `theta > 0.5` damps (first order).
+* `:sdirk` — `RungeKutta(nls, ls, dt, tableau)` with ANY Gridap Butcher tableau, diagonally
+  implicit (`SDIRK_*`, `DIRK_*`) or explicit (`EXRK_*`); the name is historical. `:rk` is an alias.
+  IMEX tableaus are refused (they need an implicit/explicit split of the operator, which BALFE-M
+  does not define). The defective tableaus and any tableau that amplifies a neutral oscillation
+  (`|R(iy)| > 1` at small `y`: explicit 1st/2nd-order RK, the DIRK Radau and Lobatto IIIC variants)
+  run with a warning.
+* `:gen_alpha` — first-order generalised-α, `GeneralizedAlpha1(nls, dt, rho_inf)`: second order for
+  every `rho_inf ∈ [0, 1]`, `rho_inf = 1` no damping, `rho_inf = 0` the strongest high-frequency
+  damping. With only `u₀` given, Gridap solves the residual for the initial `u̇₀`, so a restart
+  needs no extra state.
+"""
+function build_time_integrator(nls, ls, dt::Float64; solver_type::Symbol, theta::Float64,
+                               tableau::Symbol, rho_inf::Float64)
+    check_time_integrator(; solver_type, theta, tableau, rho_inf, where = "build_time_integrator")
+    if solver_type === :sdirk || solver_type === :rk
+        tb = Gridap.ODEs.ButcherTableau(getfield(Gridap.ODEs, tableau)())
+        tableau in DEFECTIVE_TABLEAUS &&
+            @warn "build_time_integrator: Gridap's `$tableau` is defective (not the scheme its name says; " *
+                  "CLAUDE.md rule 15). It runs, but do not use it to study a scheme of that name."
+        abs(tableau_R(tb, 0.1im)) > 1 + 1e-12 &&
+            @warn "build_time_integrator: `$tableau` amplifies neutral oscillations (|R(iy)| > 1 for " *
+                  "small y): a wave run grows under it at every Δt."
+        return RungeKutta(nls, ls, dt, tableau)
+    elseif solver_type === :theta
+        theta < 0.5 && @warn "build_time_integrator: θ = $theta < ½ amplifies neutral oscillations"
+        return ThetaMethod(nls, dt, theta)
+    else
+        return GeneralizedAlpha1(nls, dt, rho_inf)
+    end
+end
+
+"""
+    build_ode_solver(dt; solver_type, theta, tableau, nl_iter, nl_tol,
                          show_trace, monitor)
 
 Gridap ODE solver factory (template: GridapSWE.jl `RungeKutta(nls, ls, dt,
 tableau)`). Options: `:sdirk` (fully-implicit diagonally-implicit Runge–Kutta,
 default — more stable than Crank–Nicolson; tableau `:SDIRK_2_2` = Gridap's `DIRK22(1,0,1)`,
 2nd-order, A-stable but NOT L-stable (R(∞) = −1/2), energy loss ≈ 0.75(ωΔt)⁴ per step — strongly
-dissipative), `:theta` (Crank–Nicolson θ=0.5, non-dissipative), `:gen_alpha`,
-`:rk3` (SDIRK_3_4). Nonlinear solve: Newton + LU. Pass a `SolverMonitor` as
+dissipative; any other Gridap tableau via `tableau`, e.g. `:SDIRK_Crouzeix_3_4`), `:theta`
+(Crank–Nicolson θ=0.5, non-dissipative) and `:gen_alpha` (`rho_inf`); see `build_time_integrator`.
+Nonlinear solve: Newton + LU. Pass a `SolverMonitor` as
 `monitor` to collect per-step convergence statistics (the monitor wraps the
 Newton solver transparently; for RK it accumulates over the implicit stages).
 """
 function build_ode_solver(dt::Float64;
                               solver_type :: Symbol  = :sdirk,
                               theta       :: Float64 = 0.5,
-                              rho_inf     :: Float64 = 0.5,
                               tableau     :: Symbol  = :SDIRK_2_2,
+                              rho_inf     :: Float64 = 0.5,
                               nl_iter     :: Int     = 50,
                               nl_tol      :: Float64 = 1e-5,
                               show_trace  :: Bool    = false,
@@ -46,17 +127,7 @@ function build_ode_solver(dt::Float64;
         monitor.lin_cap  = 0                      # direct solve: no iteration cap
         nls = monitor
     end
-    if solver_type == :sdirk
-        return RungeKutta(nls, ls, dt, tableau)
-    elseif solver_type == :theta
-        return ThetaMethod(nls, dt, theta)
-    elseif solver_type == :gen_alpha
-        return GeneralizedAlpha(nls, dt, rho_inf)
-    elseif solver_type == :rk3
-        return RungeKutta(nls, ls, dt, :SDIRK_3_4)
-    else
-        error("Unknown solver_type; choose :sdirk, :theta, :gen_alpha, or :rk3")
-    end
+    return build_time_integrator(nls, ls, dt; solver_type, theta, tableau, rho_inf)
 end
 
 """
@@ -133,7 +204,7 @@ end
 """
     run_time_loop(op, solver, u0, t0, T_final; output_dir, save_every,
                       trian, Nσ, print_every, print_dt, gauges, recon,
-                      trial_space, dt, nlp, monitor, checker, check_every,
+                      trial_space, dt, monitor, checker, check_every,
                       check_tol)
 
 Time loop from t0 to T_final. Returns `[(t, eta_max, gauge_vals, nl_iters,
@@ -151,6 +222,12 @@ Runtime diagnostics:
   * `checker` (ResidualChecker) + `check_every` — every N steps reassemble
     the governing equations independently and verify ‖R‖∞ ≤ `check_tol`.
 Stops early on NaN or eta_max > 1e4.
+
+Resume and checkpoints (`src/checkpoint.jl`):
+  * `step0` — the step counter of `t0` (a resumed run continues the parent's numbering,
+    so VTK and diagnostics cadences and `diagnostics.csv` stay aligned);
+  * `checkpoint_every > 0` with `checkpoint_writer(step, t, u_n)` — write a checkpoint every
+    N steps (absolute numbering) and always after the last step (completed or diverged).
 """
 function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                            output_dir :: String  = "output",
@@ -163,7 +240,6 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                            recon                 = nothing,
                            trial_space           = nothing,
                            dt         :: Float64 = 0.0,
-                           nlp                   = nothing,   # (prob, ctx) for nl_pressure_full
                            monitor               = nothing,   # SolverMonitor
                            checker               = nothing,   # ResidualChecker
                            check_every:: Int     = 0,
@@ -176,24 +252,18 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                                                               #   sampling HIDES every sub-element mode of
                                                               #   Q2/Q3 — the band a grid-scale instability
                                                               #   lives in; spectral analyses need > 0.
-                           final_uh              = nothing)   # optional Ref: receives the last
+                           final_uh              = nothing,   # optional Ref: receives the last
                                                               #   solution FEFunction. Non-breaking
                                                               #   out-parameter — the MMS driver needs
                                                               #   the final state to form an L² error,
                                                               #   which `diags` (scalars only) cannot
                                                               #   provide.
+                           step0      :: Int     = 0,         # step number of t0 (resume)
+                           checkpoint_every :: Int = 0,       # >0: checkpoint every N steps + at the end
+                           checkpoint_writer     = nothing)   # (step, t, u_n) -> path
     mkpath(output_dir)
     odesol = solve(solver, op, t0, T_final, u0)
 
-    #  nl_pressure=:full — PRIME the frozen projections from the INITIAL CONDITION.
-    #  `update_nlp_state!` below runs only AFTER an accepted step, so without this
-    #  the first step assembles the {1,2,4,5} blocks with `nlp_state == nothing`,
-    #  i.e. as if starting from rest. That is exact for a rest start (u=0, η=0 ⇒
-    #  𝖲=𝖻=0 ⇒ zero projections, so this call is a no-op) but WRONG for any
-    #  non-trivial IC — which is exactly what the MMS driver uses (u0 = u*(t0)).
-    if nlp !== nothing
-        update_nlp_state!(nlp[1], nlp[2], u0)
-    end
 
     # previous-step DOFs → u̇ backward FD (reconstructed pressure + residual check)
     prev_vals = nothing
@@ -203,13 +273,16 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
     diags        = NamedTuple{(:t,:eta_max,:gauge_vals,:nl_iters,:res_nl,:t_solve),
                               Tuple{Float64,Float64,Vector{Float64},Int,Float64,Float64}}[]
     t_last_print = t0
-    step         = 0
+    step         = step0
     do_vtk       = !isnothing(trian) && save_every > 0
-    steps_total  = dt > 0 ? round(Int, (T_final - t0)/dt) : 0
+    steps_total  = step0 + (dt > 0 ? round(Int, (T_final - t0)/dt) : 0)
     wall0        = time()
     nl_total     = 0
     t_solve_tot  = 0.0
     n_vtk        = 0
+    do_ck        = checkpoint_every > 0 && checkpoint_writer !== nothing
+    last_state   = nothing     # (step, t, u_n) of the last step, for the final checkpoint
+    last_ck      = -1
 
     gauge_pts = map(g -> (g isa VectorValue ? g : VectorValue(Float64(g[1]), Float64(g[2]))),
                     gauges)
@@ -219,6 +292,7 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
             step  += 1
             stats  = monitor === nothing ? nothing : take_step_stats!(monitor)
             final_uh === nothing || (final_uh[] = u_n)
+            do_ck && (last_state = (step, t_n, u_n))
             eta_n  = u_n[1]
             emax   = maximum(abs.(get_free_dof_values(eta_n)))
             gauge_data = isempty(gauge_pts) ? Float64[] :
@@ -246,7 +320,7 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
             fd === nothing || diag_csv_row(rundiag, step, t_n, fd, stats)
             if do_print
                 wall  = time() - wall0
-                eta_s = steps_total > step ? (wall/step)*(steps_total - step) : NaN
+                eta_s = steps_total > step ? (wall/(step - step0))*(steps_total - step) : NaN
                 println(step_report(step, t_n, emax, stats; eta_s=eta_s, fd=fd))
                 flush(stdout)
                 t_last_print = t_n
@@ -302,12 +376,10 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
                 prev_vals = copy(get_free_dof_values(u_n))
             end
 
-            # nl_pressure_full: refresh the frozen projections π𝖲, π𝖻 for the next step
-            if nlp !== nothing
-                # ⚠ Redundant in IN-LOOP mode — the residual already refreshed the
-                #   projections from the converged iterate. Skipping recovers two mass
-                #   solves per step (NEW_TREATMENT.md §B.4).
-                nlp[1].nlp_ctx[] === nothing && update_nlp_state!(nlp[1], nlp[2], u_n)
+            if do_ck && step % checkpoint_every == 0
+                @printf("  [checkpoint] step %d, t=%.4f → %s\n", step, t_n, checkpoint_writer(step, t_n, u_n))
+                flush(stdout)
+                last_ck = step
             end
 
             # D1: RELATIVE divergence guard. With a reference amplitude the limit
@@ -329,8 +401,14 @@ function run_time_loop(op, solver, u0, t0::Float64, T_final::Float64;
     else
         _loop(nothing)
     end
+    #  the final state, completed or diverged (a diverged one is kept for diagnosis)
+    if do_ck && last_state !== nothing && last_state[1] != last_ck
+        @printf("  [checkpoint] final, step %d, t=%.4f → %s\n", last_state[1], last_state[2],
+                checkpoint_writer(last_state...))
+        flush(stdout)
+    end
 
-    print(final_report(step, isempty(diags) ? t0 : diags[end].t,
+    print(final_report(step - step0, isempty(diags) ? t0 : diags[end].t,
                            time() - wall0, nl_total, t_solve_tot, n_vtk;
                            rundiag=rundiag))
     close_diagnostics(rundiag)

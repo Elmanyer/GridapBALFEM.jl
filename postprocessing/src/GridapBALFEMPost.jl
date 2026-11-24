@@ -71,6 +71,8 @@ include("diagnostics.jl")
 include("reconstruct.jl")
 include("plotting.jl")
 include("seastate.jl")
+include("periodic.jl")          # the closed x-periodic box (1-D stability runs)
+include("periodic_plots.jl")
 
 # ---- exports -----------------------------------------------------------------
 export WaveSimulation, GridView, Gauge, SigmaProfile, CsvTable
@@ -85,6 +87,14 @@ export plot_field, animate_field, plot_gauge, plot_hovmoller, plot_dispersion
 export plot_vertical_profile, plot_harmonic_growth, plot_radial_decay, plot_csv
 export jonswap_density, psd_welch, spectral_moment, significant_height
 export zero_crossing_heights, plot_sea_spectrum, plot_exceedance
+# periodic box (periodic.jl, periodic_plots.jl)
+export PeriodicRun, load_periodic, nlayers, nharmonics, depth_average, xband, xharmonic, steady_part
+export part_rows, part_state, column_field, select_frames, tindex, twindow
+export harmonic_energy, mode_energy, state_spectrum, energy_history, node_stride, default_bands, growing_harmonics, end_of_linear_growth, pick_triad, model_dispersion
+export plot_state, plot_state_wiggle, animate_run, animate_mode
+export plot_mode_timeseries, plot_mode_cycle, plot_mode_phasors, plot_mode_amplitudes, plot_mode_profiles
+export plot_layers_hovmoller, plot_steady_split, plot_column, plot_komega
+export plot_energy, plot_energy_history, plot_energy_spectrum, plot_growth_overview, periodic_report
 export savefig, gif, plot, plot!          # re-exported from Plots
 
 end # module

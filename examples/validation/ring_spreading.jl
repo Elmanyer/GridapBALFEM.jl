@@ -35,7 +35,7 @@ diags, _, _ = setup_and_run(
     p_u=2, h_val=d, T_wave=T, A_wave=A, x_wm=x_wm, y_wm=y_wm,
     sponge_wL=12.0, sponge_wR=12.0, sponge_wB=12.0, sponge_wT=12.0, mu_max=10.0,
     T_final=8*T, dt=T/30, save_every=0, gauges=gauges,
-    regime=:linear, nl_pressure=:none, flat_bed=true,   # constant depth ⇒ ∇h≡0
+    regime=:linear, nl_pressure=false, flat_bed=true,   # constant depth ⇒ ∇h≡0
     print_every=40)
 
 steadyamp(i) = (gv = [d.gauge_vals[i] for d in diags]; n2 = length(gv)÷2;

@@ -83,7 +83,8 @@ See `src/nlpressure.jl`.
 | `tensors.jl` | constant-tensor constructors + `Operation` helpers |
 | `horizontal.jl` | mesh + stacked FE spaces (distributed-safe dispatch; transient-Dirichlet inflow variants) |
 | `problem.jl` | `BALFEMProblem`, `resolve_physics`, `global_residual`, `jacobian_u`, `jacobian_u_t` |
-| `nlpressure.jl` | the eight 𝓝 components: native set, exact-IBP ∇h half, frozen-projection half |
+| `nlpressure.jl` | 𝓝: components {3,6,7,8} direct, the exact-IBP ∇h half of {1,2,4,5}, the reduced Class-III contractions |
+| `broken.jl` | Class III by the BROKEN formulation (cellwise Hessians + skeleton layer) and its exact Jacobian; the skeleton stabilisers `:jumpgrad` / `:ghostvolume` (v2) |
 | `timeloop.jl` | sequential ODE operator, solver factory, time loop, VTK |
 | `timeloop_dist.jl` | distributed mesh builder, GMRES+Jacobi+Newton, distributed time loop |
 | `utilities.jl` | `setup_and_run` (the sequential driver), sponge, sources, dispersion helpers. `resolve_cbdy` is now the ONE place σ-element boundaries are chosen (shared with the distributed driver and the MMS drivers). Linear wave properties added 2026-08-21: `model_R` (R, R′, R″), `airy_R`, `wave_properties`, `property_errors`, `applicable_range` — `C_g` and `γ`, which the codebase previously lacked entirely |
@@ -187,7 +188,7 @@ What differs:
 | linear solve | `LUSolver` (direct) | `GMRESSolver(krylov_m; restart=true, maxiter, Pr=JacobiLinearSolver())` |
 | nonlinear solve | `NLSolver(...; method=:newton)` | `NewtonSolver(...)` (GridapSolvers) |
 | `max|η|` | direct reduction | `own_values(PVector)` + `reduce(max, …; init=0.0)` |
-| frozen-projection mass solve | `lu()` | `CGSolver(JacobiLinearSolver())` |
+| `nl_pressure=true` (broken Class III) | available | ⚠ **refused in v2** until the skeleton is distributed (`V2_SOLVER_PLAN.md` step 10) |
 | gauges | point evaluation available | not available (inter-rank point search) |
 
 **Conventions that must not be rediscovered:**
@@ -200,10 +201,10 @@ What differs:
    library default is **100**. `restart=true` is load-bearing: the default `restart=false` lets the
    basis grow past `m`, i.e. unbounded memory. Symptom of getting this wrong: **`gmres=` pinned at
    exactly the same number every step** with Newton needing 8–24 iterations instead of 3–5.
-4. Frozen-projection RHS/solution vectors must be allocated **from the matrix**
+4. (v1) Auxiliary solve vectors had to be allocated **from the matrix**
    (`allocate_in_range`/`allocate_in_domain` + in-place `assemble_vector!`): an independently
    assembled vector is only isomorphic to the matrix's `PRange`, not identical, and `solve!`'s
-   internal `mul!` asserts exact equality.
+   internal `mul!` asserts exact equality. Still true of any extra distributed solve.
 5. `BALFEM_NX` divisible by `BALFEM_PX`, `BALFEM_NY` by `BALFEM_PY`, and `-n == PX·PY`.
 6. All rank-0-only printing behind `i_am_main(ranks)`; `mkpath` on rank 0 then `MPI.Barrier`.
 7. Launch with `~/.julia/bin/mpiexecjl` — the system `mpiexec` fails with a PMIx version mismatch.

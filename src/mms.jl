@@ -290,7 +290,7 @@ bathymetry_field(; d0::Float64 = 1.0, a_b::Float64 = 0.2,
 #
 #      flat_bed=true   →  ∇h ≡ 0  (one control point, as in global_residual)
 #      regime=:linear  →  H→h, ∇H→∇h, drop 𝓕_M, 𝓕_G, drop all 𝓝
-#      nl_pressure     →  :none ⇒ 𝓝≡0 | :native ⇒ {3,6,7,8} | :full ⇒ all 8
+#      nl_pressure     →  false ⇒ 𝓝≡0 | true ⇒ all eight components
 #
 #  Writing them as ONE evaluator rather than six is not tidiness: it is what
 #  makes "the forcing and the solver are restrictions of the same parent" a
@@ -303,12 +303,11 @@ bathymetry_field(; d0::Float64 = 1.0, a_b::Float64 = 0.2,
 #  the solver must integrate by parts or freeze-project those same terms.
 # ===========================================================================
 
-"Component sets of 𝓝 selected by `nl_pressure` (ValidationTests.tex §subsec: mms model3)."
-function _nl_components(nl_pressure::Symbol)
-    nl_pressure === :none   && return ()
-    nl_pressure === :native && return (3, 6, 7, 8)
-    nl_pressure === :full   && return (1, 2, 3, 4, 5, 6, 7, 8)
-    error("_nl_components: nl_pressure must be :none, :native or :full (got :$nl_pressure)")
+"Component set of 𝓝 selected by `nl_pressure`: all eight or none (v2). A v1 symbol is refused."
+function _nl_components(nl_pressure)
+    nl_pressure isa Bool || error("_nl_components: nl_pressure must be a Bool (got " *
+        "$(repr(nl_pressure))); the v1 tiers :none/:native/:full are gone (V2_SOLVER_PLAN.md)")
+    return nl_pressure ? (1, 2, 3, 4, 5, 6, 7, 8) : ()
 end
 
 """
@@ -336,45 +335,23 @@ function strong_residual_model(cbs, vert, hfun, g::Float64,
                                x::Float64, y::Float64, t::Float64;
                                regime::Symbol      = :linear,
                                flat_bed::Bool      = true,
-                               nl_pressure::Symbol = :none)
+                               nl_pressure = false)
     Φ  = vert.Phi;  M  = vert.Mmat;  N = length(Φ)
     P  = vert.P;    A  = vert.A;     K = vert.K
     Pc = vert.Pcal; Ac = vert.Acal;  Kc = vert.Kcal
     Mc = vert.Mcal; Gc = vert.Gcal
 
     lin   = regime === :linear
-    lin && nl_pressure !== :none && error(
-        "strong_residual_model: nl_pressure=:$nl_pressure requires regime=:nonlinear " *
+    comps0 = _nl_components(nl_pressure)
+    lin && nl_pressure && error(
+        "strong_residual_model: nl_pressure=true requires regime=:nonlinear " *
         "(a linear model carries no quadratic pressure) — mirrors resolve_physics.")
-    comps = lin ? () : _nl_components(nl_pressure)
+    comps = lin ? () : comps0
     useN  = !isempty(comps)
 
-    #  𝓝 TIERS: AVAILABLE since 2026-08-18. They were refused here for two days on a
-    #  diagnosis that was WRONG, and the correction is worth keeping.
-    #
-    #  The recorded story was: components {1,2,4,5} carry second derivatives of u*, the
-    #  leading pressure differentiates once more, so the 𝓟 block needs three nested
-    #  ForwardDiff levels and hits a tag-precedence inversion. Every part of that is
-    #  false as an explanation of the failure. ForwardDiff nests these levels correctly
-    #  (inner tags are created later, so inner ≺ outer holds by construction), and the
-    #  refutation was cheap: components {7,8} are FIRST order — no deeper than the
-    #  :none path that always worked — and they failed identically. All eight failed
-    #  identically, which no derivative-depth argument can explain.
-    #
-    #  The actual cause was a Julia CLOSURE VARIABLE-CAPTURE COLLISION, not AD at all:
-    #  Nvec assigned `H`, `ukx`, `uky`, and Ψ assigned `L`, `Nc` — every one of which is
-    #  ALSO a local of this enclosing function. A nested function assigning a name that
-    #  is already local to its enclosing scope assigns the ENCLOSING variable. So the
-    #  first Nvec call from inside Ψ — under the outer ForwardDiff.gradient — wrote a
-    #  Dual into the outer `H`, and the advection block and the Lxv/Lyv stores then
-    #  inherited it. The MethodError therefore surfaced at a Float64 array store, far
-    #  from its cause, and named the gradient's tag — which is what made it read as a
-    #  nesting problem. The fix is the `local` keywords in Nvec/Ψ below.
-    #
-    #  Method lesson: the error named a ForwardDiff type, so the search stayed inside
-    #  ForwardDiff. What broke it open was bisecting the COMPONENTS and finding the
-    #  first-order ones failed too — i.e. testing the diagnosis against a case it could
-    #  not explain, rather than looking harder where it pointed.
+    #  ⚠ The nested helpers below (Nvec, Ψ) declare their names `local`: a nested function that
+    #  assigns a name local to this enclosing function overwrites it (rule 7). That once made
+    #  every 𝓝 component fail with a misleading ForwardDiff tag error.
 
     # --- scalar building blocks, generic in the number type (AD-able) ---------
     hv(ξ, υ)          = hfun(ξ, υ)
@@ -557,73 +534,7 @@ Setting `hfun ≡ const` reduces this to the Stage-1 operator times `h` (gate G-
 strong_residual_linear(cbs, vert, hfun, g::Float64,
                        x::Float64, y::Float64, t::Float64) =
     strong_residual_model(cbs, vert, hfun, g, x, y, t;
-                          regime = :linear, flat_bed = false, nl_pressure = :none)
-
-#  The original hand-written linear evaluator, superseded by the parent above and
-#  retained (unused) only as the reference the refactor was checked against.
-function _strong_residual_linear_legacy(cbs, vert, hfun, g::Float64,
-                                x::Float64, y::Float64, t::Float64)
-    Φ = vert.Phi; M = vert.Mmat; N = length(Φ)
-    P = vert.P; A = vert.A; K = vert.K       # (N,N,3) each
-
-    # --- scalar building blocks, generic in the number type (AD-able) ---------
-    hv(ξ, υ)       = hfun(ξ, υ)
-    dt_u(ξ,υ,τ,j,c)= c == 1 ? ForwardDiff.derivative(s -> cbs.ux(ξ,υ,s,j), τ) :
-                              ForwardDiff.derivative(s -> cbs.uy(ξ,υ,s,j), τ)
-    # ∇·(h u̇ⱼ)
-    div_hudot(ξ,υ,j) =
-        ForwardDiff.derivative(a -> hv(a,υ)*dt_u(a,υ,t,j,1), ξ) +
-        ForwardDiff.derivative(b -> hv(ξ,b)*dt_u(ξ,b,t,j,2), υ)
-    # 𝓛ⱼ components at a point
-    function Lvec(ξ, υ, j)
-        dhx = ForwardDiff.derivative(a -> hv(a,υ), ξ)
-        dhy = ForwardDiff.derivative(b -> hv(ξ,b), υ)
-        ugh = dt_u(ξ,υ,t,j,1)*dhx + dt_u(ξ,υ,t,j,2)*dhy
-        return (-ugh, ugh, -div_hudot(ξ,υ,j))
-    end
-    # scalar  Sᵢ(ξ,υ) = h² Σⱼ 𝓛ⱼ·Pᵢⱼ   (the leading-pressure potential)
-    function Spot(ξ, υ, i)
-        h2 = hv(ξ,υ)^2
-        s  = zero(promote_type(typeof(ξ), typeof(υ)))
-        for j in 1:N
-            L = Lvec(ξ,υ,j)
-            s += P[i,j,1]*L[1] + P[i,j,2]*L[2] + P[i,j,3]*L[3]
-        end
-        return h2*s
-    end
-
-    h   = hv(x,y)
-    dhx = ForwardDiff.derivative(a -> hv(a,y), x)
-    dhy = ForwardDiff.derivative(b -> hv(x,b), y)
-
-    # continuity: ∂ₜη + Σⱼ Φⱼ ∇·(h uⱼ)
-    dt_eta = ForwardDiff.derivative(s -> cbs.eta(x,y,s), t)
-    Lη = dt_eta
-    for j in 1:N
-        divhu = ForwardDiff.derivative(a -> hv(a,y)*cbs.ux(a,y,t,j), x) +
-                ForwardDiff.derivative(b -> hv(x,b)*cbs.uy(x,b,t,j), y)
-        Lη += Φ[j]*divhu
-    end
-
-    dx_eta = ForwardDiff.derivative(a -> cbs.eta(a,y,t), x)
-    dy_eta = ForwardDiff.derivative(b -> cbs.eta(x,b,t), y)
-    Lxv = zeros(Float64, N); Lyv = zeros(Float64, N)
-    for i in 1:N
-        acc_x = sum(M[i,j]*dt_u(x,y,t,j,1) for j in 1:N)
-        acc_y = sum(M[i,j]*dt_u(x,y,t,j,2) for j in 1:N)
-        gradSx = ForwardDiff.derivative(a -> Spot(a,y,i), x)
-        gradSy = ForwardDiff.derivative(b -> Spot(x,b,i), y)
-        sAK = 0.0
-        for j in 1:N
-            L = Lvec(x,y,j)
-            sAK += (A[i,j,1]+K[i,j,1])*L[1] + (A[i,j,2]+K[i,j,2])*L[2] +
-                   (A[i,j,3]+K[i,j,3])*L[3]
-        end
-        Lxv[i] = h*acc_x + g*h*Φ[i]*dx_eta + gradSx - h*dhx*sAK
-        Lyv[i] = h*acc_y + g*h*Φ[i]*dy_eta + gradSy - h*dhy*sAK
-    end
-    return Lη, Lxv, Lyv
-end
+                          regime = :linear, flat_bed = false, nl_pressure = false)
 
 """
     mms_forcing(field, vert, hfun, g; regime, flat_bed, nl_pressure) → (Seta, Sx, Sy)
@@ -635,8 +546,8 @@ looks like a solver defect; this signature makes that impossible.
 
 | `regime` | `flat_bed` | `nl_pressure` | forcing | doc |
 |---|---|---|---|---|
-| `:linear` | `true`  | `:none` | Stage-1 closed form (fast) | §subsec: mms model1 |
-| `:linear` | `false` | `:none` | variable-bed, AD | §subsec: mms model2 |
+| `:linear` | `true`  | `false` | Stage-1 closed form (fast) | §subsec: mms model1 |
+| `:linear` | `false` | `false` | variable-bed, AD | §subsec: mms model2 |
 | `:nonlinear` | `true`  | any | nonlinear flat-bed, AD | §subsec: mms model3 |
 | `:nonlinear` | `false` | any | full model, AD | §subsec: mms model4 |
 
@@ -645,15 +556,16 @@ All AD paths go through the single parent [`strong_residual_model`](@ref).
 **Memoisation.** The three returned closures are evaluated by Gridap at the *same* quadrature point
 consecutively, and each would otherwise trigger a full (and, with `𝓝`, third-derivative) evaluation.
 A one-entry cache keyed on `(x,y,t)` collapses three evaluations into one — worth ≈3× on the
-nonlinear tiers, which is the difference between a study that runs in minutes and one that does not.
+nonlinear models, which is the difference between a study that runs in minutes and one that does not.
 """
 function mms_forcing(field::MMSField, vert, hfun, g::Float64;
                      regime::Symbol = :linear, flat_bed::Bool = true,
-                     nl_pressure::Symbol = :none)
+                     nl_pressure = false)
     regime in (:linear, :nonlinear) ||
         error("mms_forcing: regime must be :linear or :nonlinear (got :$regime)")
-    regime === :linear && nl_pressure !== :none && error(
-        "mms_forcing: nl_pressure=:$nl_pressure requires regime=:nonlinear " *
+    _nl_components(nl_pressure)      # refuses a v1 symbol here, before any work
+    regime === :linear && nl_pressure && error(
+        "mms_forcing: nl_pressure=true requires regime=:nonlinear " *
         "(mirrors resolve_physics, so forcing and solver cannot disagree).")
 
     if flat_bed

@@ -28,7 +28,7 @@ using Random
 const NGATE = Ref(0)
 gate(name, cond) = (NGATE[] += 1; @testset "$name" begin @test cond end)
 
-"Direct form: the four-object assembly as `nlp_frozen_N` builds it."
+"Direct form: the four-object assembly N¹, N², N⁵."
 function direct_sum(T1, T2, T5, Gx, Gy, Ux, Uy, S, DU)
     N1 = -1.0*(outer(Gx, Ux) + outer(Gy, Uy))
     N2 = -1.0*N1 + outer(S, DU)

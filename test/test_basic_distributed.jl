@@ -68,7 +68,7 @@ function run_mode(regime, label, ref)
         domain=((0.0,16.0),(0.0,2.0)), partition=(16,2), p_u=2,
         x_wm=4.0, y_wm=nothing,
         sponge_wL=4.0, sponge_wR=4.0, sponge_wB=0.0, sponge_wT=0.0, mu_max=50.0,
-        T_final=4.8, dt=0.04, regime=regime, nl_pressure=:none,
+        T_final=4.8, dt=0.04, regime=regime, nl_pressure=false,
         save_every=0, print_dt=0.4,
     )
     emax = maximum(d.eta_max for d in diags)

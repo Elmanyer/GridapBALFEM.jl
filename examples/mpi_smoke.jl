@@ -23,7 +23,9 @@ include(joinpath(@__DIR__, "distributed", "_dist_common.jl"))
 
 is_rank0() && println("=== MPI smoke: 2 ranks, Q2/Q1 Taylor-Hood ===")
 
-for (reg, nlp) in ((:linear, :none), (:nonlinear, :native))
+#  v2: nl_pressure=true is not yet distributed (V2_SOLVER_PLAN.md step 10), so the nonlinear
+#  smoke case runs the 𝓝-free nonlinear model.
+for (reg, nlp) in ((:linear, false), (:nonlinear, false))
     diags, _, _ = setup_and_run_distributed(
         cpu_grid = (2, 1), M = 2, p_vertical = 1,
         domain = (0.0, 4.0, 0.0, 4.0), partition = (4, 4),
@@ -40,7 +42,7 @@ for (reg, nlp) in ((:linear, :none), (:nonlinear, :native))
         em = maximum(x.eta_max for x in diags)
         ok = isfinite(em) && em < 1.0
         @printf("  %s  %-9s / %-6s   steps=%d   max|eta|=%.3e\n",
-                ok ? "PASS" : "FAIL", reg, nlp, length(diags), em)
+                ok ? "PASS" : "FAIL", reg, nlp ? "nlp1" : "nlp0", length(diags), em)
     end
 end
 

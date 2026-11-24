@@ -10,7 +10,7 @@
 #
 #  What it DOES certify, which nothing else does at scale: that the hand
 #  Jacobians are the exact derivatives of the residual, that the distributed
-#  nonlinear assembly, the frozen-projection (CG+Jacobi) bookkeeping and the
+#  nonlinear assembly and the
 #  GMRES/Newton stack are mutually consistent, and that none of it drifts over a
 #  long run on many ranks. That is CODE support, not MODEL validation.
 #
@@ -33,7 +33,7 @@
 #  GLOBAL reduction (`sum(∫·dΩ)`), so it works on any core count with no gauges.
 #
 #  A growing error would expose an inconsistency in the DISTRIBUTED nonlinear
-#  assembly, the hand Jacobians, the frozen-projection (CG+Jacobi) bookkeeping,
+#  assembly, the hand Jacobians,
 #  or the GMRES/Newton stack — over a long nonlinear run at scale.
 #
 #  LAUNCH (px·py MUST equal -n):
@@ -61,7 +61,9 @@ Mlay   = genv_i("BALFEM_M", 2)
 dt     = genv_f("BALFEM_DT", 0.05)
 Nsteps = genv_i("BALFEM_NSTEPS", 60)
 amp    = genv_f("BALFEM_AMP", 1.0)                 # scales the manufactured amplitude
-nlpfull= genv_b("BALFEM_NLPFULL", 1)
+#  v2: nl_pressure=true is not yet distributed (V2_SOLVER_PLAN.md step 10); the 𝓝-free
+#  nonlinear model runs here until then. BALFEM_NLPFULL is gone.
+nlpfull= false
 feord  = genv_i("BALFEM_FE_ORDER", 2)
 prevery= genv_i("BALFEM_PRINT_EVERY", 10)
 outdir = genv("BALFEM_OUTDIR", joinpath(ROOT, "output", "cluster_selfconsistency"))
@@ -105,9 +107,8 @@ result = with_mpi() do distribute
     end
 
     prob = build_problem(vert; g=g, h_bathy=h_bathy,
-        regime=:nonlinear, nl_pressure=(nlpfull ? :full : :native), flat_bed=false,   # curved bed (∇h ≠ 0)
+        regime=:nonlinear, nl_pressure=false, flat_bed=false,   # curved bed (∇h ≠ 0)
         mu_sponge=x -> 0.0, wm_src=(x,t) -> 0.0)
-    nlp = nlpfull ? (prob, build_nlp_ctx(model, feord, Nσ, trian, dΩh; distributed=true)) : nothing
 
     # forced residual (manufactured), same hand Jacobians (forcing indep of u)
     res_f(t,u,v) = global_residual(t,u,v,prob,trian,dΩh) -
@@ -119,13 +120,12 @@ result = with_mpi() do distribute
     monitor = SolverMonitor()
     solver  = build_ode_solver_distributed(dt; nl_tol=1e-8, monitor=monitor)
     u0 = ustar(0.0)
-    nlp !== nothing && update_nlp_state!(nlp[1], nlp[2], u0)     # frozen π from u*(0)
 
     Tfinal = Nsteps*dt
     if r0
         @printf("# cluster_selfconsistency | %d ranks (%d×%d) | mesh %d×%d = %d cells | Nσ=%d | amp=%.2f nlPfull=%s\n",
                 px*py, px, py, nx, ny, nx*ny, Nσ, amp, nlpfull)
-        @printf("# %d steps dt=%.4g (Tfinal=%.2f), all 𝓝 comps on curved bed\n", Nsteps, dt, Tfinal)
+        @printf("# %d steps dt=%.4g (Tfinal=%.2f), nonlinear (𝓝 off — v2 interim) on curved bed\n", Nsteps, dt, Tfinal)
         open(joinpath(outdir, "mms.csv"), "w") do io; println(io, "step,t,rel_err,nl_iters"); end
     end
 
@@ -149,7 +149,6 @@ result = with_mpi() do distribute
                 @printf(io, "%d,%.6f,%.6e,%d\n", step, t_n, er, st.nl_iters); end
             flush(stdout)
         end
-        nlp !== nothing && update_nlp_state!(nlp[1], nlp[2], ustar(t_n))   # refresh π from u*(tₙ)
         isnan(er) && (r0 && @warn("NaN at t=$t_n"); break)
     end
 

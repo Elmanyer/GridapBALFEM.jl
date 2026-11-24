@@ -35,11 +35,12 @@
 #
 #  Config via env (base = nonlinear / full pressure / flat bed / Hs=0.2):
 #    BALFEM_REGIME       linear | nonlinear                    (default nonlinear)
-#    BALFEM_NL_PRESSURE  none | native | full                  (default full)
+#    BALFEM_NL_PRESSURE  0 | 1 (all eight 𝓝 comps)            (default 0; 1 is not yet distributed)
 #    BALFEM_FLAT_BED     1 flat | 0 variable (=> shore-parallel bar built here) (1)
 #    BALFEM_HS / BALFEM_TP     sea state Hs [m], Tp [s]          (default 0.2 / 2.0)
 #    BALFEM_NTHETA / BALFEM_SPREAD_STD / BALFEM_THETA_MAX  spreading  (7 / 15deg / 40deg)
 #    BALFEM_HBAR/XBAR/WBAR   bar shape, used only when FLAT_BED=0   1.5 / 26 / 6
+#    BALFEM_SRAMP            bar ramp length (tanh scale; max slope HBAR/(2·SRAMP))   WBAR/3
 #
 #  Fixed defaults: mesh 200x160 (square cells 0.25 m), partition 8x7 (56 ranks),
 #  p_u 2, dt 0.02, d 3.5, right sponge 12, lateral sponges 2, mu_max 40, inflow
@@ -55,7 +56,7 @@
 
 include(joinpath(@__DIR__, "..", "distributed", "_dist_common.jl"))
 
-get!(ENV, "BALFEM_REGIME", "nonlinear"); get!(ENV, "BALFEM_NL_PRESSURE", "full")
+get!(ENV, "BALFEM_REGIME", "nonlinear"); get!(ENV, "BALFEM_NL_PRESSURE", "0")   # v2: nl_pressure=true not yet distributed (V2 plan step 10)
 get!(ENV, "BALFEM_FLAT_BED", "1")
 get!(ENV, "BALFEM_HS", "0.2"); get!(ENV, "BALFEM_TP", "2.0")
 get!(ENV, "BALFEM_NFREQ", "15"); get!(ENV, "BALFEM_NTHETA", "7")
@@ -104,7 +105,7 @@ save_ev = genv_i("BALFEM_SAVE_EVERY", 10)
 # bathymetry: flat_bed=false => variable bathymetry => shore-parallel submerged bar
 usebar  = !flat_bed_flag(1)
 hbar    = genv_f("BALFEM_HBAR", 1.5); xbar = genv_f("BALFEM_XBAR", 26.0); wbar = genv_f("BALFEM_WBAR", 6.0)
-sramp   = wbar / 3.0
+sramp   = genv_f("BALFEM_SRAMP", wbar / 3.0)
 h_bathy = usebar ?
     (x -> d - 0.5*hbar*(tanh((x[1]-(xbar-wbar))/sramp) - tanh((x[1]-(xbar+wbar))/sramp))) : nothing
 
@@ -117,15 +118,15 @@ bedtag  = usebar ? "bar" : "flat"
 #  (small_bcplane_, small_ring_, …) named the SCRIPT, not the case.
 _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:open,
                            wave_kind="dir", wave_gen=:bc,
-                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           regime=regime_sym(), nl_pressure=nl_pressure_flag(),
                            bed=bedtag, p_u=feord, p_eta=p_eta,
                            amplitude=hs_val(), period=tp_val(), irregular=true,
-                           extra=name_extra())
+                           extra=[name_extra(); is_resume() ? ["resume"] : String[]])
 #  Never overwrite an existing run (suffixes _v2, _v3 …).
 outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
          unique_output_dir(joinpath(ROOT, "output"), _name)
 
-banner("SMALL | directional sea (Dirichlet BC) | $(regime_sym()) $(nl_pressure_sym()) $bedtag Hs=$(hs_val())",
+banner("SMALL | directional sea (Dirichlet BC) | $(regime_sym()) $(nl_pressure_flag()) $bedtag Hs=$(hs_val())",
        M, (px,py), (nx,ny), nx*ny, outdir)
 is_rank0() && @printf("#   Hs=%.4g m Tp=%.3g s | nth=%d sth=%.1f thmax=%.1f | bed=%s seed=%d\n",
                       hs_val(), Tp, genv_i("BALFEM_NTHETA", 7), genv_f("BALFEM_SPREAD_STD", 15.0),
@@ -142,7 +143,7 @@ diags, vert, prob = setup_and_run_distributed(
     relax_width=genv_f("BALFEM_RELAX_W", 6.0),
     sponge_wL=0.0, sponge_wR=spR, sponge_wB=spY, sponge_wT=spY, mu_max=mumax,
     T_final=Tfinal, dt=dt, h_bathy=h_bathy,
-    regime=regime_sym(), nl_pressure=nl_pressure_sym(), flat_bed=flat_bed_flag(1),
+    regime=regime_sym(), nl_pressure=nl_pressure_flag(), flat_bed=flat_bed_flag(1),
     y_wall_bc=:open, x_wall_bc=false,                              # Uy != 0 at the inflow
     output_dir=outdir, save_every=save_ev,
     write_w=genv_b("BALFEM_WRITE_W", 0), write_pressure=genv_b("BALFEM_WRITE_PRESSURE", 0),
@@ -152,7 +153,8 @@ diags, vert, prob = setup_and_run_distributed(
     ls_rtol=ls_rtol_val(), ls_maxiter=ls_maxiter_val(), krylov_m=krylov_m_val(), precond=precond_sym(),
     diag_every=diag_every_val(), diag_csv=diag_csv_flag(),
     div_factor=div_factor_val(), eta_ref=eta_ref_val(),
-    print_every=genv_i("BALFEM_PRINT_EVERY", 10))
+    print_every=genv_i("BALFEM_PRINT_EVERY", 10),
+    checkpoint_kw()...)                       # BALFEM_CHECKPOINT_EVERY / BALFEM_RESTART_FROM (_dist_common.jl)
 
 is_rank0() && @printf("directional_sea [%s] done: %d steps, %d snapshots to %s\n",
                       _name, length(diags), save_ev > 0 ? length(diags) ÷ save_ev : 0, outdir)

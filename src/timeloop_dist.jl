@@ -5,7 +5,7 @@
 #  residual/Jacobians are expressed entirely in Gridap CellField algebra
 #  (`Operation` is forwarded for `DistributedCellField`), the very same
 #  `global_residual`/`jacobian_*` run across MPI ranks unchanged — the full
-#  nonlinear physics (advection, slope pressure, P_full, nl_pressure68, flat_bed) is
+#  nonlinear physics (advection, slope pressure, P_full, flat_bed; 𝓝 pending step 10) is
 #  available distributed with no separate code path. This file provides the
 #  partitioned mesh builder, the scalable Krylov solver stack, and a rank-aware
 #  time loop.
@@ -42,29 +42,85 @@ function build_horizontal_model_distributed(ranks, cpu_grid::Tuple,
 end
 
 """
-    build_preconditioner(kind::Symbol; gs_iters=1) → LinearSolver
+    OwnBlockLUSolver() <: Gridap.Algebra.LinearSolver
 
-Right preconditioner for the distributed GMRES. `:jacobi` (default, the
-historical choice) is point-diagonal and **weak for this operator** — measured
-iteration counts are ~450–700 per solve on the local 2-D cases and ~760 on the
-quasi-1D flume, and they are *rank-independent*, which is the signature of a
-preconditioner problem rather than a decomposition one.
+Non-overlapping additive Schwarz (block Jacobi) for a `PSparseMatrix`: every rank factorises
+the **own×own** block of its local matrix with a sparse LU, and applying it solves each block
+exactly on the rank's owned DOFs, then makes the ghosts consistent. This is the `:schwarz`
+preconditioner of `build_preconditioner`.
 
-  * `:jacobi`  — `JacobiLinearSolver()`. Cheapest per iteration, most iterations.
-  * `:schwarz` — additive Schwarz with an exact **LU solve on each rank's own
-                 block** (`SchwarzLinearSolver(LUSolver())`). Much stronger per
-                 iteration and a natural fit to the existing MPI partition; the
-                 per-rank factorisation costs memory, so watch RSS.
-  * `:gs`      — `SymGaussSeidelSmoother(gs_iters)`. Between the two.
+Why not GridapSolvers' `SchwarzLinearSolver(LUSolver())`, which reads as the same thing:
+  * it factorises the whole local matrix, own **and ghost** rows; the ghost rows are
+    unassembled, i.e. structurally zero, so every rank ≥ 2 dies with `SingularException`
+    (measured 2026-09, `CONFIGURATION.md` §5);
+  * it has no `numerical_setup!`, so the refresh `NewtonSolver` makes every Newton iteration
+    falls through to Gridap's abstract stub (found by the 2026-10-30 sysimage warmup).
+Both are library gaps, so this type lives here and GridapSolvers stays untouched.
 
-`:schwarz` becomes *more* effective as ranks get bigger blocks, i.e. it rewards
-FEWER, FATTER ranks — the opposite of Jacobi's behaviour.
+The refresh re-factorises in place with `lu!` (same sparsity pattern, the symbolic analysis is
+reused). Measured on the quasi-1D flume θ-step matrix (Q3/Q2, 240 cells, sequential emulation
+with 4 / 12 x-strips): 16 / 22 GMRES iterations against Jacobi's 1106
+(`output/krylov_conditioning/kc3_precond.log`). No coarse space, so the count grows with the
+number of ranks; each rank holds one sparse LU of its block, so watch RSS.
 """
-function build_preconditioner(kind::Symbol; gs_iters::Int=1)
+struct OwnBlockLUSolver <: Gridap.Algebra.LinearSolver end
+
+struct OwnBlockLUSymbolicSetup <: Gridap.Algebra.SymbolicSetup end
+
+mutable struct OwnBlockLUNumericalSetup{F} <: Gridap.Algebra.NumericalSetup
+    factors :: F           # per rank: the LU of its own×own block
+end
+
+Gridap.Algebra.symbolic_setup(::OwnBlockLUSolver, ::PSparseMatrix) = OwnBlockLUSymbolicSetup()
+
+#  The own×own block of every rank as a plain SparseMatrixCSC. The row and column own sets of
+#  the square FE operator must be the same DOFs in the same order, or the block is not a
+#  diagonal block of A: checked, never assumed.
+function _own_blocks(A::PSparseMatrix)
+    map(partition(A), partition(axes(A, 1)), partition(axes(A, 2))) do Aloc, rows, cols
+        own_to_global(rows) == own_to_global(cols) ||
+            error("OwnBlockLUSolver: row and column own DOFs differ on this rank")
+        Aloc[own_to_local(rows), own_to_local(cols)]
+    end
+end
+
+function Gridap.Algebra.numerical_setup(::OwnBlockLUSymbolicSetup, A::PSparseMatrix)
+    return OwnBlockLUNumericalSetup(map(lu, _own_blocks(A)))
+end
+
+function Gridap.Algebra.numerical_setup!(ns::OwnBlockLUNumericalSetup, A::PSparseMatrix)
+    map(lu!, ns.factors, _own_blocks(A))
+    return ns
+end
+
+function Gridap.Algebra.solve!(x::PVector, ns::OwnBlockLUNumericalSetup, b::PVector)
+    map(own_values(x), ns.factors, own_values(b)) do xo, F, bo
+        xo .= F \ collect(bo)      # UMFPACK needs a dense strided RHS
+    end
+    consistent!(x) |> wait
+    return x
+end
+
+"""
+    build_preconditioner(kind::Symbol) → LinearSolver
+
+Right preconditioner for the distributed GMRES.
+
+  * `:jacobi`  — `JacobiLinearSolver()` (default). Cheapest per iteration, but it cannot remove
+                 the h-dependence of the non-hydrostatic grad-div term `R_P` in `J_ut`:
+                 κ(A·D⁻¹) ∝ (H·p/h)², so the iterations double with every halving of `dx` and
+                 triple from Q2/Q1 to Q3/Q2 (the 1000-iteration cap of the 2026-10-30 model-5/6
+                 flumes; `output/krylov_conditioning/`).
+  * `:schwarz` — `OwnBlockLUSolver()`: an exact sparse LU on each rank's own block (block Jacobi).
+                 Much stronger per iteration; rewards FEWER, FATTER ranks, the opposite of Jacobi.
+
+Symmetric Gauss–Seidel (`:gs`) was dropped on 2026-10-31: it completed zero steps in 12 h on the
+flume (`CONFIGURATION.md` §5) and GridapSolvers' smoother cannot be refreshed either.
+"""
+function build_preconditioner(kind::Symbol)
     kind === :jacobi  && return JacobiLinearSolver()
-    kind === :schwarz && return SchwarzLinearSolver(LUSolver())
-    kind === :gs      && return SymGaussSeidelSmoother(gs_iters)
-    error("build_preconditioner: kind must be :jacobi, :schwarz or :gs (got :$kind)")
+    kind === :schwarz && return OwnBlockLUSolver()
+    error("build_preconditioner: kind must be :jacobi or :schwarz (got :$kind)")
 end
 
 """
@@ -75,7 +131,8 @@ Distributed ODE solver factory (template: GridapSWE.jl). Wraps
 NewtonSolver(GMRES + Jacobi preconditioner) — the scalable GridapSWE-pattern
 linear stack. Integrators: `:sdirk` (fully-implicit `RungeKutta(nls, ls, dt,
 tableau)`, default; `:SDIRK_2_2` = Gridap's `DIRK22(1,0,1)`, 2nd-order,
-A-stable but NOT L-stable, strongly dissipative (≈ 0.75(ωΔt)⁴ per step); more stable than Crank–Nicolson) and `:theta` (Crank–Nicolson). Pass a `SolverMonitor` as
+A-stable but NOT L-stable, strongly dissipative (≈ 0.75(ωΔt)⁴ per step); more stable than Crank–Nicolson), `:theta` (Crank–Nicolson)
+and `:gen_alpha` (`rho_inf`): the same choices as the sequential factory (`build_time_integrator`). Pass a `SolverMonitor` as
 `monitor` to collect per-step convergence statistics (RK: over the stages).
 
 # GMRES parameters — `krylov_m` and `ls_maxiter` are NOT the same thing
@@ -111,16 +168,16 @@ function build_ode_solver_distributed(dt::Float64;
                                           solver_type :: Symbol  = :sdirk,
                                           theta       :: Float64 = 0.5,
                                           tableau     :: Symbol  = :SDIRK_2_2,
+                                          rho_inf     :: Float64 = 0.5,
                                           nl_iter     :: Int     = 50,
                                           nl_tol      :: Float64 = 1e-5,
                                           ls_rtol     :: Float64 = 1e-5,
                                           ls_maxiter  :: Int     = 1000,
                                           krylov_m    :: Int     = 100,
                                           precond     :: Symbol  = :jacobi,
-                                          gs_iters    :: Int     = 1,
                                           monitor                = nothing)
     ls  = GMRESSolver(krylov_m;                  # basis size (memory bound)
-                      Pr      = build_preconditioner(precond; gs_iters=gs_iters),
+                      Pr      = build_preconditioner(precond),
                       restart = true,            # cap the basis; do NOT let it grow
                       maxiter = ls_maxiter,      # iteration budget (time bound)
                       rtol    = ls_rtol,
@@ -143,13 +200,7 @@ function build_ode_solver_distributed(dt::Float64;
         monitor.lin_cap = lt.maxiter          # L1: the cap the saturation flag tests against
         nls = monitor
     end
-    if solver_type == :sdirk
-        return RungeKutta(nls, ls, dt, tableau)
-    elseif solver_type == :theta
-        return ThetaMethod(nls, dt, theta)
-    else
-        error("Distributed algebraic solver supports :sdirk (RungeKutta) or :theta.")
-    end
+    return build_time_integrator(nls, ls, dt; solver_type, theta, tableau, rho_inf)
 end
 
 """
@@ -169,7 +220,7 @@ end
 """
     run_time_loop_dist(ranks, op, solver, u0, t0, T_final; output_dir,
                            save_every, trian, Nσ, print_every, print_dt, recon,
-                           trial_space, dt, nlp, monitor, checker, check_every,
+                           trial_space, dt, monitor, checker, check_every,
                            check_tol)
 
 Distributed time loop. Returns `[(t, eta_max, nl_iters, res_nl, t_solve)]`
@@ -199,16 +250,18 @@ function run_time_loop_dist(ranks, op, solver, u0,
                                 recon                 = nothing,
                                 trial_space           = nothing,
                                 dt         :: Float64 = 0.0,
-                                nlp                   = nothing,   # (prob, ctx) for nl_pressure_full
                                 monitor               = nothing,   # SolverMonitor
                                 checker               = nothing,   # ResidualChecker
                                 check_every:: Int     = 0,
                                 check_tol  :: Float64 = 1e-8,
                                 rundiag               = nothing,   # RunDiagnostics
                                 diag_every :: Int     = 0,
-                                final_uh              = nothing)   # optional Ref: receives the last
+                                final_uh              = nothing,   # optional Ref: receives the last
                                                                    #   solution (MMS L² error needs
                                                                    #   the field, not just diags)
+                                step0      :: Int     = 0,         # step number of t0 (resume)
+                                checkpoint_every :: Int = 0,       # >0: checkpoint every N steps + at the end
+                                checkpoint_writer     = nothing)   # (step, t, u_n) -> path (COLLECTIVE)
     if i_am_main(ranks)
         mkpath(output_dir)
     end
@@ -216,15 +269,6 @@ function run_time_loop_dist(ranks, op, solver, u0,
 
     odesol = solve(solver, op, t0, T_final, u0)
 
-    #  nl_pressure=:full — PRIME the frozen projections from the INITIAL CONDITION.
-    #  `update_nlp_state!` below runs only AFTER an accepted step, so without this
-    #  the first step assembles the {1,2,4,5} blocks with `nlp_state == nothing`,
-    #  i.e. as if starting from rest. That is exact for a rest start (u=0, η=0 ⇒
-    #  𝖲=𝖻=0 ⇒ zero projections, so this call is a no-op) but WRONG for any
-    #  non-trivial IC — which is exactly what the MMS driver uses (u0 = u*(t0)).
-    if nlp !== nothing
-        update_nlp_state!(nlp[1], nlp[2], u0)
-    end
 
     prev_vals    = nothing     # previous-step DOFs (PVector) → u̇ backward FD
     need_prev    = recon !== nothing || (checker !== nothing && check_every > 0)
@@ -232,19 +276,23 @@ function run_time_loop_dist(ranks, op, solver, u0,
     diags        = NamedTuple{(:t,:eta_max,:nl_iters,:res_nl,:t_solve),
                               Tuple{Float64,Float64,Int,Float64,Float64}}[]
     t_last_print = t0
-    step         = 0
+    step         = step0
     do_vtk       = !isnothing(trian) && save_every > 0
-    steps_total  = dt > 0 ? round(Int, (T_final - t0)/dt) : 0
+    steps_total  = step0 + (dt > 0 ? round(Int, (T_final - t0)/dt) : 0)
     wall0        = time()
     nl_total     = 0
     t_solve_tot  = 0.0
     n_vtk        = 0
+    do_ck        = checkpoint_every > 0 && checkpoint_writer !== nothing
+    last_state   = nothing     # (step, t, u_n) of the last step, for the final checkpoint
+    last_ck      = -1
 
     function _loop(pvd)
         for (t_n, u_n) in odesol
             step  += 1
             stats  = monitor === nothing ? nothing : take_step_stats!(monitor)
             final_uh === nothing || (final_uh[] = u_n)
+            do_ck && (last_state = (step, t_n, u_n))
             eta_n  = u_n[1]
             emax   = eta_max_distributed(eta_n)
             push!(diags, (t=t_n, eta_max=emax,
@@ -268,7 +316,7 @@ function run_time_loop_dist(ranks, op, solver, u0,
             if do_print
                 if i_am_main(ranks)
                     wall  = time() - wall0
-                    eta_s = steps_total > step ? (wall/step)*(steps_total - step) : NaN
+                    eta_s = steps_total > step ? (wall/(step - step0))*(steps_total - step) : NaN
                     println(step_report(step, t_n, emax, stats;
                                             eta_s=eta_s, tag="[dist]", fd=fd))
                     flush(stdout)
@@ -326,13 +374,13 @@ function run_time_loop_dist(ranks, op, solver, u0,
                 prev_vals = copy(get_free_dof_values(u_n))
             end
 
-            # nl_pressure_full: refresh the frozen projections π𝖲, π𝖻 (CG+Jacobi
-            # distributed mass solve, see nlpressure.jl :: build_nlp_ctx)
-            if nlp !== nothing
-                # ⚠ Redundant in IN-LOOP mode — the residual already refreshed the
-                #   projections from the converged iterate. Skipping recovers two mass
-                #   solves per step (NEW_TREATMENT.md §B.4).
-                nlp[1].nlp_ctx[] === nothing && update_nlp_state!(nlp[1], nlp[2], u_n)
+            if do_ck && step % checkpoint_every == 0      # COLLECTIVE: every rank writes its part
+                ckp = checkpoint_writer(step, t_n, u_n)
+                if i_am_main(ranks)
+                    @printf("  [checkpoint] step %d, t=%.4f → %s\n", step, t_n, ckp)
+                    flush(stdout)
+                end
+                last_ck = step
             end
 
             # D1: RELATIVE divergence guard (see the sequential twin).
@@ -354,9 +402,17 @@ function run_time_loop_dist(ranks, op, solver, u0,
     else
         _loop(nothing)
     end
+    #  the final state, completed or diverged (COLLECTIVE)
+    if do_ck && last_state !== nothing && last_state[1] != last_ck
+        ckp = checkpoint_writer(last_state...)
+        if i_am_main(ranks)
+            @printf("  [checkpoint] final, step %d, t=%.4f → %s\n", last_state[1], last_state[2], ckp)
+            flush(stdout)
+        end
+    end
 
     if i_am_main(ranks)
-        print(final_report(step, isempty(diags) ? t0 : diags[end].t,
+        print(final_report(step - step0, isempty(diags) ? t0 : diags[end].t,
                                time() - wall0, nl_total, t_solve_tot, n_vtk;
                                tag="[dist]", rundiag=rundiag))
         close_diagnostics(rundiag)

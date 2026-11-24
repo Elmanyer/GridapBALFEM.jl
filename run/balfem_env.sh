@@ -15,9 +15,10 @@
 #  stack independently: ~30-45 min of wall time per run, and a ~4-8 GB/rank
 #  memory spike that OOM'd whole nodes at 32-128 ranks (which is why these jobs
 #  used to need fat_rome). With -J the ranks mmap one shared, already-compiled
-#  image: no compile, no spike, and the jobs fit the cheap rome/L1 budget at the
-#  node-default 2 GB/core — do NOT add --mem-per-cpu to get memory back, that
-#  only makes SLURM bill extra cores per rank.
+#  image: no compile, no spike. The solver still needs ~4 GiB per rank (the
+#  2 GB/core node default was OOM-killed): request it as a per-node --mem total,
+#  NEVER --mem-per-cpu, which Slurm counts against the 16-core-rounded allocation
+#  and bills a tier up (run/SNELLIUS_ROME_LAUNCH_CONFIGS.md §2, §4).
 #
 #  Build the image once (same partition + same OpenMPI module as the runs):
 #      cd $HOME/GridapBALFEM.jl/compile && sbatch compile_snellius.sh
@@ -34,6 +35,10 @@
 #  KNOBS (export before sourcing, or in the submit environment)
 #      BALFEM_PROJ         project root            (default $HOME/GridapBALFEM.jl)
 #      BALFEM_CLUSTER      snellius | blue         (default snellius)
+#      STORAGE             project storage root    (REQUIRED on Snellius, in ~/.bashrc:
+#                                                 /gpfs/admin/projectlinks/prjs1960). All
+#                                                 output goes to $STORAGE/GridapBALFEM_output,
+#                                                 linked as $BALFEM_PROJ/output (run/storage.sh)
 #      BALFEM_SYSIMAGE     path to the .so         (default $BALFEM_PROJ/GridapBALFEM_sysimage.so)
 #      BALFEM_NO_SYSIMAGE  1 = run without -J      (fallback while the image is
 #                                                 stale/rebuilding; the ranks
@@ -48,6 +53,13 @@ set -euo pipefail
 : "${BALFEM_PROJ:=$HOME/GridapBALFEM.jl}"
 : "${BALFEM_CLUSTER:=snellius}"
 : "${BALFEM_SYSIMAGE:=$BALFEM_PROJ/GridapBALFEM_sysimage.so}"
+
+# (0) output on the project storage, never in $HOME (2026-11-21: the home quota killed 161
+#     integrator-study cases). Requires `export STORAGE=…` in ~/.bashrc; output/ must be the
+#     link to $STORAGE/GridapBALFEM_output (run/storage.sh, run/setup_storage.sh).
+#     BALFEM_SKIP_STORAGE=1 skips the check (the sysimage build only: it writes no run output).
+source "$BALFEM_PROJ/run/storage.sh"
+[ "${BALFEM_SKIP_STORAGE:-0}" = "1" ] || balfem_storage_check || exit 1
 
 # (1) the SAME OpenMPI module the sysimage was built against — a mismatch here
 #     is what produces the launch-time MPI symbol errors.

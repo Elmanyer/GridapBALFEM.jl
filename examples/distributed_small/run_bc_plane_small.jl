@@ -10,13 +10,14 @@
 #
 #  Config via env (base = nonlinear / full pressure / flat bed / A=0.1 / T=2.0):
 #    BALFEM_REGIME       linear | nonlinear                    (default nonlinear)
-#    BALFEM_NL_PRESSURE  none | native | full                  (default full)
+#    BALFEM_NL_PRESSURE  0 | 1 (all eight 𝓝 comps)            (default 0; 1 is not yet distributed)
 #    BALFEM_FLAT_BED     1 flat | 0 variable (=> submerged bar built here)   (1)
 #    BALFEM_AWAVE        wave amplitude [m]                    (default 0.1)
 #    BALFEM_TWAVE        wave period [s]                       (default 2.0)
 #    BALFEM_WAVE_DIR     propagation angle vs +x [rad]         (default 0.0)
 #    BALFEM_BC_PROFILE   model | airy  (vertical polarization) (default model)
 #    BALFEM_HBAR/XBAR/WBAR   bar shape, used only when FLAT_BED=0   1.5 / 26 / 6
+#    BALFEM_SRAMP            bar ramp length (tanh scale; max slope HBAR/(2·SRAMP))   WBAR/3
 #
 #  Fixed defaults baked in here: domain 50x20, mesh 200x40, partition 8x4 (32
 #  ranks), p_u 2, dt 0.02, d 3.5, LEFT relaxation zone ON (width 6 m ~ 1λ)
@@ -37,7 +38,7 @@ include(joinpath(@__DIR__, "..", "distributed", "_dist_common.jl"))
 
 # base-case physics (launcher overrides; get! => banner and solver stay consistent)
 get!(ENV, "BALFEM_REGIME", "nonlinear")
-get!(ENV, "BALFEM_NL_PRESSURE", "full")
+get!(ENV, "BALFEM_NL_PRESSURE", "0")   # v2: nl_pressure=true not yet distributed (V2 plan step 10)
 get!(ENV, "BALFEM_FLAT_BED", "1")
 get!(ENV, "BALFEM_RELAX", "1"); get!(ENV, "BALFEM_RELAX_W", "6")
 
@@ -88,7 +89,7 @@ Tfinal  = haskey(ENV, "BALFEM_TFINAL") ? genv_f("BALFEM_TFINAL", 0.0) : periods 
 # bathymetry: flat_bed=false => variable bathymetry => build the y-invariant bar
 usebar  = !flat_bed_flag(1)
 hbar    = genv_f("BALFEM_HBAR", 1.5); xbar = genv_f("BALFEM_XBAR", 26.0); wbar = genv_f("BALFEM_WBAR", 6.0)
-sramp   = wbar / 3.0
+sramp   = genv_f("BALFEM_SRAMP", wbar / 3.0)
 h_bathy = usebar ?
     (x -> d - 0.5*hbar*(tanh((x[1]-(xbar-wbar))/sramp) - tanh((x[1]-(xbar+wbar))/sramp))) : nothing
 
@@ -100,14 +101,15 @@ bedtag  = usebar ? "bar" : "flat"
 #  (small_bcplane_, small_ring_, …) named the SCRIPT, not the case.
 _name  = output_dir_name(; M=M, p_vert=p_vert, ny=ny, y_wall_bc=:periodic,
                            wave_kind="plane", wave_gen=:bc,
-                           regime=regime_sym(), nl_pressure=nl_pressure_sym(),
+                           regime=regime_sym(), nl_pressure=nl_pressure_flag(),
                            bed=bedtag, p_u=feord, p_eta=p_eta,
-                           amplitude=Awave, period=Twave, irregular=false)
+                           amplitude=Awave, period=Twave, irregular=false,
+                           extra=[name_extra(); is_resume() ? ["resume"] : String[]])
 #  Never overwrite an existing run (suffixes _v2, _v3 …).
 outdir = haskey(ENV, "BALFEM_OUTDIR") ? genv("BALFEM_OUTDIR", "") :
          unique_output_dir(joinpath(ROOT, "output"), _name)
 
-banner("SMALL | BC plane wave (Dirichlet left) | $(regime_sym()) $(nl_pressure_sym()) $bedtag A=$Awave T=$Twave",
+banner("SMALL | BC plane wave (Dirichlet left) | $(regime_sym()) $(nl_pressure_flag()) $bedtag A=$Awave T=$Twave",
        M, (px,py), (nx,ny), nx*ny, outdir)
 
 diags, vert, prob = setup_and_run_distributed(
@@ -121,7 +123,7 @@ diags, vert, prob = setup_and_run_distributed(
     relax_width=genv_f("BALFEM_RELAX_W", 6.0),
     sponge_wL=0.0, sponge_wR=spR, sponge_wB=0.0, sponge_wT=0.0, mu_max=mumax,
     T_final=Tfinal, dt=dt, h_bathy=h_bathy,
-    regime=regime_sym(), nl_pressure=nl_pressure_sym(), flat_bed=flat_bed_flag(1),
+    regime=regime_sym(), nl_pressure=nl_pressure_flag(), flat_bed=flat_bed_flag(1),
     y_wall_bc=:periodic, x_wall_bc=false,
     output_dir=outdir, save_every=save_ev,
     write_w=write_w_flag(), write_pressure=write_p_flag(), rho=rho_val(),
@@ -130,7 +132,8 @@ diags, vert, prob = setup_and_run_distributed(
     ls_rtol=ls_rtol_val(), ls_maxiter=ls_maxiter_val(), krylov_m=krylov_m_val(), precond=precond_sym(),
     diag_every=diag_every_val(), diag_csv=diag_csv_flag(),
     div_factor=div_factor_val(), eta_ref=eta_ref_val(),
-    print_every=genv_i("BALFEM_PRINT_EVERY", 10))
+    print_every=genv_i("BALFEM_PRINT_EVERY", 10),
+    checkpoint_kw()...)                       # BALFEM_CHECKPOINT_EVERY / BALFEM_RESTART_FROM (_dist_common.jl)
 
 is_rank0() && @printf("bc_plane [%s] done: %d steps, %d snapshots to %s\n",
                       _name, length(diags), length(diags) ÷ max(save_ev,1), outdir)

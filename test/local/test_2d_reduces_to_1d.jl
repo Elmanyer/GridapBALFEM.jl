@@ -61,7 +61,7 @@ function run_width(Ly, ny, tag)
         T_wave=FLUME.T, A_wave=FLUME.A,
         x_wm=x_wm, y_wm=nothing,                       # LINE source ⇒ y-invariant
         sponge_wL=6.0, sponge_wR=8.0, mu_max=20.0,
-        T_final=Tf, dt=FLUME.dt, regime=:nonlinear, nl_pressure=:full,
+        T_final=Tf, dt=FLUME.dt, regime=:nonlinear, nl_pressure=true,   # v2: all 8 𝓝 comps (broken)
         y_wall_bc=:periodic, x_wall_bc=false,          # no lateral length scale
         save_every=0, gauges=[(x_wm + 6.0, y_c(Ly))],
         print_every=200, check_every=0, diag_every=5,

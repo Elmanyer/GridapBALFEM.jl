@@ -136,7 +136,7 @@ for cfg in configs
     # defaults to false here (∇h computed from cfg.dfn, matching the oracle).
     prob = ALG.build_problem_raw(vert_a; g=g_phys, h_bathy=cfg.dfn,
         linearised=cfg.lin, advection=cfg.adv, lin_pressure=cfg.linp,
-        P_full=false, nl_pressure68=false, mu_sponge=sponge, wm_src=wm)
+        P_full=false, nl_pressure=false, mu_sponge=sponge, wm_src=wm)
 
     r_lay = assemble_vector(v -> residual_balfem(t_eval, tu_lay, v, prob_lay, trian, dΩh), V_lay)
     r = assemble_vector(v -> ALG.global_residual(t_eval, tu, v, prob, trian, dΩh), V)

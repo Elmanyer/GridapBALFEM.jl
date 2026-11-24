@@ -1,0 +1,184 @@
+# STATUS.md — where the project stands (2026-10-09)
+
+> **Update 2026-11-23: the Snellius integrator study is analysed. No integrator holds the full model
+> without destroying the carrier.** Record: [`INTEGRATOR_STUDY_RESULTS.md`](INTEGRATOR_STUDY_RESULTS.md).
+> * The study ran on Snellius 2026-11-17 → 22 (SBU grant, author 2026-11-18; the DelftBlue plan of
+>   2026-11-14 is void). **161 of 275 cases were killed by the home quota** (VTK output) at a median 49 %
+>   of their time. Their data is used, and their checkpoints are intact (resumable). 59 completed,
+>   33 diverged (guard), 22 Newton blow-ups.
+> * **Result.** At kd 5.5, n32, kA ≥ 0.25, the schemes that last 200 periods remove 90–100 % of the carrier
+>   energy. The gentle ones delay the burst only 1.2–1.9× at kA 0.32; at kA 0.158 / 0.25 they were cut
+>   before CN's onset (open).
+> * **What grows:** a steady (ω ≈ 0) vertical-structure velocity mode at λ ≈ 2 cells (n32 and n64),
+>   absent at n16, faster at n64 (rule 38b). A larger CIP γ brings it earlier (H2 falsified). Under CN,
+>   m5/m6 n32 saturate at ≈ 10 % spurious velocity rather than blow up. kd 2.9 / 1.7 are clean to kA 0.25.
+> * **Consequence:** the integrator route (§6b of STABILITY) is closed for the kd 5.5 regime. The next
+>   step for this solver is a weak-form term on each u_j (to be studied). The mixed formulation with VMS
+>   is developed separately in `GridapBALFEMixed.jl` (split 2026-11-23).
+> * **Launchers (2026-11-23):**
+>   * one case table and one `submit.sh` for the integrator study, with `status` / `requeue-quota` /
+>     `resume` and `BALFEM_CASE_FILTER`;
+>   * **all cluster output on the project storage** (`STORAGE` in `~/.bashrc`, Snellius
+>     `/gpfs/admin/projectlinks/prjs1960`; `output/` is a link to `$STORAGE/GridapBALFEM_output`;
+>     `run/storage.sh`, `run/setup_storage.sh`);
+>   * the resubmission plan is drafted (`INTEGRATOR_STUDY_RESULTS.md` §6), **not submitted** (author).
+
+> **Update 2026-11-17: first integrator results; the cluster study waits for resources.**
+> * **Local SDIRK_2_2 box runs, m5 n32, Δt = 0.04, 200 periods, finished** (kA 0.158 and 0.25;
+>   `output/1D_stability_campaign/m5_q32_n32_sdirk{,_kA25}`). No burst (CN burst at 245 s), but the
+>   carrier kept only 2.8 % / 2.3 % of its energy: **stabilised at a cost of ≈ 97 % of the carrier
+>   energy** (rule 15).
+> * **Per-harmonic breakdown** (`_logs/harmonic_breakdown_m5_sdirk_2026-11-17.log`): the CN burst's
+>   −2ω₀ component is gone, but a **steady (ω ≈ 0) vertical-structure velocity growth** continues at
+>   +0.005–0.014 s⁻¹ (bands; single harmonics up to 0.04 s⁻¹), the pace CN showed before its burst. It
+>   lives in u₁–u₃ with almost no ū, so η does not see it, and **no integrator can damp it** (ω = 0).
+>   These runs cannot tell "SDIRK broke the burst mechanism" from "SDIRK starved it of carrier"
+>   (rule 12c); the integrator study's Crouzeix 3/4 arm (damps 2ω₀, keeps the carrier) can.
+> * The rising u_max/η_max of the SDIRK runs (3.5 → 4.0) is not growth: the carrier keeps its linear
+>   u/η ratio; the crest loses its bound harmonics as the wave flattens, and the u low-band content
+>   (vertical structure, not bound) decays more slowly than the carrier.
+> * **No-CIP controls:** m6 without CIP failed (Newton NaN) at 8.4 / 25.8 / 74.8 s (n64 / n32 / n16);
+>   m5 and m6 n8 without CIP reached 320 s bounded.
+> * **Integrator study (`run/integrator_study/`):** Snellius pilot done 2026-11-13 (m5 n32 CN 32.5
+>   s/step; SDIRK_2_2 ×1.91, Crouzeix 3/4 ×2.85, SDIRK_4_3 ×3.20; γ = 1 does not slow Newton; full study
+>   ≈ 2.1 × 10⁴ case-hours). The campaign moves to **DelftBlue** (author, 2026-11-14; launchers adapted)
+>   but is **postponed**: the only account, `innovation`, caps jobs at 24 h, 4 running / 10 submitted,
+>   64 CPUs / 250 GB. A research/project account runs the launchers as they are; otherwise they need
+>   24 h segments and a few large worker-pool jobs.
+> * Consequence for the route: if the steady vertical-structure growth persists under every integrator,
+>   the weak-form stabilisers (§4: a term acting on each u_j) become necessary regardless of the study.
+
+> **Update 2026-11-11: the next step is dissipation through the time integrator (author's decision;
+> supersedes §4 as the immediate next step).**
+> * CN has shown the discrete nonlinear operator is unstable in every box run. Before any new term in
+>   the weak form (filtering F1–F4, SUPG, VMS, residual-based), measure what dissipative time
+>   integrators buy (growth suppressed) against what they cost (carrier attenuation). No code change:
+>   Gridap tableaus via `BALFEM_TABLEAU`, plus `BALFEM_DT`. Plan, candidates and predictions:
+>   [`STABILITY.md`](STABILITY.md) §6b; actions: [`CH8_CAMPAIGN_TODO.md`](CH8_CAMPAIGN_TODO.md) "RESUME HERE".
+> * Rule 15 rewritten: dissipation is a legitimate stabiliser, named and measured ("stabilised at
+>   cost X"); the diagnosis stays under CN.
+> * First evidence (m3 n32, `SDIRK_2_2`, Δt = 0.04): the CN-unstable modes stay at seed level past the
+>   CN divergence time (254 s vs 246 s), but the carrier has lost 93 % of its energy.
+
+> **Update 2026-11-07: the chapter-8 1-D campaign is complete (supersedes the "no v2 nonlinear box run
+> with CIP exists yet" line below).** Results: [`STABILITY.md`](STABILITY.md) §3b, in full
+> `output/1D_stability_campaign/README.md` ("FINAL RESULTS").
+> * With the mandatory CIP, models 5 and 6 run **200 periods clean at 16 and 64 cells/λ**. Without
+>   it, model 5 failed at 81 and 9 s.
+> * **Not unconditionally stable.** At 32 cells/λ a late burst appears (245 s flat bed, ~295 s cosine
+>   bed); at 8 cells/λ a slow long-wave growth drains half the carrier from ~140 s. The dx dependence
+>   is not monotone.
+> * Every growing content observed, model 3 included, is a **vertical-structure velocity mode**: the
+>   layer velocities grow while the depth average and η barely move. A stabiliser must act on each u_j.
+> * Sponge-layer sweep (outside chapter 8): 26 of 84 cases done. The quadratic sponge reflects at its
+>   front, with Kr ≈ 0.21 μ_max/(ω k² W²). W = 24 m with μ_max = 8 gives Kr ≤ 0.3 % for T = 1.5–2.9 s.
+>   The sweep is paused; see [`SPONGE_SWEEP_RESULTS.md`](SPONGE_SWEEP_RESULTS.md).
+> * **Resume here:** [`CH8_CAMPAIGN_TODO.md`](CH8_CAMPAIGN_TODO.md) §0 lists the next actions in order.
+
+> **Update 2026-10-30 (supersedes §4 as the next step and the distributed item of §5).**
+> * **The first-order C⁰-CIP is now mandatory with `𝓝`** (author's decision; LaTeX §6.4,
+>   `CLAUDE.md` rule 1c): γ_u = γ_η = 0.3 by default, `p_η ≥ 2`, enforced in `global_residual`.
+> * **The full nonlinear model runs distributed** (`V2_SOLVER_PLAN.md` step 10): parity gate 14/14,
+>   debug backend and MPI. Gates on the new contract: `test_broken_formulation` 40/40,
+>   `test_jacobians_ad` 14/14 (M5/M6 at Q3/Q2), regression snapshot 12/12, `test_skeleton_ad` S0–S2
+>   `:jumpgrad` pass (the ghost-volume failures predate the change, OPEN_ISSUES §2).
+> * **The route now:** LaTeX chapter 8 = stability study of *this* solver (with first-order CIP):
+>   box ladder under CN, operator analysis, γ calibration. Chapter 9 = the stabilisation strategy built
+>   on those results; filtering (§4) and residual-based dissipation are candidates, not the decision.
+>   No v2 nonlinear box run with CIP exists yet.
+
+**Read this first.** One page on the state of the solver, the open problem, and what comes next.
+Evidence for every claim is in [`STABILITY.md`](STABILITY.md) (the stability record) and
+[`OPEN_ISSUES.md`](OPEN_ISSUES.md) (everything else that is open).
+
+---
+
+## 1. In one paragraph
+
+The **v2 solver** (branch `v2-solver`) is correct and verified as far as the linear and the
+nonlinear-without-`𝓝` models go. Its **full nonlinear model** (`nl_pressure=true`, all eight `𝓝`
+components, Class III by the broken formulation) is **consistent but unstable at the grid scale**.
+**The model without `𝓝` (`nl_pressure=false`) is unstable too** once the effective resolution is high
+enough. The instability is a transfer of carrier energy into wavenumbers that `C⁰` elements represent
+with no null and no dissipation, beyond what the reference finite-difference scheme can even
+represent. **The standard remedy, the C⁰ interior penalty (first-order gradient jumps), is not
+enough:** it removes the fastest grid-scale growth, but nonlinear spurious modes keep growing in the
+mid band and the run fails later. Higher-order skeleton penalties held the v1 closed box, but they
+are non-standard. Their required order grows with the element order (Gridap stops at order 2), and
+they were never shown on a flume, a sloping bed, 2-D or MPI. **Direction adopted 2026-10-09:
+filtering, as Yang & Liu do** (nine-point Shapiro filter of `η` and `u` every 20–200 steps).
+Options are in §4.
+
+## 2. What works and is verified
+
+| area | status |
+|---|---|
+| v2 code base | Boolean `nl_pressure`; broken Class III only (exact Jacobian); v1 mixed, projected and mask code deleted; v1 knobs refused; `run_manifest.toml` per run |
+| v1 → v2 equivalence | `test/v2_migration/regression_snapshot.jl` 12/12: residual and both Jacobians identical entry by entry (≤ 2e-16) |
+| linear models 1–2 | optimal order in both fields, 1-D and 2-D, sequential and distributed, five vertical bases |
+| nonlinear models 3–4 (no `𝓝`) | MMS at theoretical order to `nx = 32`; `p_η` degrades on finer meshes at Q3/Q2 (OPEN_ISSUES §1) |
+| external oracle | at `p = 1` BALFE-M collapses onto Yang & Liu LFE-M coefficient by coefficient, `𝓝` included |
+| Jacobians | `test_jacobians_ad` 14/14 on the patched Gridap; `∂R/∂u̇` exact, `∂R/∂u` quasi-Newton (rule 5) |
+| suite | fast 9/9, `test_broken_formulation` 35/35, medium 20 pass (known failures: OPEN_ISSUES §2) |
+| tooling | closed x-periodic box + `periodic_growth.jl` band rates; linear eigen-analysis of the penalised box operator (`cip_eigen_analysis.jl`, `cip_eigen_order_rule.jl`) |
+
+**Not verified:** models 5–6 (`nl_pressure=true`) are outside the verified MMS scope (opt-in
+`MMS_NL_P=1`; one exploratory run, `p_u` falls 3.94 → 1.97 on fine meshes, cause unknown).
+
+## 3. The stability problem in numbers (v2, closed box, Crank–Nicolson, A = 0.10, 100 periods)
+
+Divergence onset, or the high-band growth rate if the run stayed bounded for 160 s:
+
+| | 8 cells/λ | 16 | 32 | 64 |
+|---|---|---|---|---|
+| Q2/Q1, `𝓝` on | bounded | bounded | growing +0.067 s⁻¹ | **81 s** |
+| Q2/Q1, `𝓝` off | bounded | +0.03 | +0.024 | growing +0.08 |
+| Q3/Q2, `𝓝` on | bounded (+0.002) | **82 s** | **27 s** | **9 s** |
+| Q3/Q2, `𝓝` off | bounded | +0.03 | growing +0.07 | **44.6 s** |
+
+Q2/Q1 at 16 cells and A = 0.15: 57 s with `𝓝`, bounded without. In every row, onset comes earlier
+with refinement. That is the grid-scale signature: under-resolution would improve with refinement
+(rule 38b). v2 fails 1.4–3× later than v1, but it does fail. Stabilisation history and analysis:
+[`STABILITY.md`](STABILITY.md).
+
+## 4. Filtering — the options (after the time-integrator study, STABILITY §6b, 2026-11-11)
+
+Requirement, unchanged since v1: a **wavenumber-selective energy sink** that removes the mid, high
+and sub-element bands faster than the nonlinear transfer feeds them (≈ 0.1–0.5 s⁻¹ measured). It must
+leave the carrier unattenuated over 100 periods, preserve the MMS orders, and work on both models.
+
+| option | what it is | for | against |
+|---|---|---|---|
+| **F1 Shapiro-type nodal filter** | Yang & Liu's choice: a discrete low-pass stencil on nodal values every `n` steps | the reference scheme's own remedy; trivial to explain | needs a structured node lattice; Q_p nodes are not equispaced across cell types (vertex, edge, interior), so the stencil is not uniform; Cartesian only |
+| **F2 modal / interpolation filter** (Fischer & Mullen 2001, spectral elements) | per cell, `u ← (1−α)u + α I_{p−1}u` (or damp the top Legendre modes) | made for `C⁰` high-order elements; keeps `C⁰` (traces interpolate consistently); local, cheap, any mesh, MPI-trivial; strength `α`, interval `n` | acts on the element's top mode, not on a wavenumber band, so mid-band (4–10 nodes/λ) content may need a stronger or repeated filter; must be checked against the carrier |
+| **F3 differential (Helmholtz) filter** | solve `(I − δ²∇²)^r ū = u` (or a higher-order variant) every `n` steps | variational, mesh-agnostic, a sharp cutoff set by `δ`, `r`; distributed with the existing GMRES | one extra linear solve per filtered step; boundary conditions of the filter must be chosen |
+| **F4 relaxation term in the residual** (time-relaxation, Stolz–Adams type) | `+χ (u − G u)` with a filter `G` (F2 or F3) inside the residual | continuous in time, no post-step hook, exact Jacobian if `G` is linear | changes the operator at every stage, with no interval to tune; `χ` must be calibrated |
+
+Shared implementation points:
+* F1–F3 need a **post-step hook**. Gridap's ODE `solve` is an iterator over `(t, uh)`, so filtering
+  means restarting `solve(solver, op, t, tF, u_filtered)` every `n` steps, or wrapping the stepper.
+  Under θ/CN the state is `u` alone. Generalised-α carries a velocity too.
+* **Test bed:** the v2 unstabilised box runs above are the baseline: same launchers
+  (`run/local/run_1dper_v2_unstab*.sh`), same seeds, `periodic_growth.jl`. Acceptance is the four
+  criteria of [`STABILITY.md`](STABILITY.md) §6, under Crank–Nicolson (rule 15).
+* Then the flume, the bar (the lee-shoulder mode of OPEN_ISSUES §3 is exactly where Yang & Liu
+  filter), MMS at the chosen strength, and a 100-period box regression gate in the suite.
+
+The skeleton penalties (`:jumpgrad`, `:ghostvolume`) stay in the code as the comparison arm.
+
+## 5. Other open items (details in [`OPEN_ISSUES.md`](OPEN_ISSUES.md))
+
+* Nonlinear `p_η` order reduction at Q3/Q2 on fine meshes (advection block).
+* Ghost penalty under AD (`_shift` loses the minus side); `test_selfconsistency` step 12.
+* ~~Distributed broken formulation~~ done 2026-10-30 (see the update at the top); `:ghostvolume`
+  stays sequential.
+* Gridap fork commit `3928b98b9` not pushed; Manifest uses `Pkg.develop`.
+* Cluster suite not re-run; sysimage stale.
+
+## 6. Housekeeping state
+
+* Branch `v2-solver`. The 2026-10-09 documentation restructure, the eigen order-rule driver and the
+  v2 box launchers are committed; nothing is pushed.
+* LaTeX v2 (`latex_docs/BALFEM_models_v2`, Overleaf): chapters 6–9 restructured. Chapter 8 has the v2
+  Q2/Q1 rows; **the Q3/Q2 rows of §3 above are still to be added**. Chapter 9 describes the penalties
+  and lists filters as "not tried". It will need rewriting around the filter.

@@ -28,7 +28,7 @@
 #    BALFEM_RHO         water density [kg/m³]              1025
 #    BALFEM_PRINT_EVERY solver progress report every N steps    (default 10)
 #    BALFEM_REGIME      physics regime: linear|nonlinear   nonlinear
-#    BALFEM_NL_PRESSURE nonlinear pressure: none|native|full  none
+#    BALFEM_NL_PRESSURE nonlinear pressure 𝓝, all 8 comps (0/1)  0
 #    BALFEM_FLAT_BED    flat sea bed ∇h≡0 (1/0)  1 flat scripts / 0 bathymetry script
 #
 #  The algebraic solver runs the FULL physics distributed through the one
@@ -42,6 +42,7 @@
 const ROOT = normpath(joinpath(@__DIR__, "..", ".."))
 using GridapBALFEM
 using Printf
+check_v1_env()      # v2: refuse removed v1 knobs before anything runs
 
 genv(k, d)   = get(ENV, k, string(d))
 genv_i(k, d) = parse(Int,     genv(k, d))
@@ -57,7 +58,9 @@ write_w_flag()  = genv_b("BALFEM_WRITE_W", 1)
 write_p_flag()  = genv_b("BALFEM_WRITE_PRESSURE", 1)
 rho_val()       = genv_f("BALFEM_RHO", 1025.0)
 regime_sym()         = Symbol(genv("BALFEM_REGIME", "nonlinear"))
-nl_pressure_sym()    = Symbol(genv("BALFEM_NL_PRESSURE", "none"))
+#  v2: BALFEM_NL_PRESSURE is 0/1 (all eight 𝓝 components off/on). check_v1_env() (run on load,
+#  below) refuses the v1 tier names and every removed v1 knob instead of ignoring them.
+nl_pressure_flag()   = genv_b("BALFEM_NL_PRESSURE", 0)
 # Sea-bed geometry: false = variable bathymetry (∇h≠0), true = flat bed (∇h≡0).
 # Default per script (BALFEM_FLAT_BED): flat-bed cases pass 1, the bathymetry case passes 0.
 flat_bed_flag(default::Int=1) = genv_b("BALFEM_FLAT_BED", default)
@@ -65,8 +68,10 @@ flat_bed_flag(default::Int=1) = genv_b("BALFEM_FLAT_BED", default)
 # ---- Time integrator + nonlinear/linear solver controls ---------------------
 #  Default integrator is the fully-implicit RungeKutta :SDIRK_2_2 (L-stable,
 #  more robust than Crank–Nicolson). Override caps/tolerances per cluster job:
-#    BALFEM_SOLVER      integrator: sdirk|theta        sdirk
-#    BALFEM_TABLEAU     RK tableau (solver=sdirk)       SDIRK_2_2
+#    BALFEM_SOLVER      integrator: sdirk|rk|theta|gen_alpha   sdirk   (sdirk = rk: any Gridap tableau)
+#    BALFEM_TABLEAU     RK tableau (solver=sdirk|rk)    SDIRK_2_2  (implicit SDIRK_*/DIRK_* or explicit EXRK_*)
+#    BALFEM_THETA_T     θ of the θ-method (solver=theta) 0.5       (0.5 = Crank–Nicolson; > 0.5 damps)
+#    BALFEM_RHO_INF     ρ∞ of generalised-α              0.5       (1 = no damping, 0 = strongest)
 #    BALFEM_NL_ITER     max Newton iterations / stage    50
 #    BALFEM_NL_TOL      Newton tolerance (production)    1e-5
 #    BALFEM_LS_MAXITER  max GMRES iterations / Newton    1000   (TIME bound)
@@ -98,15 +103,39 @@ eta_ref_val()    = haskey(ENV, "BALFEM_ETA_REF") ? genv_f("BALFEM_ETA_REF", 0.0)
 
 solver_sym()     = Symbol(genv("BALFEM_SOLVER", "sdirk"))
 tableau_sym()    = Symbol(genv("BALFEM_TABLEAU", "SDIRK_2_2"))
+theta_t_val()    = genv_f("BALFEM_THETA_T", 0.5)       # θ of the θ-method (not BALFEM_THETA_MAX, a wave angle)
+rho_inf_val()    = genv_f("BALFEM_RHO_INF", 0.5)
+"Output-name token of the integrator: `theta` (CN), `theta0.60`, `galpha0.50`, a lower-cased tableau
+name for any tableau other than the default `SDIRK_2_2`, or nothing (the default integrator)."
+function integrator_tag()
+    s = solver_sym()
+    s === :theta && return theta_t_val() == 0.5 ? "theta" : @sprintf("theta%.2f", theta_t_val())
+    s === :gen_alpha && return @sprintf("galpha%.2f", rho_inf_val())
+    tableau_sym() === :SDIRK_2_2 && return nothing
+    return lowercase(replace(String(tableau_sym()), "_" => ""))
+end
 nl_iter_val()    = genv_i("BALFEM_NL_ITER", 50)
 nl_tol_val()     = genv_f("BALFEM_NL_TOL", 1e-5)
 ls_maxiter_val() = genv_i("BALFEM_LS_MAXITER", 1000)
 ls_rtol_val()    = genv_f("BALFEM_LS_RTOL", 1e-5)
 krylov_m_val()   = genv_i("BALFEM_KRYLOV_M", 100)
-#    BALFEM_PRECOND   GMRES preconditioner: jacobi|schwarz|gs   jacobi
+#    BALFEM_PRECOND   GMRES preconditioner: jacobi|schwarz      jacobi
 #      Jacobi is weak for this operator (450-760 iters/solve measured); :schwarz
 #      does an exact LU on each rank's own block. See build_preconditioner.
 precond_sym()    = Symbol(genv("BALFEM_PRECOND", "jacobi"))
+
+#    BALFEM_CHECKPOINT_EVERY  write u_n every N steps + at the end (0 = off)   0
+#    BALFEM_CHECKPOINT_KEEP   keep the N most recent checkpoints (≤ 0: all)    2
+#    BALFEM_RESTART_FROM      resume from a checkpoint header / run dir        (unset)
+#                             T_final (PERIODS/TFINAL) stays ABSOLUTE; u_n only, not bit-exact
+#    BALFEM_RESTART_ALLOW_CHANGE  1: allow dt / integrator / tolerance changes 0
+#  See src/checkpoint.jl. The output name gets a `resume` token, so the resumed run never
+#  lands on its parent's directory.
+checkpoint_kw() = (checkpoint_every     = genv_i("BALFEM_CHECKPOINT_EVERY", 0),
+                   checkpoint_keep      = genv_i("BALFEM_CHECKPOINT_KEEP", 2),
+                   restart_from         = haskey(ENV, "BALFEM_RESTART_FROM") ? ENV["BALFEM_RESTART_FROM"] : nothing,
+                   restart_allow_change = genv_b("BALFEM_RESTART_ALLOW_CHANGE", 0))
+is_resume() = haskey(ENV, "BALFEM_RESTART_FROM")
 
 #  Extra output-name tokens (the trailing `[_<extra>...]` of the grammar in
 #  markdown_files/OUTPUT_NAMING_PROPOSAL.md). Use it whenever a launcher varies
@@ -256,7 +285,7 @@ function banner(title, M, cpu_grid, partition, ncells, outdir)
     @printf("#   M=%d layers | cpu_grid=%s (%d ranks) | mesh=%s = %d cells\n",
             M, string(cpu_grid), prod(cpu_grid), string(partition), ncells)
     @printf("#   regime=%s nl_pressure=%s flat_bed=%s\n",
-            string(regime_sym()), string(nl_pressure_sym()), string(flat_bed_flag()))
+            string(regime_sym()), string(nl_pressure_flag()), string(flat_bed_flag()))
     @printf("#   write_w=%s write_pressure=%s | out=%s\n",
             string(write_w_flag()), string(write_p_flag()), outdir)
     @printf("############################################################\n")

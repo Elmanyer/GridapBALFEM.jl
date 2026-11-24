@@ -13,9 +13,14 @@
 #
 #  Because the stacked residual and its hand Jacobians are expressed purely in
 #  Gridap CellField algebra, this single distributed path carries every physics
-#  flag — advection, lin_pressure, P_full, nl_pressure68, nl_pressure_full, flat_bed —
-#  using the very same code as the sequential driver; only the linear solver
-#  (GMRES + Jacobi + Newton) and the reductions differ.
+#  flag — advection, lin_pressure, P_full, flat_bed — using the very same code as the
+#  sequential driver; only the linear solver (GMRES + Jacobi + Newton) and the reductions
+#  differ.
+#
+#  `nl_pressure=true` runs here too (V2_SOLVER_PLAN.md step 10, 2026-10-29): the Class-III facet
+#  terms and the mandatory C⁰-CIP penalty live on the distributed skeleton (`SkeletonTriangulation`
+#  of the `DistributedDiscreteModel`, each interior facet once, on the rank that owns it; the
+#  ghost layer supplies the cell on the other side). The ghost-volume penalty stays sequential.
 #
 #  The vertical pre-computation is tiny and identical on every rank, so it is
 #  simply replicated rather than distributed.
@@ -77,9 +82,10 @@ function setup_and_run_distributed(;
     # ---- Time integration ----------------------------------------------------
     T_final      :: Float64 = 12.8,        # final simulated time [s]
     dt           :: Float64 = 0.02,        # time step [s]
-    solver_type  :: Symbol  = :sdirk,      # integrator: :sdirk (default) | :theta
+    solver_type  :: Symbol  = :sdirk,      # integrator: :sdirk (any Gridap tableau) | :theta | :gen_alpha
     tableau      :: Symbol  = :SDIRK_2_2,  # Runge–Kutta tableau when solver_type == :sdirk
     theta        :: Float64 = 0.5,         # θ for :theta (0.5 = Crank–Nicolson)
+    rho_inf      :: Float64 = 0.5,         # ρ∞ for :gen_alpha (1 = no damping, 0 = strongest)
     # ---- Output --------------------------------------------------------------
     output_dir   :: String  = joinpath(@__DIR__, "..", "output", "dist_out"),  # VTK/pvd destination
     save_every   :: Int     = 0,           # write a VTK snapshot every N steps (0 = no VTK)
@@ -89,13 +95,18 @@ function setup_and_run_distributed(;
     x_wall_bc    :: Bool    = false,       # solid walls on the x-edges (true for closed-basin IC)
     # ---- Physics flags (all supported in parallel) ---------------------------
     regime       :: Symbol  = :nonlinear,  # :linear (linearised, no advection) | :nonlinear
-    nl_pressure  :: Symbol  = :none,       # nonlinear pressure: :none | :native | :full (CG+Jacobi)
+    nl_pressure             = false,       # 𝓝 (all eight components): needs p_eta ≥ 2 and carries the
+                                           #   MANDATORY C⁰-CIP penalty (LaTeX §6.4)
     flat_bed     :: Bool    = false,       # sea-bed geometry: false = variable bathymetry (∇h≠0),
                                            #   true = flat bed (∇h≡0; ∇h-terms dropped, ∇η-terms kept)
-    nlp_cg_rtol  :: Float64 = 1e-10,       # CG tolerance for the frozen-projection solve
-    nlp_cg_maxiter :: Int   = 500,         # CG iteration cap for that solve
     h_bathy                  = nothing,     # x → d(x): variable bathymetry (overrides h_val)
     eta0_func               = nothing,     # x → η₀(x): initial release (REQUIRES x_wall_bc=true)
+    # ---- C⁰-CIP skeleton penalty (:jumpgrad; src/broken.jl) -------------------
+    cip_gamma_u             = nothing,     # γ_u on ⟦∂ₙ𝖴⟧; nothing → DEFAULT_CIP_GAMMA with nl_pressure
+                                           #   (mandatory, > 0 on both fields), 0 (off) otherwise
+    cip_gamma_eta           = nothing,     # γ_η on ⟦∂ₙη⟧; same default
+    cip_hexp     :: Float64 = 2.0,         # exponent s of h_F (2 = LaTeX §6.4)
+    cip_order    :: Int     = 1,           # penalise ⟦∂ₙʲ·⟧ for j ≤ cip_order (≤ 2)
     # ---- Dirichlet boundary wave generation (deterministic per rank) ---------
     wave_gen     :: Symbol  = :auto,       # :inner_res | :bc_gen  (:auto infers from wave_bc)
     wave_bc                 = nothing,     # nothing | :regular | WaveInput | WaveSpec AiryState
@@ -114,7 +125,7 @@ function setup_and_run_distributed(;
     nl_iter      :: Int     = 50,          # max Newton iterations per stage
     nl_tol       :: Float64 = 1e-5,        # Newton residual tolerance (‖r‖₂) — production default
     ls_rtol      :: Float64 = 1e-5,        # GMRES relative tolerance. MEASURED 2026-08-11/12 on one
-                                           #   fixed 2-D case (96x36, nl_pressure=:full, 12 ranks):
+                                           #   fixed 2-D case (96x36, v1 full pressure, 12 ranks):
                                            #     1e-9 -> 1e-6  cut GMRES 491-515 -> 294-314 (-40%)
                                            #     1e-6 -> 1e-5  cut GMRES 295-313 -> 238-253 (-19%)
                                            #   with max|eta| unmoved in BOTH steps (the second pair
@@ -122,11 +133,10 @@ function setup_and_run_distributed(;
                                            #   what limits the answer here — the Newton ITERATION
                                            #   COUNT is; see nl_tol in this file and utilities.jl.
     ls_maxiter   :: Int     = 1000,        # GMRES iteration cap per Newton step (a TIME bound)
-    precond      :: Symbol  = :jacobi,     # GMRES right preconditioner: :jacobi | :schwarz | :gs
+    precond      :: Symbol  = :jacobi,     # GMRES right preconditioner: :jacobi | :schwarz
                                            #   Jacobi is the historical default and is WEAK for this
-                                           #   operator (450-760 iters/solve measured); :schwarz does an
+                                           #   operator (R_P grad-div, κ ∝ (H p/h)²); :schwarz does an
                                            #   exact LU on each rank's own block — see build_preconditioner
-    gs_iters     :: Int     = 1,           # sweeps for precond=:gs
     krylov_m     :: Int     = 100,         # GMRES Krylov basis size, restart=true (a MEMORY bound:
                                            #   m+1 vectors + a dense (m+1)×m Hessenberg per rank).
                                            #   Distinct from ls_maxiter — see build_ode_solver_distributed.
@@ -138,8 +148,35 @@ function setup_and_run_distributed(;
     diag_csv     :: Bool    = true,        # write output_dir/diagnostics.csv on rank 0
     eta_ref                 = nothing,     # reference amplitude for the divergence guard (auto)
     div_factor   :: Float64 = 20.0,        # abort when max|η| > div_factor · eta_ref
+    # ---- Checkpoints and resume (src/checkpoint.jl; same cpu_grid only) --------
+    checkpoint_every :: Int   = 0,         # >0: each rank writes its own u_n values every N steps + at the end
+    checkpoint_keep  :: Int   = 2,         # keep the N most recent checkpoints (≤ 0: all)
+    restart_from            = nothing,     # checkpoint header / checkpoints dir / run dir; T_final absolute
+    restart_allow_change :: Bool = false,  # allow dt / integrator / tolerance changes on resume
 )
+    _run_config = Base.@locals()             # ⚠ FIRST statement: exactly the keyword arguments
+    #  Resume: read the header before MPI work starts, so every rank fails identically.
+    ck_hdr     = restart_from === nothing ? nothing : read_checkpoint_header(String(restart_from))
+    t_start    = ck_hdr === nothing ? 0.0 : parse(Float64, ck_hdr["t"])
+    step_start = ck_hdr === nothing ? 0 : parse(Int, ck_hdr["step"])
+    t_start < T_final - 1e-12 ||
+        error("setup_and_run_distributed: the checkpoint is at t=$t_start ≥ T_final=$T_final (T_final is absolute)")
+    ck_hdr === nothing || parse(Int, ck_hdr["n_parts"]) == prod(cpu_grid) ||
+        error("setup_and_run_distributed: the checkpoint has $(ck_hdr["n_parts"]) part(s), this run " *
+              "$(prod(cpu_grid)) ranks; resume on the same cpu_grid (Gridap's DOF numbering depends on it)")
+    ck_hdr === nothing || (_run_config[:restart_checkpoint] = ck_hdr["header"])
     n_procs = prod(cpu_grid)                 # total MPI ranks implied by the process grid
+    #  v2 interim refusal, BEFORE MPI starts so every rank fails identically (step 5).
+    resolve_physics(; regime = regime, nl_pressure = nl_pressure, flat_bed = flat_bed)
+    #  𝓝 ⇒ p_eta ≥ 2 and the mandatory C⁰-CIP on both fields (LaTeX §6.4); resolved before MPI
+    #  starts, so every rank fails identically, and before the manifest records the configuration.
+    nl_pressure && check_nlp_surface_order(p_eta; where = "setup_and_run_distributed")
+    cip_gamma_u   = cip_gamma_u   === nothing ? (nl_pressure ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_u)
+    cip_gamma_eta = cip_gamma_eta === nothing ? (nl_pressure ? DEFAULT_CIP_GAMMA : 0.0) : Float64(cip_gamma_eta)
+    nl_pressure && !(cip_gamma_u > 0 && cip_gamma_eta > 0) &&
+        error("setup_and_run_distributed: nl_pressure=true requires cip_gamma_u > 0 and " *
+              "cip_gamma_eta > 0 (LaTeX §6.4). Leave them unset for the default $(DEFAULT_CIP_GAMMA).")
+    _run_config[:cip_gamma_u] = cip_gamma_u; _run_config[:cip_gamma_eta] = cip_gamma_eta
 
     # Everything runs inside with_mpi: it initialises MPI and hands back a
     # `distribute` that turns a global index set into this rank's local share.
@@ -153,10 +190,15 @@ function setup_and_run_distributed(;
             flush(stdout)
         end
 
+        #  Provenance (V2_SOLVER_PLAN.md step 9), written once, by rank 0.
+        _git = i_am_main(ranks) ? write_run_manifest(output_dir, _run_config; driver = "setup_and_run_distributed") : ""
+        i_am_main(ranks) && println("=== Run manifest: ", joinpath(output_dir, "run_manifest.toml"), "  [", _git, "]")
+
         #  Pairing gate FIRST, on EVERY rank — before the tensors, the mesh and the JIT.
         #  Every rank checks, so a bad pairing fails identically everywhere instead of
         #  deadlocking one rank against the others. CLAUDE.md rule 2b.
         check_taylor_hood(p_u, p_eta; where = "setup_and_run_distributed")
+        check_time_integrator(; solver_type, theta, tableau, rho_inf, where = "setup_and_run_distributed")
 
         # ----- STAGE 1: VERTICAL PRE-COMPUTATION (IDENTICAL WORK ON EVERY RANK) -
         # Choose the σ-element boundaries: the paper's optimised set for this M
@@ -293,38 +335,70 @@ function setup_and_run_distributed(;
         end
 
         # Same problem bundle as the sequential driver — identical residual.
+        qdeg = 2*max(p_u, p_eta) + 2
         prob = build_problem(vert; g=g,
                             h_bathy=dfn,                # bathymetry function (x → d(x))
                             regime=regime,              # linear/nonlinear physics
                             nl_pressure=nl_pressure,    # nonlinear pressure treatment
                             flat_bed=flat_bed,          # whether to drop ∇h terms (flat bed)
+                            model=model,                # distributed mesh: its skeleton carries the
+                            quad_degree=qdeg,           #   Class-III facet terms and the C⁰-CIP
+                            p_eta=p_eta,                # surface order (𝓝 needs ≥ 2)
                             mu_sponge=sponge,           # sponge damping profile μ(x,y)
                             wm_src=wm,                  # internal wavemaker source S(x,t)
                             relax_bc=use_relax,         # whether to use a relaxation zone at the inflow
                             relax_mu=relax_mu_fn,       # relaxation-zone damping profile μ(x,y)
                             relax_tg=relax_tg)          # incident wave target for the relaxation zone
+        #  C⁰-CIP at the requested γ (γ = 0 on a model without 𝓝 ⇒ no skeleton term at all).
+        attach_skeleton!(prob, model; cip_gamma_u=cip_gamma_u, cip_gamma_eta=cip_gamma_eta,
+                         cip_hexp=cip_hexp, cip_order=cip_order, stabilization=:jumpgrad,
+                         p_u=p_u, p_eta=p_eta, degree=qdeg)
+        if i_am_main(ranks)
+            nl_pressure && println("  Nonlinear pressure 𝓝: ALL EIGHT components — {3,6,7,8} direct, ∇h " *
+                                   "half by exact IBP, Class III cellwise Hessians + facet terms, " *
+                                   "mandatory C⁰-CIP")
+            has_cip(prob) &&
+                @printf("  C0-IP penalty: γ_u=%.3g  γ_η=%.3g  (⟦∂ₙʲ·⟧, j≤%d)  h_F^%.3g, τ_u=d√(gd), τ_η=√(gd)\n",
+                        cip_gamma_u, cip_gamma_eta, cip_order, cip_hexp)
+            prob.skel[] !== nothing && @printf("  Skeleton: %d interior facets\n", prob.skel[].nfacets)
+            flush(stdout)
+        end
 
         # ----- STAGE 4: DISTRIBUTED OPERATOR + SOLVER STACK + INITIAL STATE ----
         op      = build_ode_operator(prob, U, V, trian, dΩh)   # same hand Jacobians
         monitor = SolverMonitor()
 
         # Distributed integrator: Newton + GMRES/Jacobi (the scalable linear solve).
-        solver  = build_ode_solver_distributed(dt; solver_type=solver_type,   # :sdirk | :theta
+        solver  = build_ode_solver_distributed(dt; solver_type=solver_type,   # :sdirk | :theta | :gen_alpha
                       theta=theta,              # θ for :theta (0.5 = Crank–Nicolson)
                       tableau=tableau,          # SDIRK tableau for :sdirk
+                      rho_inf=rho_inf,          # ρ∞ for :gen_alpha
                       nl_iter=nl_iter,          # max Newton iterations per stage
                       nl_tol=nl_tol,            # Newton residual tolerance (‖r‖₂)
                       ls_rtol=ls_rtol,          # GMRES relative tolerance
                       ls_maxiter=ls_maxiter,    # GMRES iteration cap per Newton step (time bound)
                       krylov_m=krylov_m,        # GMRES Krylov basis size, restart=true (memory bound)
-                      precond=precond, gs_iters=gs_iters,
+                      precond=precond,
                       monitor=monitor)          # wrap the Newton solver to harvest per-step stats
         checker = check_every > 0 ?
                   ResidualChecker(prob, U, V, trian, dΩh, dt, theta,
                                      solver_type == :theta) : nothing
+        ck_fp = checkpoint_fingerprint(_run_config; n_free = num_free_dofs(space_at(U, 0.0)),
+                                       bathy = bathymetry_sample(dfn, dom_flat))
         # Initial state via interpolate_everywhere (required for distributed spaces);
         # space_at evaluates a transient trial at t=0 (a no-op for static spaces).
-        u0 = if wi !== nothing && ic_from_bc
+        u0 = if ck_hdr !== nothing
+            soft = check_checkpoint_fingerprint(ck_hdr, ck_fp; allow_change = restart_allow_change,
+                                                where = "setup_and_run_distributed")
+            if i_am_main(ranks)
+                @printf("  RESUME from %s: step %d, t = %.4f (u_n only — not bit-exact)\n",
+                        ck_hdr["header"], step_start, t_start)
+                isempty(soft) || println("  ⚠ resumed with a CHANGED time discretisation:\n    ",
+                                         join(soft, "\n    "))
+            end
+            load_checkpoint_state(ck_hdr, space_at(U, t_start); ranks = ranks,
+                                  where = "setup_and_run_distributed")
+        elseif wi !== nothing && ic_from_bc
             inc = incident_fields(wi)
             make_initial_conditions(space_at(U, 0.0), vert.N_dof;
                 eta0_func = x -> inc.eta(x, 0.0),
@@ -334,12 +408,6 @@ function setup_and_run_distributed(;
             make_initial_conditions(space_at(U, 0.0), vert.N_dof; eta0_func=eta0_func)
         end
 
-        # For nl_pressure=:full, the frozen-projection mass solve uses CG + Jacobi
-        # here (a partitioned matrix has no direct-factorisation method).
-        nlp = nl_pressure == :full ?
-              (prob, build_nlp_ctx(model, p_u, vert.N_dof, trian, dΩh;
-                                   distributed=true, cg_rtol=nlp_cg_rtol,
-                                   cg_maxiter=nlp_cg_maxiter)) : nothing
 
         # ----- STAGE 5: TIME LOOP ---------------------------------------------
         # Reconstruction context for optional w/p VTK output.
@@ -364,6 +432,26 @@ function setup_and_run_distributed(;
                                           diag_csv=diag_csv, is_main=i_am_main(ranks),
                                           u0=u0) :
                     nothing
+        #  resumed: mass/energy stay relative to the ORIGINAL t = 0 state
+        if rundiag !== nothing && ck_hdr !== nothing
+            m0, e0 = parse(Float64, ck_hdr["mass0"]), parse(Float64, ck_hdr["energy0"])
+            isnan(m0) || (rundiag.mass0 = m0)
+            isnan(e0) || (rundiag.energy0 = e0)
+        end
+        ck_writer = checkpoint_every > 0 ?
+            ((step, t, u) -> write_checkpoint(output_dir, step, t, u; fingerprint = ck_fp,
+                                              rundiag = rundiag, keep = checkpoint_keep,
+                                              ranks = ranks)) : nothing
+        #  The readable identity card of the run (src/configuration.jl), by rank 0; the free DOF
+        #  count is global (computed on every rank, no communication).
+        _n_free = num_free_dofs(wi !== nothing ? U(0.0) : U)
+        if i_am_main(ranks)
+            _cfg_path = try_write_run_configuration(output_dir, _run_config; vert = vert, c_bdy = c_bdy_used,
+                            n_free = _n_free, git = _git, driver = "setup_and_run_distributed",
+                            nranks = n_procs, solver_desc = (monitor.nls_desc, monitor.ls_desc),
+                            t_start = t_start)
+            _cfg_path === nothing || println("=== Run configuration: ", _cfg_path)
+        end
         if i_am_main(ranks)
             println()
             print_solver_banner(
@@ -371,7 +459,7 @@ function setup_and_run_distributed(;
                          nl_iter, nl_tol),
                 @sprintf("GMRES(%d) restarted + %s preconditioner | max iters = %d | rtol = %.1e, atol = 1.0e-14",
                          krylov_m, string(precond), ls_maxiter, ls_rtol);
-                solver_type=solver_type, theta=theta, tableau=tableau, dt=dt, t0=0.0, T_final=T_final,
+                solver_type=solver_type, theta=theta, tableau=tableau, rho_inf=rho_inf, dt=dt, t0=t_start, T_final=T_final,
                 print_every=print_every, print_dt=print_dt,
                 check_every=check_every, check_tol=check_tol,
                 monitor=monitor, diag_every=max(diag_n, 0), eta_ref=eta_ref_v,
@@ -384,7 +472,7 @@ function setup_and_run_distributed(;
         diags = run_time_loop_dist(ranks,                    # MPI rank handles
                     op, solver,                 # Gridap operator + distributed time integrator
                     u0,                         # initial condition (distributed FE function)
-                    0.0,                        # initial time
+                    t_start,                    # initial time (0, or the checkpoint's t)
                     T_final;                    # final time
                     output_dir  = output_dir,   # VTK/pvd destination (output directory)
                     save_every  = save_every,   # write a VTK snapshot every N steps (0 = no VTK)
@@ -395,13 +483,15 @@ function setup_and_run_distributed(;
                     recon       = recon,        # reconstruction context for optional w/p VTK output
                     trial_space = U,            # trial FE space (for VTK output)
                     dt          = dt,           # time step [s]
-                    nlp         = nlp,          # frozen-projection context for nl_pressure=:full (nothing if not used)
                     monitor     = monitor,      # wrap the Newton solver to harvest per-step stats
                     checker     = checker,      # optional independent re-assembly of the governing equations
                     check_every = check_every,  # re-verify the governing equations every N steps (0 = off)
                     check_tol   = check_tol,    # tolerance for that verification (‖R‖∞)
                     rundiag     = rundiag,      # field-diagnostics state (max|η| location, invariants, RSS)
-                    diag_every  = max(diag_n, 0)) # sample the field diagnostics every N steps (0 = off)
+                    diag_every  = max(diag_n, 0), # sample the field diagnostics every N steps (0 = off)
+                    step0       = step_start,   # step number of t_start (resume)
+                    checkpoint_every  = checkpoint_every,   # checkpoint cadence (0 = off)
+                    checkpoint_writer = ck_writer)          # COLLECTIVE: each rank writes its part
 
         return (diags, vert, prob)
     end

@@ -4,7 +4,7 @@
 #  Three tools, shared by the sequential and distributed time loops:
 #
 #  1. SolverMonitor — a transparent NonlinearSolver wrapper. The ODE
-#     machinery (ThetaMethod/GeneralizedAlpha/RungeKutta) calls solve! on it
+#     machinery (ThetaMethod/RungeKutta) calls solve! on it
 #     once per stage; the wrapper delegates to the real solver, wall-times
 #     the call and harvests the convergence data:
 #       * Gridap.Algebra.NLSolver  (sequential Newton+LU): NLsolve result
@@ -342,25 +342,7 @@ mutable struct RunDiagnostics
     energy0    :: Float64
     rss_peak   :: Float64
     csv        :: Any        # IOStream or nothing
-end
-
-"""
-    _n_multifields(U) -> Int
-
-Number of fields in a (possibly distributed, possibly transient-trial) MultiFieldFESpace.
-Returns 3 if it cannot be determined, which is the historical layout and keeps every
-pre-existing caller on exactly the path it had before.
-"""
-function _n_multifields(U)
-    try
-        return length(U.spaces)
-    catch
-        try
-            return Gridap.MultiField.num_fields(U)
-        catch
-            return 3
-        end
-    end
+    prob       :: Any        # the problem — its skeleton record carries the C⁰-CIP (cip_power)
 end
 
 """
@@ -386,19 +368,10 @@ function build_run_diagnostics(prob, U0, trian, dΩ;
     Nσ   = prob.Nσ
     zvv  = VectorValue(ntuple(_ -> 0.0, Nσ)...)
     zf   = x -> zvv
-    #  ⚠ THE FIELD COUNT IS NOT ALWAYS 3. The MIXED (projection-free) layout of src/mixed.jl
-    #  appends auxiliary VectorValue{Nσ} unknowns — 5 fields for 𝖦 only, 7 with 𝖥 — and these
-    #  two interpolations used to hardcode a 3-element list, so EVERY diagnostic was
-    #  unavailable on the mixed path: no `x_at_max`, no diagnostics.csv, no divergence guard.
-    #  That cost a whole mixed run, because a failure with a TIME but no PLACE cannot be
-    #  compared against the projected failure, which pins at the inflow (CLAUDE.md §5.2b).
-    #  `field_diagnostics` itself needed nothing: it already indexes only u_n[1..3].
-    nf   = _n_multifields(U0)
-    nf ≥ 3 || error("build_run_diagnostics: expected ≥3 fields ([η,𝖴x,𝖴y]), got $nf")
-    xh   = interpolate_everywhere([x -> x[1], zf, zf, fill(zf, nf - 3)...], U0)
+    xh   = interpolate_everywhere([x -> x[1], zf, zf], U0)
     # total damping seen by the state: sponge + (optional) relaxation zone
     mufn = prob.relax_bc ? (x -> prob.mu_sponge(x) + prob.relax_mu(x)) : prob.mu_sponge
-    muh  = interpolate_everywhere([mufn, zf, zf, fill(zf, nf - 3)...], U0)
+    muh  = interpolate_everywhere([mufn, zf, zf], U0)
 
     d_cf = CellField(prob.h_bathy, trian)
     div_limit = eta_ref > 0.0 ? div_factor * eta_ref : 1.0e4
@@ -410,13 +383,14 @@ function build_run_diagnostics(prob, U0, trian, dΩ;
         println(csv, "step,t,eta_max,x_at_max,eta_max_int,eta_max_damped,u_max,",
                      "mass,mass_drift,energy,energy_ratio,",
                      "nl_iters,nl_stages,res0,res,converged,",
-                     "lin_last,lin_min,lin_max,lin_sat,t_solve,rss_mb,rss_peak_mb")
+                     "lin_last,lin_min,lin_max,lin_sat,t_solve,rss_mb,rss_peak_mb,",
+                     "cip_P_eta,cip_P_u,cip_rate")
         flush(csv)
     end
 
     rd = RunDiagnostics(ranks, dΩ, d_cf, prob.g, prob.Mv,
                         get_free_dof_values(xh[1]), get_free_dof_values(muh[1]),
-                        eta_ref, div_limit, NaN, NaN, 0.0, csv)
+                        eta_ref, div_limit, NaN, NaN, 0.0, csv, prob)
     # Seed the conserved-quantity baselines from the ACTUAL initial state, not
     # from the first sampled step — a forced run has already gained mass by
     # then, which would hide exactly the drift the diagnostic looks for.
@@ -429,7 +403,8 @@ end
 
 Sample the physical diagnostics of the current state. **Collective** — call on
 every rank. Returns `eta_max, x_at_max, eta_int, eta_damped, u_max, ratio,
-mass, mass_drift, energy, energy_ratio, rss, rss_peak`.
+mass, mass_drift, energy, energy_ratio, rss, rss_peak, cip_P_eta, cip_P_u, cip_rate`.
+`cip_*` are the power drained by the C⁰-CIP penalty and the rate `(P_η+P_u)/E` (`cip_power`).
 
 `ratio = max|u| / max|η|` is the kinematic discriminator: a genuine wave gives
 ≈ `ω/(kd)`, the η-dominated open-boundary mode ≈ 0.4 (CLAUDE.md §8). `max|u|`
@@ -460,11 +435,16 @@ function field_diagnostics(rd::RunDiagnostics, u_n)
     rss = global_max_scalar(rss_bytes(), rd.ranks)
     rss > rd.rss_peak && (rd.rss_peak = rss)
 
+    #  Power drained by the C⁰-CIP penalty and the damping rate it applies, P/E [1/s].
+    Pe, Pu = cip_power(rd.prob, rd.prob.skel[], η, Ux, Uy)
+    crate  = energy > 0 ? (Pe + Pu) / energy : NaN
+
     return (eta_max = emax, x_at_max = xmax, eta_int = eint, eta_damped = edmp,
             u_max = umax, ratio = emax > 0 ? umax/emax : NaN,
             mass = mass, mass_drift = mass - rd.mass0, energy = energy,
             energy_ratio = rd.energy0 != 0 ? energy/rd.energy0 : NaN,
-            rss = rss, rss_peak = rd.rss_peak)
+            rss = rss, rss_peak = rd.rss_peak,
+            cip_P_eta = Pe, cip_P_u = Pu, cip_rate = crate)
 end
 
 """
@@ -508,9 +488,9 @@ function diag_csv_row(rd::RunDiagnostics, step::Int, t::Float64, fd, stats)
     @printf(rd.csv, "%d,%.6f,%.8e,%.4f,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,%.8e,",
             step, t, fd.eta_max, fd.x_at_max, fd.eta_int, fd.eta_damped,
             fd.u_max, fd.mass, fd.mass_drift, fd.energy, fd.energy_ratio)
-    @printf(rd.csv, "%d,%d,%.6e,%.6e,%d,%d,%d,%d,%d,%.4f,%.1f,%.1f\n",
+    @printf(rd.csv, "%d,%d,%.6e,%.6e,%d,%d,%d,%d,%d,%.4f,%.1f,%.1f,%.8e,%.8e,%.8e\n",
             ni, nst, r0, rf, cv, ll, lmn, lmx, lst, ts,
-            fd.rss/1e6, fd.rss_peak/1e6)
+            fd.rss/1e6, fd.rss_peak/1e6, fd.cip_P_eta, fd.cip_P_u, fd.cip_rate)
     flush(rd.csv)
     return nothing
 end
@@ -539,7 +519,7 @@ Solver-configuration banner printed by the drivers before the time loop.
 """
 function print_solver_banner(nl_desc::String, ls_desc::String;
                                  solver_type::Symbol, theta::Float64,
-                                 tableau::Symbol=:SDIRK_2_2,
+                                 tableau::Symbol=:SDIRK_2_2, rho_inf::Float64=0.5,
                                  dt::Float64, t0::Float64, T_final::Float64,
                                  print_every::Int=1, print_dt=nothing,
                                  check_every::Int=0, check_tol::Float64=NaN,
@@ -560,10 +540,10 @@ function print_solver_banner(nl_desc::String, ls_desc::String;
     #  ⚠ The tableau is PRINTED FROM THE ARGUMENT, never hard-coded: this line used to read
     #  "SDIRK_2_2, fully implicit" for EVERY :sdirk run, so explicit-RK4 runs logged
     #  themselves as SDIRK_2_2 (found 2026-09-23 on the c3r_* RK4 batch).
-    tdesc = solver_type == :sdirk     ? "RungeKutta ($(tableau), " *
-                                        (startswith(String(tableau), "EX") ? "EXPLICIT)" : "implicit)") :
-            solver_type == :theta     ? @sprintf("ThetaMethod (θ=%.2f)", theta) :
-            solver_type == :gen_alpha ? "GeneralizedAlpha" : "RungeKutta SDIRK-3"
+    tdesc = solver_type in (:sdirk, :rk) ? "RungeKutta ($(tableau), " *
+                                           (startswith(String(tableau), "EX") ? "EXPLICIT)" : "implicit)") :
+            solver_type == :gen_alpha    ? @sprintf("GeneralizedAlpha1 (ρ∞=%.2f)", rho_inf) :
+            @sprintf("ThetaMethod (θ=%.2f)", theta)
     @printf(io, "  Time integrator  : %s | dt=%g s | t ∈ [%g, %g] → %d steps\n",
             tdesc, dt, t0, T_final, n_steps)
     pdesc = print_dt === nothing ? @sprintf("every %d step(s)", print_every) :
@@ -637,6 +617,7 @@ function step_report(step::Int, t_n::Float64, emax::Float64, stats;
         @printf(io, " | m%+.1e", fd.mass_drift)
         isnan(fd.energy_ratio) ? @printf(io, " E=%.2e", fd.energy) :
                                  @printf(io, " E%.3f", fd.energy_ratio)
+        fd.cip_P_eta + fd.cip_P_u > 0 && @printf(io, " cip %.2e/s", fd.cip_rate)
         fd.rss > 0 && @printf(io, " | rss %.0fM", fd.rss/1e6)
     end
     isnan(eta_s) || print(io, "  | ETA ", fmt_hms(eta_s))

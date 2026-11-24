@@ -41,7 +41,7 @@ for (name, h_bathy, flat_bed) in (("flat bed",    nothing, true),
         p_u=FLUME.p, h_val=d0, h_bathy=h_bathy, flat_bed=flat_bed,
         T_wave=FLUME.T, A_wave=0.0,                 # NO forcing at all
         x_wm=Lx/2, sponge_wL=0.0, sponge_wR=0.0, mu_max=0.0,
-        T_final=Tf, dt=FLUME.dt, regime=:nonlinear, nl_pressure=:none,
+        T_final=Tf, dt=FLUME.dt, regime=:nonlinear, nl_pressure=false,
         y_wall_bc=:periodic, x_wall_bc=true,        # closed basin: no outflow at all
         save_every=0, gauges=[(Lx/2, FLUME.Ly/2)], print_every=1000, diag_every=1,
         check_every=0, output_dir=outdir,

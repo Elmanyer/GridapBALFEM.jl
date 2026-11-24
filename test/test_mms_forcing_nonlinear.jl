@@ -55,11 +55,11 @@ df(r1, r2) = max(abs(r1[1]-r2[1]), maximum(abs, r1[2].-r2[2]), maximum(abs, r1[3
 #  This is an exact identity, not an approximation: flat_bed zeroes ∇h at a single
 #  control point, and a constant h has ∇h = 0 anyway, so the two must agree bitwise.
 println("\nN1  flat-bed limit  (Model 4 @ const h  ≡  Model 3)")
-let r3 = SR(:nonlinear, true, :none, h_flat), r4 = SR(:nonlinear, false, :none, h_flat)
+let r3 = SR(:nonlinear, true, false, h_flat), r4 = SR(:nonlinear, false, false, h_flat)
     rel = df(r3, r4) / mx(r3)
-    check("N1  nonlinear :none", rel < 1e-12, @sprintf("(rel %.2e)", rel))
+    check("N1  nonlinear nlp0", rel < 1e-12, @sprintf("(rel %.2e)", rel))
 end
-let l1 = SR(:linear, true, :none, h_flat), l2 = SR(:linear, false, :none, h_flat)
+let l1 = SR(:linear, true, false, h_flat), l2 = SR(:linear, false, false, h_flat)
     rel = df(l1, l2) / mx(l1)
     check("N1b linear (Model 2 @ const h ≡ Model 1)", rel < 1e-12, @sprintf("(rel %.2e)", rel))
 end
@@ -75,9 +75,9 @@ function nl_gap(scale)
                   beta  = [(0.7 - 0.16j)*scale for j in 1:vert.N_dof])
     cb = field_callables(ff)
     rn = strong_residual_model(cb, vert, h_flat, G, x0, y0, t0;
-                               regime = :nonlinear, flat_bed = true, nl_pressure = :none)
+                               regime = :nonlinear, flat_bed = true, nl_pressure = false)
     rl = strong_residual_model(cb, vert, h_flat, G, x0, y0, t0;
-                               regime = :linear, flat_bed = true, nl_pressure = :none)
+                               regime = :linear, flat_bed = true, nl_pressure = false)
     df(rn, rl)
 end
 let ratio = nl_gap(1.0) / nl_gap(0.5)
@@ -89,15 +89,15 @@ end
 #  Without this, N1/N2 could both pass on a forcing that silently dropped the new
 #  terms entirely. Always ask: if this term were missing, would a gate notice?
 println("\nN3  non-triviality  (the added terms actually change the forcing)")
-let r3 = SR(:nonlinear, true, :none, h_flat), l1 = SR(:linear, true, :none, h_flat)
+let r3 = SR(:nonlinear, true, false, h_flat), l1 = SR(:linear, true, false, h_flat)
     rel = df(r3, l1) / mx(r3)
     check("N3  nonlinear ≠ linear on a flat bed", rel > 1e-3, @sprintf("(rel %.2e)", rel))
 end
-let n4 = SR(:nonlinear, false, :none, h_slope), l2 = SR(:linear, false, :none, h_slope)
+let n4 = SR(:nonlinear, false, false, h_slope), l2 = SR(:linear, false, false, h_slope)
     rel = df(n4, l2) / mx(n4)
     check("N3b nonlinear ≠ linear over a slope", rel > 1e-3, @sprintf("(rel %.2e)", rel))
 end
-let n4 = SR(:nonlinear, false, :none, h_slope), r3 = SR(:nonlinear, true, :none, h_slope)
+let n4 = SR(:nonlinear, false, false, h_slope), r3 = SR(:nonlinear, true, false, h_slope)
     rel = df(n4, r3) / mx(n4)
     check("N3c Model 4 ≠ Model 3 over a slope (∇h rows live)", rel > 1e-3,
           @sprintf("(rel %.2e)", rel))
@@ -134,8 +134,8 @@ end
 #  the nested-ForwardDiff limit that was recorded for two days. See the note at the
 #  𝓝 block in src/mms.jl. The refutation was that components {7,8} are FIRST order
 #  and failed identically to {1,2,4,5} — a fact no derivative-depth story explains.
-println("\nN8  the 𝓝 tiers evaluate and are finite")
-for (fb, hf, nm) in ((true, h_flat, "flat"), (false, h_slope, "slope")), np in (:native, :full)
+println("\nN8  the 𝓝 forcing evaluates and is finite")
+for (fb, hf, nm) in ((true, h_flat, "flat"), (false, h_slope, "slope")), np in (true,)
     ok = false
     try
         r = SR(:nonlinear, fb, np, hf)
@@ -143,7 +143,7 @@ for (fb, hf, nm) in ((true, h_flat, "flat"), (false, h_slope, "slope")), np in (
     catch
         ok = false
     end
-    check("N8  :$np over a $nm bed evaluates finitely", ok)
+    check("N8  nl_pressure=true over a $nm bed evaluates finitely", ok)
 end
 
 # ---- N9: the flat_bed control point still holds under 𝓝 --------------------
@@ -151,20 +151,23 @@ end
 #  point. Over a constant bed the two routes must agree BITWISE, exactly as N1 does
 #  for :none. This is what would catch a 𝓝 component that forgot its ∇h guard.
 println("\nN9  flat-bed limit under 𝓝  (flat_bed=true ≡ flat_bed=false @ const h)")
-for np in (:native, :full)
-    a = SR(:nonlinear, true, np, h_flat); b = SR(:nonlinear, false, np, h_flat)
+let a = SR(:nonlinear, true, true, h_flat), b = SR(:nonlinear, false, true, h_flat)
     rel = df(a, b) / mx(a)
-    check("N9  :$np", rel < 1e-12, @sprintf("(rel %.2e)", rel))
+    check("N9  nl_pressure=true", rel < 1e-12, @sprintf("(rel %.2e)", rel))
 end
 
-# ---- N10: non-triviality — each tier must actually add something ------------
-println("\nN10 tier ordering  (each tier changes the forcing)")
-let n = SR(:nonlinear, false, :none,   h_slope),
-    v = SR(:nonlinear, false, :native, h_slope),
-    f = SR(:nonlinear, false, :full,   h_slope)
-    r1 = df(v, n) / mx(n);  r2 = df(f, v) / mx(v)
-    check("N10  :native ≠ :none", r1 > 1e-3, @sprintf("(rel %.2e)", r1))
-    check("N10b :full ≠ :native", r2 > 1e-3, @sprintf("(rel %.2e)", r2))
+# ---- N10: non-triviality — 𝓝 must actually add something -------------------
+println("\nN10 non-triviality  (𝓝 changes the forcing)")
+let n = SR(:nonlinear, false, false, h_slope),
+    f = SR(:nonlinear, false, true,  h_slope)
+    r1 = df(f, n) / mx(n)
+    check("N10  nl_pressure=true ≠ false", r1 > 1e-3, @sprintf("(rel %.2e)", r1))
+end
+#  a v1 tier symbol is refused, not translated
+let ok = false
+    try; SR(:nonlinear, false, :native, h_slope); catch e
+        ok = occursin("must be a Bool", sprint(showerror, e)); end
+    check("N10b a v1 tier symbol (:native) is refused", ok)
 end
 
 # ---- N11: the 𝓝 excess is QUADRATIC in the state amplitude -----------------
@@ -181,16 +184,14 @@ function n_excess(scale, np, fb, hf)
     df(strong_residual_model(cb, vert, hf, G, x0, y0, t0;
                              regime = :nonlinear, flat_bed = fb, nl_pressure = np),
        strong_residual_model(cb, vert, hf, G, x0, y0, t0;
-                             regime = :nonlinear, flat_bed = fb, nl_pressure = :none))
+                             regime = :nonlinear, flat_bed = fb, nl_pressure = false))
 end
-for (np, fb, hf, nm) in ((:native, true,  h_flat,  "flat"),
-                         (:native, false, h_slope, "slope"),
-                         (:full,   true,  h_flat,  "flat"),
-                         (:full,   false, h_slope, "slope"))
+for (np, fb, hf, nm) in ((true, true,  h_flat,  "flat"),
+                         (true, false, h_slope, "slope"))
     #  small amplitudes only: at a_eta/h ≈ 0.3 the higher-order terms are still visible
     e1 = n_excess(0.125, np, fb, hf);  e2 = n_excess(0.0625, np, fb, hf)
     ord = log2(e1 / e2)
-    check("N11 :$np over a $nm bed is O(A²)", abs(ord - 2) < 0.2,
+    check("N11 nl_pressure=true over a $nm bed is O(A²)", abs(ord - 2) < 0.2,
           @sprintf("(order %.3f, expect 2)", ord))
 end
 
@@ -199,4 +200,4 @@ println("=" ^ 76)
 @printf("  Results: %d PASS,  %d FAIL\n", n_pass, n_fail)
 println("=" ^ 76)
 n_fail > 0 ? error("test_mms_forcing_nonlinear: $n_fail failed!") :
-             println("  Nonlinear MMS forcing gates OK (:none, :native and :full tiers).")
+             println("  Nonlinear MMS forcing gates OK (nl_pressure false and true).")

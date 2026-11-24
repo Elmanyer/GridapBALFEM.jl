@@ -43,10 +43,12 @@ gauges = [(xg, Ly/2) for xg in x_gauges]
 
 diags, _, _ = setup_and_run(
     M=2, c_bdy=[0.0,0.728,1.0], domain=((0.0,Lx),(0.0,Ly)), partition=(nx,ny),
-    p_u=2, h_val=d0, T_wave=T, A_wave=A, x_wm=x_wm, y_wm=nothing,
+    p_u=3, h_val=d0,     # v2: the full nonlinear pressure needs Q3/Q2 and a skeleton stabiliser (V2_SOLVER_PLAN.md §4); not yet re-run on v2
+    T_wave=T, A_wave=A, x_wm=x_wm, y_wm=nothing,
     sponge_wL=35.0, sponge_wR=35.0, mu_max=5.0, T_final=T_final, dt=dt,
     h_bathy=h_bathy, save_every=0, gauges=gauges,
-    regime=:nonlinear, nl_pressure=:full, flat_bed=false,   # variable bathymetry (the bar): ∇h terms ON
+    regime=:nonlinear, nl_pressure=true, flat_bed=false,    # variable bathymetry (the bar): ∇h terms ON
+    stabilization=:ghostvolume, cip_gamma_u=0.01, cip_gamma_eta=0.01,
     print_every=200)
 
 ts = [d.t for d in diags]; i0 = length(ts) ÷ 2; tv = ts[i0:end]
