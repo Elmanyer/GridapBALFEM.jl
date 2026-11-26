@@ -1,7 +1,7 @@
 # `run/linear_production/` — linear-model production runs on Snellius (`rome`)
 
 Seven SLURM launchers for the **linear** model: model 1 (flat bed) and model 2 (variable bed).
-They run v2 (branch `v2-solver`). The linear residual and both Jacobians are identical to v1 entry by
+They run v2 (branch `main`). The linear residual and both Jacobians are identical to v1 entry by
 entry (`test/v2_migration/regression_snapshot.jl`: `lin_flat`, `lin_bed`, `lin_bed_q21`, relative
 difference 0.00e+00).
 
@@ -72,8 +72,8 @@ reason for CN.
 ## Launch
 
 ```bash
-# on Snellius, after pulling v2-solver:
-cd $HOME/GridapBALFEM.jl && git fetch && git switch v2-solver && git pull
+# on Snellius, after pulling main:
+cd $HOME/GridapBALFEM.jl && git fetch && git switch main && git pull
 cd compile && sbatch compile_snellius.sh                 # rebuild the sysimage (rule 25)
 # when it has finished:
 bash $HOME/GridapBALFEM.jl/run/linear_production/submit_all.sh            # all seven
@@ -131,8 +131,8 @@ All five differ from round 1 in three ways:
     weak signal.
 
 **Before submitting.**
-1. The code these launchers need (OwnBlockLUSolver, checkpoints, BALFEM_SRAMP) is on `v2-solver`
-   but **not pushed**. Push, pull on Snellius, and **rebuild the sysimage** (`src/` changed;
+1. The code these launchers need (OwnBlockLUSolver, checkpoints, BALFEM_SRAMP) is on `main`.
+   Push, pull on Snellius, and **rebuild the sysimage** (`src/` changed;
    `BALFEM_STRICT_SYSIMAGE=1` refuses a stale one).
 2. **Pilot the :schwarz cost.** It is unmeasured at 28–42 ranks: block Jacobi has no coarse space,
    so its iteration count grows with the number of ranks. Pilot command:

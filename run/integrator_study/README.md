@@ -162,7 +162,7 @@ Regenerate after any change: `python3 run/integrator_study/cases.py` (it writes 
 ## Launch
 
 ```bash
-# on Snellius, after pulling v2-solver; once: export STORAGE in ~/.bashrc and run run/setup_storage.sh
+# on Snellius, after pulling main; once: export STORAGE in ~/.bashrc and run run/setup_storage.sh
 echo 'export STORAGE=/gpfs/admin/projectlinks/prjs1960' >> ~/.bashrc && source ~/.bashrc
 bash $HOME/GridapBALFEM.jl/run/setup_storage.sh                     # output/ → $STORAGE/GridapBALFEM_output
 cd $HOME/GridapBALFEM.jl/compile && sbatch compile_snellius.sh      # sysimage: performance mode, Nσ = 3

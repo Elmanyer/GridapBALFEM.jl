@@ -4,7 +4,7 @@
 > [`archive/HISTORY_V1.md`](archive/HISTORY_V1.md) §5.x. The current state is [`STATUS.md`](STATUS.md).
 
 > **⚙ v1 RECORD (2026-10-05).** Every verification result here was measured on v1. Models 1–4 are designed to be unchanged by the refactor (checked entry by entry by test/v2_migration/regression_snapshot.jl); `:native` and projected `:full` no longer exist; the v2 full-pressure models 5–6 are verified for the first time by the v2 MMS. It is kept as the record of how v1 reached its results;
-> the v2 solver (branch `v2-solver`) differs — one Class-III formulation (broken), `nl_pressure::Bool`
+> the v2 solver (branch `main`) differs — one Class-III formulation (broken), `nl_pressure::Bool`
 > with all eight `𝓝` components, no component mask (`V2_SOLVER_PLAN.md`). Paths `output/…` here are
 > now under `../output_v1/`.
 

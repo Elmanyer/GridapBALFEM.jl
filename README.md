@@ -7,8 +7,8 @@ non-hydrostatic wave models. It generalises the **LFE-M** model of Yang & Liu (2
 **P*p*LFE-*M*** after the basis it uses, so P1LFE-2 is the two-layer piecewise-linear model (the
 counterpart of Yang & Liu's LFE-2); *LFE-M* is reserved for their published models.
 
-Repository: `GridapBALFEM.jl` (branch **`v2-solver`**; v1 is frozen on `main` / `v1-solver`, tag
-`v1_final_solver`). Module: `src/GridapBALFEM.jl` → `module GridapBALFEM`.
+Repository: `GridapBALFEM.jl` (branch **`main`**, the v2 solver since 2026-11-24; v1 is frozen on `v1-solver`,
+tag `v1_final_solver`). Module: `src/GridapBALFEM.jl` → `module GridapBALFEM`.
 
 > **Sister solver.** This repository is the primal formulation stabilised by the C⁰ interior penalty
 > (CIP). The mixed formulation of the same models (conforming without CIP) with residual-based (VMS)

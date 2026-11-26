@@ -25,7 +25,7 @@
 >
 > | | v1 (frozen) | v2 (active) |
 > |---|---|---|
-> | code | branches `main`, `v1-solver`; tag `v1_final_solver` | branch **`v2-solver`** |
+> | code | branch `v1-solver`; tag `v1_final_solver` | branch **`main`** (v2 since 2026-11-24; `v2-solver` merged in full 2026-11-26) |
 > | LaTeX | `../LATEX_DOCS/BALFEM_models_v1/` | `latex_docs/GridapBALFEM_documentation/` (Overleaf, §2) |
 > | outputs | `../output_v1/` (workspace root since 2026-11-26; index `CATALOGUE.md`) | `output/` |
 > | record | [`archive/HISTORY_V1.md`](markdown_files/archive/HISTORY_V1.md) (v1 `CLAUDE.md`, verbatim) | here + `STATUS.md` |

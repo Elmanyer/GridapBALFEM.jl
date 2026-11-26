@@ -551,7 +551,7 @@ reflection comes from where μ rises at the front of the sponge. It grows with �
 
 - [ ] Decide first whether §7 changes the sponge. If it does, edit the launchers and add flat
   references.
-- [ ] Push `v2-solver` (needs the author's go-ahead), pull on Snellius, rebuild the sysimage
+- [ ] Push `main` (needs the author's go-ahead), pull on Snellius, rebuild the sysimage
   (`src/` changed; `BALFEM_STRICT_SYSIMAGE=1`).
 - [ ] Pilot `:schwarz` at 42 ranks:
   `BALFEM_TFINAL=2.0 sbatch --time=02:00:00 run/linear_production/run_lin_directional_flat_schwarz.sh`.
@@ -640,7 +640,7 @@ Five cases with γ_u = γ_η = 0, otherwise identical to the campaign: `m6_q32_n
   * the 1-D flume CIP-monitor reruns (m5/m6, A = 0.02/0.05);
   * the 2-D `:schwarz` rank-count scaling with 𝓝;
   * the γ calibration of the CIP.
-* §8 Snellius round 2. It depends on §9.2/9.3 for the sponge, and on pushing `v2-solver`.
+* §8 Snellius round 2. It depends on §9.2/9.3 for the sponge, and on pushing `main`.
 * Diagnostic rerun of m5 n32 from just before its onset. It needs `restart_from_vtu`, an optional
   item of §2 not built yet, because the campaign kept only 2 checkpoints.
 * Per-node u_j analysis of the m5 n8 VTK, to test the vertical-mode hypothesis. This is an

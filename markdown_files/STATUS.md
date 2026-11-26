@@ -95,7 +95,7 @@ Evidence for every claim is in [`STABILITY.md`](STABILITY.md) (the stability rec
 
 ## 1. In one paragraph
 
-The **v2 solver** (branch `v2-solver`) is correct and verified as far as the linear and the
+The **v2 solver** (branch `main`; developed on `v2-solver` until 2026-11-26) is correct and verified as far as the linear and the
 nonlinear-without-`𝓝` models go. Its **full nonlinear model** (`nl_pressure=true`, all eight `𝓝`
 components, Class III by the broken formulation) is **consistent but unstable at the grid scale**.
 **The model without `𝓝` (`nl_pressure=false`) is unstable too** once the effective resolution is high
@@ -177,8 +177,9 @@ The skeleton penalties (`:jumpgrad`, `:ghostvolume`) stay in the code as the com
 
 ## 6. Housekeeping state
 
-* Branch `v2-solver`. The 2026-10-09 documentation restructure, the eigen order-rule driver and the
-  v2 box launchers are committed; nothing is pushed.
+* Branch `main` = the v2 solver (merged from `v2-solver` 2026-11-24, in full 2026-11-26; `v1-solver` holds
+  the frozen v1). The 2026-10-09 documentation restructure, the eigen order-rule driver and the v2 box
+  launchers are committed.
 * LaTeX v2 (then `latex_docs/BALFEM_models_v2`; since 2026-11-23 `latex_docs/GridapBALFEM_documentation`,
   `CLAUDE.md` §2): chapters 6–9 restructured. Chapter 8 has the v2
   Q2/Q1 rows; **the Q3/Q2 rows of §3 above are still to be added**. Chapter 9 describes the penalties
