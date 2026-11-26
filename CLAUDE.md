@@ -123,8 +123,9 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 ## 3. Features
 
 * **Solver core.**
-  * The stacked `[η,𝖴x,𝖴y]` loop-free residual with hand Jacobians (exact `∂R/∂u̇`; quasi-Newton
-    `∂R/∂u`, rule 5).
+  * The stacked `[η,𝖴x,𝖴y]` loop-free residual with hand Jacobians: `∂R/∂u̇` exact; `∂R/∂u` exact for
+    models 1–4 (η-derivatives of the pressure terms completed, `a0282bc`), quasi-Newton only in the `𝓝`
+    blocks {3,6,7,8} and the ∇h half of models 5–6 (0.5–0.65 % gap, rule 5).
   * Integrators (`build_time_integrator`, 2026-11-11): `:theta` (θ; 0.5 = CN), `:sdirk` = `:rk` (any
     Gridap tableau, diagonally implicit or explicit `EXRK_*`; default `SDIRK_2_2`, **dissipative, rule
     15**), `:gen_alpha` (ρ∞). Refused before the build: IMEX tableaus, unknown names, θ ∉ (0,1],
@@ -206,9 +207,20 @@ Liu (2024, *JFM* 999 A32) LFE-M to an **arbitrary vertical FE basis**. It is a d
 
 ## 5. Current Implementation Stage
 
-*Updated 2026-11-23. Full picture: [`markdown_files/STATUS.md`](markdown_files/STATUS.md) (its 2026-11-11
+*Updated 2026-11-26. Full picture: [`markdown_files/STATUS.md`](markdown_files/STATUS.md) (its 2026-11-11
 update is the current route); actions: [`CH8_CAMPAIGN_TODO.md`](markdown_files/CH8_CAMPAIGN_TODO.md)
 "RESUME HERE".*
+
+### Repository and records (2026-11-26)
+* **`main` is the v2 solver** (merged 2026-11-24, in full 2026-11-26); `v2-solver` is deleted, v1 is frozen
+  on `v1-solver`. ⚠ The Snellius clone still tracks `v2-solver`: `git fetch --prune && git switch main &&
+  git pull`, then rebuild the sysimage (`src/problem.jl` changed with `a0282bc`).
+* **All output is catalogued.** `output/CATALOGUE.md` (637 v2 runs: stage v2.0–v2.d, code state, outcome,
+  validity; `RUN_LABEL.txt` in every run, reconstructed `CONFIGURATION.txt` for runs before 2026-11-11) and
+  `../output_v1/CATALOGUE.md` (376 v1 runs). Rebuild with `output/_catalogue/` after new runs land.
+* **`jacobian_u` complete in η** for the nonlinear models (`a0282bc`, 2026-11-18, on `main` since 11-23):
+  models 1–4 hand ≡ AD, `test_jacobians_ad` 14/14. Every nonlinear run in `output/` predates it (rule 17b:
+  stability unaffected).
 
 ### Working and verified
 * **The v2 code base:** Class III cellwise + kind-S facet terms; Boolean `nl_pressure`; v1 code deleted.
@@ -281,7 +293,9 @@ update is the current route); actions: [`CH8_CAMPAIGN_TODO.md`](markdown_files/C
 * `test_skeleton_ad` ghost arm (`_shift`) and S3; `test_selfconsistency` step 12; the variable-bed
   lee-shoulder mode.
 * LaTeX chapters 8–9 and appendices still cite removed broken-audit labels.
-* Sponge sweep paused at 26 of 84 (`SPONGE_SWEEP_RESULTS.md`).
+* Sponge sweep: stage A complete (84/84, 2026-11-08) and stage B analysed (`SPONGE_SWEEP_RESULTS.md`).
+* `src/configuration.jl` reports any `WaveInput` (incl. a one-component regular wave) as a sea state in
+  `CONFIGURATION.txt` (found 2026-11-26 while cataloguing; not patched, author's call).
 * Gridap fork skeleton-AD commit unpushed; rebuild the sysimage after any `src/` edit (rule 25).
 
 ## 6. The design decision everything rests on
@@ -355,8 +369,9 @@ unchanged, because code and documents cite them. Rules earned on v1 still apply:
    conjunction of its activation conditions; the `𝓐/𝓚` packages are alternatives, never addends.
    A flat-bed regression can never test ∇h code.
 
-5. **`∂R/∂u̇` is exact; nonlinear `∂R/∂u` is quasi-Newton by choice** (the gap vanishes at order
-   ≈ 1.1 in amplitude).
+5. **`∂R/∂u̇` is exact; nonlinear `∂R/∂u` is quasi-Newton by choice only in the `𝓝` blocks**
+   {3,6,7,8} and the ∇h half (the gap vanishes at order ≈ 1.1 in amplitude). The η-derivatives of the
+   pressure terms are complete (`a0282bc`, 2026-11-18).
     * An omission is benign only if it is higher order in amplitude.
     * Measure with `test_jacobians_ad`; never assume.
 
