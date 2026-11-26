@@ -1,8 +1,10 @@
 # STABILITY.md — the nonlinear grid-scale instability and its stabilisation: the condensed record
 
 *Condensed 2026-10-09 from the v1 campaign records (now in [`archive/`](archive/README.md)) and the v2
-box campaign. LaTeX: chapter 8 (`SolverValidation/StabilityAnalysis.tex`, the analysis and the
-figures), chapter 9 (`Stabilisation.tex`), appendix C (jump penalties). Status and next step:
+box campaign. LaTeX (`latex_docs/GridapBALFEM_documentation/`): chapter 9
+(`SolverValidation/StabilityAnalysis.tex`, the analysis and the figures), chapter 10
+(`SolverValidation/Stabilisation.tex`), appendix C (jump penalties); renumbered 2026-11-09, so the
+"chapter 8" of the campaign names (`CH8_CAMPAIGN_TODO.md`) is today's chapter 9. Status and next step:
 [`STATUS.md`](STATUS.md).*
 
 Labels: **(v1)** = measured on the frozen v1 solver, where `:full` means Class III by the
@@ -38,7 +40,7 @@ mixed/projected/broken treatment with component 4 omitted (`C3_MASK=gs`) and `:n
   * the `C⁰` broken-`∂²` hypothesis: the mixed formulation, which cannot form `∂²`, kept the same
     signature (rule 39b).
 
-## 2. Mechanism (chapter 8)
+## 2. Mechanism (LaTeX chapter 9)
 
 * **Class III carries the horizontal advection of the vertical acceleration.** The frozen spectrum
   gains a Doppler branch `ω ≈ kU + ω∞`, with spectral radius ∝ `A/h_e`. Without it, the radius

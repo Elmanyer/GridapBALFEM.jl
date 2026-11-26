@@ -8,7 +8,7 @@
 > |---|---|---|
 > | solver code | GitHub `GridapBALFEM.jl`, branches `main` / `v1-solver`, tag `v1_final_solver` | branch `v2-solver`; plan in [`V2_SOLVER_PLAN.md`](V2_SOLVER_PLAN.md) |
 > | LaTeX | `latex_docs/BALFEM_models_v1/` (GitHub `BALFEM_models`, tag `v1_final_solver`) | `latex_docs/BALFEM_models_v2/`, its own Overleaf project |
-> | run outputs | `output_v1/` | `output/` |
+> | run outputs | `../output_v1/` | `output/` |
 >
 > `BALFEM_models_v2` starts as a verbatim copy of the v1 content. This file is the plan for
 > restructuring it.

@@ -3,7 +3,7 @@
 > **⚙ v1 RECORD (2026-10-05).** This file documents the broken formulation and first-order C⁰-IP on v1 — the broken formulation is now v2's ONLY Class-III treatment, but every campaign here used v1 options (`broken=true` opt-in, `C3_MASK=gs`). It is kept as the record of how v1 reached its results;
 > the v2 solver (branch `v2-solver`) differs — one Class-III formulation (broken), `nl_pressure::Bool`
 > with all eight `𝓝` components, no component mask (`V2_SOLVER_PLAN.md`). Paths `output/…` here are
-> now under `output_v1/`.
+> now under `../output_v1/`.
 
 *Branch `broken-formulation-solver`, from `main` @ `58ef9bb` (2026-09-30). The mathematics is
 LaTeX §6.4 "Broken Weak Formulation: Term-by-Term Audit"

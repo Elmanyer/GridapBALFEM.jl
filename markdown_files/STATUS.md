@@ -20,7 +20,7 @@
 >     `resume` and `BALFEM_CASE_FILTER`;
 >   * **all cluster output on the project storage** (`STORAGE` in `~/.bashrc`, Snellius
 >     `/gpfs/admin/projectlinks/prjs1960`; `output/` is a link to `$STORAGE/GridapBALFEM_output`;
->     `run/storage.sh`, `run/setup_storage.sh`);
+>     `run/storage.sh`, `run/setup_storage.sh`); **set up on Snellius 2026-11-24** (`output/` is the link, the copy verified);
 >   * the resubmission plan is drafted (`INTEGRATOR_STUDY_RESULTS.md` §6), **not submitted** (author).
 
 > **Update 2026-11-17: first integrator results; the cluster study waits for resources.**
@@ -179,6 +179,7 @@ The skeleton penalties (`:jumpgrad`, `:ghostvolume`) stay in the code as the com
 
 * Branch `v2-solver`. The 2026-10-09 documentation restructure, the eigen order-rule driver and the
   v2 box launchers are committed; nothing is pushed.
-* LaTeX v2 (`latex_docs/BALFEM_models_v2`, Overleaf): chapters 6–9 restructured. Chapter 8 has the v2
+* LaTeX v2 (then `latex_docs/BALFEM_models_v2`; since 2026-11-23 `latex_docs/GridapBALFEM_documentation`,
+  `CLAUDE.md` §2): chapters 6–9 restructured. Chapter 8 has the v2
   Q2/Q1 rows; **the Q3/Q2 rows of §3 above are still to be added**. Chapter 9 describes the penalties
   and lists filters as "not tried". It will need rewriting around the filter.

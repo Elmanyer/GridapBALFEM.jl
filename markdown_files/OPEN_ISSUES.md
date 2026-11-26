@@ -93,12 +93,12 @@ the section names below give its matching section.*
   * no per-Newton-iteration linear counts;
   * no wall-time breakdown;
   * the achieved linear tolerance is not recorded.
-* GitHub repository still named `GridapLFEM.jl`.
 * **Integrator study: 161 cases cut by the Snellius home quota** (2026-11-21), resumable from intact
   checkpoints; ≈ 1.8 × 10⁴ case-hours to finish. The plan and its priorities are in
-  `INTEGRATOR_STUDY_RESULTS.md` §6; it is not submitted (author). One-time cluster step before any
-  cluster run: `STORAGE` in `~/.bashrc` + `run/setup_storage.sh` (rule 47c). The new launcher code
-  (`storage.sh`, the merged `submit.sh`) is sandbox-tested only, never run on Snellius.
+  `INTEGRATOR_STUDY_RESULTS.md` §6; it is not submitted (author). The project storage is set up on
+  Snellius (2026-11-24: `STORAGE` in `~/.bashrc`, `run/setup_storage.sh` run, `output/` is the link,
+  copy verified; rule 47c). The merged `submit.sh` (`status`, `requeue-quota`, `resume`) is
+  sandbox-tested only, never run on Snellius.
 * **Unexplained (integrator study §3.6):** on m3, SDIRK_4_3, RK3 and RK4 die earlier than CN at kd 1.7
   kA 0.25 (103 / 60 / 47 periods, CN completes 200), and reach onset earlier at kd 5.5 kA 0.158, although
   they add damping (rule 38e).

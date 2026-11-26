@@ -3,7 +3,7 @@
 > **⚙ v1 RECORD (2026-10-05).** This file documents v1's projected and mixed Class-III treatments, both REMOVED in v2. It is kept as the record of how v1 reached its results;
 > the v2 solver (branch `v2-solver`) differs — one Class-III formulation (broken), `nl_pressure::Bool`
 > with all eight `𝓝` components, no component mask (`V2_SOLVER_PLAN.md`). Paths `output/…` here are
-> now under `output_v1/`.
+> now under `../output_v1/`.
 
 > **Branch `new-classIII-treatment`, opened 2026-09-18.**
 > Two changes to how the Class-III components `{1,2,4,5}` of `𝓝ₖⱼ` reach the residual:
@@ -992,7 +992,7 @@ available and it is cheap.**
 
 Every arm directory under `output/local_1d/` holds **`diagnostics.csv`** (time series),
 **`sol_t_*.vtu` + `solution.pvd`** (fields at 0.2 s), and **`run.log`** (config banner, per-step
-Newton trace, crash reason). Index: `output/local_1d/README_c3_mixed_campaign.md`.
+Newton trace, crash reason). Index: `../output_v1/local_1d/class3_treatments/proj_vs_mixed_factorial/README_c3_mixed_campaign.md`.
 
 ⚠ **`output/` IS GITIGNORED — none of it survives a fresh clone**, which is why every number that
 matters is transcribed into this file and `CLAUDE.md` §5.2e rather than left in the CSVs.
