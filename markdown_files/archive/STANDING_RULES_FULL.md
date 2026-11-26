@@ -4,7 +4,7 @@
 > are lessons about the model, the method and the workflow, not about v1's options. Where a rule
 > cites `:full` read "`nl_pressure=true`"; where it cites `:native`, the projected or the mixed
 > treatment, or `c3_mask`, it describes a v1 configuration (tag `v1_final_solver`,
-> `HISTORY_V1.md`). Paths `output/…` in a rule's evidence are now under `output_v1/`.
+> `HISTORY_V1.md`). Paths `output/…` in a rule's evidence are now under `../output_v1/`.
 
 These are the rules that cost something to learn. Each is stated where it is enforced; the
 supporting measurement is in the linked document.

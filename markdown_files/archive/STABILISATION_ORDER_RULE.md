@@ -173,7 +173,7 @@ classifier was blind to transverse modes.**
   y-invariant run, and they cannot be reached by any x-facet penalty, because there are no interior
   y-facets.
 * **Consequence.** The first-pass mid-band minima discriminate nothing.
-* **⚠ The v1 window values were partly luck.** The v1 file (`output_v1/local_1d/cip_eigen/cip_eigen.csv`,
+* **⚠ The v1 window values were partly luck.** The v1 file (`../output_v1/local_1d/cip_eigen/cip_eigen.csv`,
   same classifier) gives, for Q3/Q2 order ≤ 2:
   * 0.27 / 0.55 / 0.82 at γ = 1e-3 / 2e-3 / 3e-3, but
   * **−6e-14 at γ = 0.01**, breaking its own monotone trend.

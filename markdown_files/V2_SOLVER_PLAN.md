@@ -15,7 +15,7 @@
 |---|---|---|
 | solver code | GitHub `GridapBALFEM.jl`: branches `main` and `v1-solver` (`d7a4df9`), tag `v1_final_solver` | branch `v2-solver`, this plan |
 | LaTeX | `latex_docs/BALFEM_models_v1/` (GitHub `BALFEM_models`, tag `v1_final_solver`) | `latex_docs/BALFEM_models_v2/`, its own Overleaf project; structure plan in [`LATEX_STRUCTURE.md`](LATEX_STRUCTURE.md) |
-| run outputs | `output_v1/` (22 GB, gitignored) | `output/` (started empty) |
+| run outputs | `../output_v1/` (22 GB, gitignored) | `output/` (started empty) |
 
 **The main changes, at a glance:**
 
@@ -322,7 +322,7 @@ rule 1c):
   `CONFIGURATION.md`, `RUNNING.md` (new environment variables), `INDEX.md`.
 * `NEW_TREATMENT.md`, `BROKEN_FORMULATION_PLAN.md`, `GHOST_PENALTY_PLAN.md`: mark them as v1
   records.
-* Paths: v1 results are now under `output_v1/`. Every `output/...` reference in the markdown that
+* Paths: v1 results are now under `../output_v1/`. Every `output/...` reference in the markdown that
   points to a v1 result is updated.
 * The LaTeX restructure of `latex_docs/BALFEM_models_v2/` (Overleaf) follows `LATEX_STRUCTURE.md`
   revision 4, edited by the author. The broken

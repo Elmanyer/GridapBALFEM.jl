@@ -134,8 +134,10 @@ GridapBALFEM.jl/
 ```
 
 Present locally but gitignored: `output/` (v2 runs; on a cluster a link to the project storage),
-`output_v1/`, `latex_docs/` (a link to the LaTeX project), `Gridap.jl/` (the Gridap fork, below) and
+`latex_docs/` (a link to the LaTeX project), `Gridap.jl/` (the Gridap fork, below) and
 `WaveSpec.jl/` (the vendored sea-state package, GitHub version).
+The v1 output is no longer here: since 2026-11-26 it is at the workspace root, `../output_v1/`,
+indexed by `../output_v1/CATALOGUE.md` (every v1 run labelled with a reconstructed `CONFIGURATION.txt`).
 
 ---
 

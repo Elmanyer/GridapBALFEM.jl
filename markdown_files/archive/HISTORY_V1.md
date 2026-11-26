@@ -10,7 +10,7 @@
 > v2 removed all three. Read it for the full development history: the equal-order artefact, the 1-D
 > production and refinement campaigns, the mixed-formulation campaign, the closed periodic box,
 > the stabilisation campaign, and every measurement and lesson behind them. Paths written
-> `output/…` here are now under `output_v1/`, and `latex_docs/BALFEM_models/` is now
+> `output/…` here are now under `../output_v1/`, and `latex_docs/BALFEM_models/` is now
 > `latex_docs/BALFEM_models_v1/`.
 >
 > The standing rules (§7) were carried over into the v2 `CLAUDE.md`; the status sections (§5) were

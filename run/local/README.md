@@ -14,7 +14,7 @@ it. Write logs to `output/…`, never to `/tmp` (rule 47).
 Taylor–Hood campaign, the 1-D production and refinement factorials, the mixed/projected flume
 factorial, the periodic-box batches, the broken/ghost-penalty campaign — were removed from the v2
 tree. They ran configurations that no longer exist (`:native`, `:full` projected or mixed, the
-component mask). They remain in tag `v1_final_solver`, and their outputs are in `output_v1/`.
+component mask). They remain in tag `v1_final_solver`, and their outputs are in `../output_v1/`.
 v2 launchers are written as the v2 campaign needs them (`markdown_files/V2_SOLVER_PLAN.md` §4).
 
 v2 knobs that changed: `BALFEM_NL_PRESSURE` takes `0`/`1` (all eight 𝓝 components off/on).
